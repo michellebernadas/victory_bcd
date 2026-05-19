@@ -95,9 +95,11 @@
 
     <div class="dropdown">
         <a href="#" class="d-flex align-items-center link-body-emphasis text-decoration-none dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-            <img src="https://api.dicebear.com/9.x/initials/svg?seed=<?php echo isset($_SESSION['user']['username']) ? urlencode($_SESSION['user']['username']) : 'User'; ?>"
-                alt="" width="32" height="32" class="rounded-circle me-2">
-            <strong class="text-truncate" style="max-width: 150px;">Hi, <?php echo isset($_SESSION['user']['username']) ? htmlspecialchars($_SESSION['user']['username']) : 'User'; ?></strong>
+            <?php $u = $_SESSION['user']['username'] ?? 'User'; ?>
+            <span class="rounded-circle avatar-initial me-2" style="width:32px;height:32px;font-size:14px;" aria-hidden="true">
+                <?php echo htmlspecialchars(strtoupper(mb_substr($u, 0, 1))); ?>
+            </span>
+            <strong class="text-truncate" style="max-width: 150px;">Hi, <?php echo htmlspecialchars($u); ?></strong>
         </a>
         <ul class="dropdown-menu text-small shadow">
             <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#profileModal"><i class="bi bi-person-circle me-2"></i>Profile</a></li>
@@ -116,10 +118,12 @@
                 </div>
                 <div class="modal-body">
                     <?php if (isset($_SESSION['user'])): ?>
+                        <?php $pu = $_SESSION['user']['username'] ?? 'User'; ?>
                         <div class="text-center mb-3">
-                            <img src="https://api.dicebear.com/9.x/initials/svg?seed=<?php echo isset($_SESSION['user']['username']) ? urlencode($_SESSION['user']['username']) : 'User'; ?>"
-                                alt="Profile" width="80" height="80" class="rounded-circle mb-2">
-                            <h5 class="mb-1"><?php echo htmlspecialchars($_SESSION['user']['username']); ?></h5>
+                            <div class="rounded-circle avatar-initial mb-2 mx-auto" style="width:80px;height:80px;font-size:32px;" aria-hidden="true">
+                                <?php echo htmlspecialchars(strtoupper(mb_substr($pu, 0, 1))); ?>
+                            </div>
+                            <h5 class="mb-1"><?php echo htmlspecialchars($pu); ?></h5>
                             <span class="badge bg-primary"><?php echo ucfirst($_SESSION['user']['accounttype'] ?? 'Editor'); ?></span>
                         </div>
                         <div class="mb-3">

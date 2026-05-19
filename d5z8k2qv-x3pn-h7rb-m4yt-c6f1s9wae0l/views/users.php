@@ -83,8 +83,9 @@ $editUser = $editUser ?? null;
                                 <tr>
                                     <td><?php echo $i + 1; ?></td>
                                     <td class="fw-semibold">
-                                        <img src="https://api.dicebear.com/9.x/initials/svg?seed=<?php echo urlencode($u['username']); ?>"
-                                             width="28" height="28" class="rounded-circle me-2">
+                                        <span class="rounded-circle avatar-initial me-2" style="width:28px;height:28px;font-size:12px;" aria-hidden="true">
+                                            <?php echo htmlspecialchars(strtoupper(mb_substr($u['username'] ?? '?', 0, 1))); ?>
+                                        </span>
                                         <?php echo htmlspecialchars($u['username']); ?>
                                         <?php if ($u['id'] == $_SESSION['user']['id']): ?><span class="badge bg-info ms-1">You</span><?php endif; ?>
                                     </td>

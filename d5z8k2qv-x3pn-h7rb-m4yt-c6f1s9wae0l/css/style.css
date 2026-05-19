@@ -140,6 +140,22 @@ body {
   filter: brightness(0) invert(1);
 }
 
+/* ── Local "initials" avatar — replaces the previous dicebear external image
+   so the page has no third-party dependency for avatars (works regardless of
+   strict CSP / offline / external service downtime). */
+.avatar-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #1742f5, #070d63);
+  color: #ffffff;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  user-select: none;
+}
+
 /* Sidebar */
 .sidebar {
   background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
