@@ -1,0 +1,70 @@
+# OS-generated files
+.DS_Store
+Thumbs.db
+._*
+
+# Node.js dependencies
+node_modules/
+
+# Composer dependencies
+vendor/
+
+# Cache & Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+error_log
+# Ignore log contents but keep the directory tracked via .gitkeep so the app
+# has somewhere to write on deploy without a manual mkdir step.
+logs/*
+!logs/.gitkeep
+storage/logs/
+storage/framework/cache/
+storage/framework/sessions/
+storage/framework/views/
+.cache/
+.tmp/
+
+# Environment settings
+.env
+.env.local
+.env.*.local
+
+# Editor-specific files
+.idea/
+.vscode/
+.phpstorm.meta.php
+*.swp
+*.swo
+
+# Database files (ignore SQLite databases and SQL dumps)
+*.sqlite
+*.sqlite3
+*.sql
+database/database.sqlite
+database/database.sqlite3
+databases
+
+# User-uploaded / source data files — contain PII (member rosters, schedules)
+files/
+*.xlsx
+*.xls
+
+# One-off artifacts / stats dumps
+vg_statistics.txt
+*.txt.bak
+
+# Backup files
+*.bak
+*.backup
+*.old
+*~
+*_backup.php
+
+# PHPUnit test results
+phpunit.xml
+phpunit.xml.dist
+tests/_output/
