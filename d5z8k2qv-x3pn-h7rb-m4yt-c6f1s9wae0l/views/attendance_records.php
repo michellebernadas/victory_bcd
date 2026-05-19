@@ -3314,7 +3314,7 @@ window.atYrFilter    = 0;
 window.atMatchFilter = <?php echo json_encode($activeMatch ?? 'all'); ?>; // 'all' | 'matched' | 'unmatched' — restored from URL
 
 window.updateAtFilterBadge = function() {
-    var serverSide = <?php echo (int)$atFilterCount; ?>;
+    var serverSide = <?php echo (int)($atFilterCount ?? 0); ?>;
     var n = serverSide;
     if (window.atPtFilter)    n++;
     if (window.atYrFilter)    n++;

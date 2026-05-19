@@ -1185,7 +1185,7 @@ $(function() {
     // Persisted across server-side filter navigation (year/batch) via the `match` URL parameter.
     window.l113MatchFilter = <?php echo json_encode($activeMatch ?? 'all'); ?>;
     window.updateL113FilterBadge = function() {
-        var serverSide = <?php echo (int)$l113FilterCount; ?>;
+        var serverSide = <?php echo (int)($l113FilterCount ?? 0); ?>;
         var n = serverSide;
         if (window.l113MatchFilter && window.l113MatchFilter !== 'all') n++;
         // Note: page search input is part of $l113FilterCount only via the URL `search` param,

@@ -1,3 +1,9 @@
+<!-- Mobile/tablet hamburger toggle — hidden on desktop via CSS -->
+<button type="button" id="sidebarToggle" class="sidebar-toggle" aria-label="Open menu" aria-controls="main-menu" aria-expanded="false">
+    <i class="bi bi-list"></i>
+</button>
+<div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
+
 <div id="main-menu" class="d-flex flex-column flex-shrink-0 p-3 sidebar position-fixed" style="width: 260px; overflow-y: auto; height: 100vh;">
     <a href="index.php" class="d-flex align-items-center mx-auto link-body-emphasis text-decoration-none mb-2">
         <img src="images/victory-logo.png" class="img-fluid my-2 px-3" style="max-height: 60px;" alt="Victory Bacolod">
@@ -137,3 +143,40 @@
     </div>
     <div id="profileModalBackdrop" class="modal-backdrop fade" style="display: none; z-index: 1040;"></div>
 </div>
+
+<script>
+// ── Mobile sidebar drawer ──────────────────────────────────────────────────
+// Toggles the off-canvas sidebar on small screens. Closes when the user taps
+// the backdrop, picks a nav link, or resizes back to desktop width.
+(function () {
+    var toggleBtn = document.getElementById('sidebarToggle');
+    var sidebar   = document.getElementById('main-menu');
+    var backdrop  = document.getElementById('sidebarBackdrop');
+    if (!toggleBtn || !sidebar || !backdrop) return;
+
+    function openDrawer() {
+        sidebar.classList.add('show');
+        backdrop.classList.add('show');
+        document.body.classList.add('sidebar-open');
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
+    function closeDrawer() {
+        sidebar.classList.remove('show');
+        backdrop.classList.remove('show');
+        document.body.classList.remove('sidebar-open');
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    }
+    toggleBtn.addEventListener('click', function () {
+        sidebar.classList.contains('show') ? closeDrawer() : openDrawer();
+    });
+    backdrop.addEventListener('click', closeDrawer);
+    // Close after navigating from a nav link (so the next page renders without a stuck drawer state).
+    sidebar.querySelectorAll('a.nav-link').forEach(function (a) {
+        a.addEventListener('click', closeDrawer);
+    });
+    // Drop the open state if the viewport grows past the breakpoint (e.g. rotation, devtools).
+    window.addEventListener('resize', function () {
+        if (window.innerWidth >= 992) closeDrawer();
+    });
+})();
+</script>
