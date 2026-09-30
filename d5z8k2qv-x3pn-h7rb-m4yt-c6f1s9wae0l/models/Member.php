@@ -398,6 +398,86 @@ class Member {
         }
     }
 
+    /**
+     * Same shape as getStats(), but every figure is restricted to ACTIVE members.
+     * The dashboard's Discipleship Journey Overview reports "out of active
+     * members", so both the numerator and the denominator must exclude
+     * inactive/soft-deleted people — otherwise the percentages understate reality.
+     *
+     * Step keys are read from discipleship_steps.column_key so a newly activated
+     * step (e.g. Spiritual Foundations) is picked up without touching this code.
+     */
+    public function getActiveStats(): array {
+        $stats = ['total' => 0];
+        try {
+            $stats['total'] = (int)$this->db->query(
+                "SELECT COUNT(*) FROM members WHERE is_deleted = 0 AND member_status = 'active'"
+            )->fetchColumn();
+            $stats['active'] = $stats['total'];
+
+            $cols = $this->db->query(
+                "SELECT column_key FROM discipleship_steps
+                  WHERE column_key IS NOT NULL AND column_key != '' AND is_deleted = 0"
+            )->fetchAll(PDO::FETCH_COLUMN) ?: [];
+            // Whitelist against the real members columns — column_key is admin-editable.
+            $allowed = $this->getMemberBooleanColumns();
+            foreach ($cols as $col) {
+                if (!in_array($col, $allowed, true)) continue;
+                $stats[$col] = (int)$this->db->query(
+                    "SELECT COUNT(*) FROM members
+                      WHERE is_deleted = 0 AND member_status = 'active' AND `{$col}` = 1"
+                )->fetchColumn();
+            }
+        } catch (PDOException $e) {
+            error_log("getActiveStats error: " . $e->getMessage());
+        }
+        return $stats;
+    }
+
+    /** Boolean discipleship columns that actually exist on `members`. */
+    private function getMemberBooleanColumns(): array {
+        static $cache = null;
+        if ($cache !== null) return $cache;
+        $cache = [];
+        try {
+            foreach ($this->db->query("SHOW COLUMNS FROM members")->fetchAll() as $c) {
+                if (stripos($c['Type'], 'tinyint') === 0) $cache[] = $c['Field'];
+            }
+        } catch (PDOException $e) {
+            $cache = ['victory_weekend','church_community','making_disciples',
+                      'empowering_leaders','leadership_113','purple_book_class','spiritual_foundations'];
+        }
+        return $cache;
+    }
+
+    /** Active-member counts per worship service, split into AM / PM. */
+    public function getServiceAttendanceStats(): array {
+        $out = [];
+        try {
+            $services = $this->db->query(
+                "SELECT name, service_period FROM services
+                  WHERE is_active = 1 AND is_deleted = 0 ORDER BY sort_order ASC, name ASC"
+            )->fetchAll();
+            // members.service_attending is a CSV ("8:30 AM, 11:00 AM") — match whole tokens.
+            $stmt = $this->db->prepare(
+                "SELECT COUNT(*) FROM members
+                  WHERE is_deleted = 0 AND member_status = 'active'
+                    AND CONCAT(', ', service_attending, ', ') LIKE CONCAT('%, ', ?, ', %')"
+            );
+            foreach ($services as $svc) {
+                $stmt->execute([$svc['name']]);
+                $out[] = [
+                    'name'   => $svc['name'],
+                    'period' => $svc['service_period'] ?? '',
+                    'count'  => (int)$stmt->fetchColumn(),
+                ];
+            }
+        } catch (PDOException $e) {
+            error_log("getServiceAttendanceStats error: " . $e->getMessage());
+        }
+        return $out;
+    }
+
     // ── Private helpers ────────────────────────────────────────────────────
 
     /**

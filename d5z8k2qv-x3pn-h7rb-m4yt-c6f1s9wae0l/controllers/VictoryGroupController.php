@@ -23,6 +23,9 @@ class VictoryGroupController {
         if (!empty($_GET['meeting_frequency'])) $filters['meeting_frequency'] = sanitizeInput($_GET['meeting_frequency']);
         if (!empty($_GET['group_status']))      $filters['group_status']      = sanitizeInput($_GET['group_status']);
         if (!empty($_GET['group_type']))        $filters['group_type']        = sanitizeInput($_GET['group_type']);
+        // Date range filter — matches on victory_groups.dateadded (when the group was created).
+        if (!empty($_GET['date_from']))         $filters['date_from']         = sanitizeInput($_GET['date_from']);
+        if (!empty($_GET['date_to']))           $filters['date_to']           = sanitizeInput($_GET['date_to']);
 
         $groups        = $this->groupModel->getAllGroups($filters);
         $activeFilters = $filters;

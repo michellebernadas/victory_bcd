@@ -102,6 +102,22 @@ rsort($_yearOpts);
         </select>
     </div>
 
+    <!-- Water Baptism remarks — belongs to the Water Baptism answer above (the
+         program_attendances.water_baptism flag), NOT to Victory Weekend. It is
+         only shown once Water Baptism = Yes, and the model clears it whenever
+         Water Baptism is set back to No. -->
+    <div class="col-12 at-field-wbap-remarks" style="display:none">
+        <label class="form-label fw-semibold">
+            <i class="bi bi-droplet-fill text-primary me-1"></i>Water Baptism Remarks / Notes
+            <span class="text-muted fw-normal small">(optional — where and how the person was baptized)</span>
+        </label>
+        <textarea name="water_baptism_remarks" class="form-control at-wbap-remarks" rows="2"
+                  placeholder="e.g. Sea baptism at Punta Taytay, officiated by Ptr. Juan"></textarea>
+        <div class="form-text small">
+            <i class="bi bi-info-circle me-1"></i>Attached to this record's <strong>Water Baptism</strong> entry.
+        </div>
+    </div>
+
     <!-- Counselor -->
     <div class="col-md-5 at-field-counselor">
         <label class="form-label fw-semibold">Counselor Name</label>

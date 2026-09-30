@@ -523,6 +523,8 @@ if (!$isL113View) {
                             </select>
                             <label class="text-white small mb-0">per page</label>
                         </div>
+                        <!-- Show / Hide Columns — # stays locked; exports follow visibility. -->
+                        <span class="col-toggle" data-table="attendanceTable" data-locked="0"></span>
                         <div class="btn-group" role="group">
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="exportAtCSV()" title="Export CSV"><i class="bi bi-filetype-csv me-1"></i>CSV</button>
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="exportAtExcel()" title="Export Excel"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
@@ -566,6 +568,7 @@ if (!$isL113View) {
                                     <th>#</th>
                                     <th>Participant Name</th>
                                     <th class="text-center"><i class="bi bi-droplet-fill me-1 text-primary"></i>Baptized</th>
+                                    <th title="Remarks attached to this record's Water Baptism entry">Water Baptism Remarks</th>
                                     <th>Event Date</th>
                                     <?php if ($showBatchCol): ?><th>Batch</th><?php endif; ?>
                                     <th>Counselor</th>
@@ -719,10 +722,18 @@ if (!$isL113View) {
                                             <?php echo _atDateLine($vwRec); ?>
                                         <?php else: ?><span class="text-muted">—</span><?php endif; ?>
                                     </td>
-                                    <!-- Baptized: water droplet icon if baptized -->
+                                    <!-- Baptized: water droplet icon if baptized, with the baptism
+                                         remarks shown underneath (the remark belongs to the water
+                                         baptism entry, so it travels with it here too). -->
                                     <td class="text-center small">
-                                        <?php if ($vwRec && (int)$vwRec['water_baptism']): ?>
-                                            <i class="bi bi-droplet-fill text-primary" style="font-size:1.2rem;" title="Underwent water baptism"></i>
+                                        <?php if ($vwRec && (int)$vwRec['water_baptism']):
+                                            $pvRemark = trim((string)($vwRec['water_baptism_remarks'] ?? ''));
+                                        ?>
+                                            <i class="bi bi-droplet-fill text-primary" style="font-size:1.2rem;"
+                                               title="Underwent water baptism<?php echo $pvRemark !== '' ? ' — ' . htmlspecialchars($pvRemark) : ''; ?>"></i>
+                                            <?php if ($pvRemark !== ''): ?>
+                                            <div class="text-muted text-start" style="font-size:10px;"><?php echo htmlspecialchars($pvRemark); ?></div>
+                                            <?php endif; ?>
                                         <?php else: ?><span class="text-muted">—</span><?php endif; ?>
                                     </td>
                                     <!-- CC -->
@@ -897,6 +908,19 @@ if (!$isL113View) {
                                             <i class="bi bi-droplet-fill text-primary" style="font-size:1.2rem;" title="Underwent water baptism"></i>
                                         <?php else: ?><span class="text-muted">—</span><?php endif; ?>
                                     </td>
+                                    <!-- Water Baptism remarks — tied to this record's water_baptism
+                                         entry, so it only shows when the person was actually baptized. -->
+                                    <td class="small" style="max-width:220px;">
+                                        <?php
+                                        $wbapRemark = (int)$rec['water_baptism'] ? trim((string)($rec['water_baptism_remarks'] ?? '')) : '';
+                                        if ($wbapRemark !== ''): ?>
+                                            <i class="bi bi-droplet-fill text-primary me-1"></i><?php echo nl2br(htmlspecialchars($wbapRemark)); ?>
+                                        <?php elseif ((int)$rec['water_baptism']): ?>
+                                            <span class="text-muted" title="Baptized — no remarks recorded">—</span>
+                                        <?php else: ?>
+                                            <span class="text-muted" title="Not baptized on this record">—</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td class="small"><?php echo $renderDate($eventDateDisplay); ?></td>
                                     <?php if ($showBatchCol): ?><td class="small"><?php echo $renderBatch($batchDisplay); ?></td><?php endif; ?>
 
@@ -1004,6 +1028,7 @@ if (!$isL113View) {
                                                 'counselor_contact'=> $rec['counselor_contact'] ?? '',
                                                 'contact_number'   => $rec['contact_number'],
                                                 'water_baptism'    => (int)$rec['water_baptism'],
+                                                'water_baptism_remarks' => $rec['water_baptism_remarks'] ?? '',
                                                 'member_id'        => $rec['member_id'],
                                                 'member_name'      => $rec['member_name'] ?? '',
                                                 'member_ministry'  => $rec['member_ministry'] ?? '',
@@ -1194,7 +1219,8 @@ if (!$isL113View) {
                             <i class="bi bi-printer me-1"></i>Print
                         </button>
                     </div>
-                </div>
+                                    <span class="col-toggle" data-table="vwBatchTable" data-locked="0"></span>
+</div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0" id="vwBatchTable">
@@ -1330,7 +1356,8 @@ if (!$isL113View) {
                             <i class="bi bi-printer me-1"></i>Print
                         </button>
                     </div>
-                </div>
+                                    <span class="col-toggle" data-table="ccSessionTable" data-locked="0"></span>
+</div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0" id="ccSessionTable">
@@ -1487,7 +1514,8 @@ if (!$isL113View) {
                         <button class="btn btn-sm btn-outline-light" onclick="exportMdSessionPdf()" title="PDF"><i class="bi bi-filetype-pdf me-1"></i>PDF</button>
                         <button class="btn btn-sm btn-outline-light" onclick="printMdSession()" title="Print"><i class="bi bi-printer me-1"></i>Print</button>
                     </div>
-                </div>
+                                    <span class="col-toggle" data-table="mdSessionTable" data-locked="0"></span>
+</div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0" id="mdSessionTable">
@@ -1627,7 +1655,8 @@ if (!$isL113View) {
                         <button class="btn btn-sm btn-outline-light" onclick="exportElSessionPdf()" title="PDF"><i class="bi bi-filetype-pdf me-1"></i>PDF</button>
                         <button class="btn btn-sm btn-outline-light" onclick="printElSession()" title="Print"><i class="bi bi-printer me-1"></i>Print</button>
                     </div>
-                </div>
+                                    <span class="col-toggle" data-table="elSessionTable" data-locked="0"></span>
+</div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0" id="elSessionTable">
@@ -1771,7 +1800,8 @@ if (!$isL113View) {
                         <button class="btn btn-sm btn-outline-light" onclick="exportArL113BatchPdf()" title="PDF"><i class="bi bi-filetype-pdf me-1"></i>PDF</button>
                         <button class="btn btn-sm btn-outline-light" onclick="printArL113Batch()" title="Print"><i class="bi bi-printer me-1"></i>Print</button>
                     </div>
-                </div>
+                                    <span class="col-toggle" data-table="arL113BatchTable" data-locked="0"></span>
+</div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0" id="arL113BatchTable">
@@ -2019,7 +2049,8 @@ if (!$isL113View) {
                                 <button class="btn btn-sm btn-outline-light" onclick="exportYearlySummaryPdf()"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</button>
                                 <button class="btn btn-sm btn-outline-light" onclick="printYearlySummary()"><i class="bi bi-printer me-1"></i>Print</button>
                             </div>
-                        </div>
+                                            <span class="col-toggle" data-table="atYearlySummaryTable" data-locked="0"></span>
+</div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
                                 <table class="table table-sm table-hover mb-0" id="atYearlySummaryTable">
@@ -2127,6 +2158,27 @@ var AT_BATCH_LABELS = <?php echo json_encode($allBatchLabels ?? []); ?>;
 var AT_COUNSELORS   = <?php echo json_encode($allCounselors); ?>;
 
 // ── Show/hide extra fields based on program_type ─────────────────────────
+/**
+ * Shows the Water Baptism Remarks box only when this record's Water Baptism
+ * answer is Yes, and clears it when the answer flips back to No. The remark is
+ * a property of the baptism entry itself, so it never lingers on a record that
+ * says the person wasn't baptized. The model enforces the same rule on save.
+ */
+function updateAtWbapRemarks(form, clearWhenHidden) {
+    var $form = $(form);
+    var pt    = $form.find('.at-program').val();
+    // Classes that never ask the Water Baptism question (mirrors .at-field-wbap).
+    var classAsksWbap = (pt !== 'church_community' && pt !== 'making_disciples' && pt !== 'empowering_leaders');
+    var show = classAsksWbap && $form.find('.at-wbap').val() === '1';
+    $form.find('.at-field-wbap-remarks').toggle(show);
+    // Only wipe the text on a real user change — never during a programmatic
+    // prefill, which would silently drop a saved remark before it's displayed.
+    if (!show && clearWhenHidden) $form.find('.at-wbap-remarks').val('');
+}
+$(document).on('change', '.at-wbap, .at-program', function() {
+    updateAtWbapRemarks($(this).closest('form'), true);
+});
+
 function updateAtExtraFields(form) {
     var pt = $(form).find('.at-program').val();
     $(form).find('.at-extra-vw').toggle(pt === 'victory_weekend');
@@ -2137,6 +2189,8 @@ function updateAtExtraFields(form) {
     var isMD = (pt === 'making_disciples');
     var isEL = (pt === 'empowering_leaders');
     $(form).find('.at-field-wbap').toggle(!isCC && !isMD && !isEL);
+    // Baptism remarks follow the Water Baptism ANSWER, not the class.
+    updateAtWbapRemarks(form);
     $(form).find('.at-field-counselor').toggle(!isCC && !isMD && !isEL);
     $(form).find('.at-field-couns-contact').toggle(!isCC && !isMD && !isEL);
     // Update modal header color + title based on selected class
@@ -2194,6 +2248,7 @@ function openEditAtModal(rec) {
     setVal('.at-contact',           rec.contact_number);
     setVal('.at-counselor-contact', rec.counselor_contact);
     setVal('.at-wbap',              rec.water_baptism ? '1' : '0');
+    setVal('.at-wbap-remarks',      rec.water_baptism_remarks || '');
 
     // Program type (plain select — not Select2)
     var progEl = form.querySelector('.at-program');
@@ -2280,6 +2335,7 @@ function openDuplicateAtModal(rec) {
     setVal('.at-last',    '');
     setVal('.at-contact', '');
     setVal('.at-notes',   '');
+    setVal('.at-wbap-remarks', '');   // baptism remarks are person-specific — never copied
 
     // ── Class context (the fields we DO want to carry over) ──
     setVal('.at-program',           rec.program_type || '');

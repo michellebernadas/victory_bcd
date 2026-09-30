@@ -302,6 +302,9 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                             </select>
                             <label class="text-white small mb-0">per page</label>
                         </div>
+                        <!-- Show / Hide Columns (# and Actions stay locked) -->
+                        <span class="col-toggle" data-table="membersTable"
+                              data-locked="0,<?php echo 9 + count($discipleshipSteps); ?>"></span>
                         <div class="btn-group" role="group">
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="exportMembersCsv()" title="Export CSV"><i class="bi bi-filetype-csv me-1"></i>CSV</button>
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="exportMembersExcel()" title="Export Excel"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
@@ -777,7 +780,8 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                 <button class="btn btn-sm btn-outline-light" onclick="exportMemberSummaryPdf()"  title="PDF"><i class="bi bi-filetype-pdf me-1"></i>PDF</button>
                 <button class="btn btn-sm btn-outline-light" onclick="printMemberSummary()"      title="Print"><i class="bi bi-printer me-1"></i>Print</button>
             </div>
-        </div>
+                            <span class="col-toggle" data-table="memberSummaryTable" data-locked="0"></span>
+</div>
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-sm table-hover mb-0" id="memberSummaryTable">
@@ -886,7 +890,7 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                             <input type="text" class="form-control" name="contact_number" placeholder="09XXXXXXXXX">
                         </div>
                         <div class="col-md-8">
-                            <label class="form-label fw-semibold d-block">Discipleship Steps Completed</label>
+                            <label class="form-label fw-semibold d-block">Discipleship Journey &mdash; Steps Completed</label>
                             <div class="alert alert-info py-2 mb-0 small">
                                 <i class="bi bi-info-circle me-1"></i>
                                 Discipleship steps are derived automatically from <strong>Attendance Records</strong>.
@@ -978,7 +982,7 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                             <input type="text" class="form-control" name="contact_number" id="edit_contact_number" placeholder="09XXXXXXXXX">
                         </div>
                         <div class="col-md-8">
-                            <label class="form-label fw-semibold d-block">Discipleship Steps Completed</label>
+                            <label class="form-label fw-semibold d-block">Discipleship Journey &mdash; Steps Completed</label>
                             <?php
                                 // Attendance-tracked steps (the 5 classes) sync from Attendance Records / L113 — read-only here.
                                 // Other steps (PBC, SF) have no attendance flow, so they stay editable.

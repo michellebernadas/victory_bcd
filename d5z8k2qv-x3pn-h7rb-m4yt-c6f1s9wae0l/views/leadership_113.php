@@ -335,6 +335,49 @@ foreach ($records as $rec) {
                         </div>
                     </div>
                     <?php endif; ?>
+                    <!-- Topic / Session filter -->
+                    <?php $scSessionKeys = $scSessionKeys ?? []; if (!empty($scSessionKeys)): ?>
+                    <div class="border-top pt-3 mt-2">
+                        <div class="small fw-semibold text-muted text-uppercase mb-2" style="letter-spacing:.05em">
+                            <i class="bi bi-journal-text me-1"></i>Filter by Topic / Session
+                        </div>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-7">
+                                <select id="l113SessionFilter" class="form-select form-select-sm">
+                                    <option value="">— All sessions —</option>
+                                    <?php foreach ($scSessionKeys as $sk):
+                                        $ts = strtotime($sk);
+                                        $skLabel = $ts ? date('M j, Y', $ts) : $sk;
+                                    ?>
+                                    <option value="<?php echo htmlspecialchars($sk); ?>" <?php echo (($activeSession ?? '') === $sk) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($skLabel); ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-5">
+                                <select id="l113SessionStatusFilter" class="form-select form-select-sm">
+                                    <option value="">Any attendance status</option>
+                                    <option value="attended">Attended (P / L)</option>
+                                    <option value="missed">Absent (A)</option>
+                                    <option value="noclass">Not counted (NO CLASS / NC)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-text">Shows only participants whose record covers the selected session, with the status you pick.</div>
+                    </div>
+                    <?php endif; ?>
+                    <!-- Certificate eligibility filter -->
+                    <div class="border-top pt-3 mt-2">
+                        <div class="small fw-semibold text-muted text-uppercase mb-2" style="letter-spacing:.05em">
+                            <i class="bi bi-award me-1"></i>Filter by Certificate Eligibility
+                        </div>
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <button type="button" class="btn btn-sm btn-danger l113-cert-filter-btn" data-cert="all">All</button>
+                            <button type="button" class="btn btn-sm btn-outline-success l113-cert-filter-btn" data-cert="eligible"><i class="bi bi-award me-1"></i>Eligible</button>
+                            <button type="button" class="btn btn-sm btn-outline-warning l113-cert-filter-btn" data-cert="not"><i class="bi bi-hourglass-split me-1"></i>Not Yet Eligible</button>
+                        </div>
+                    </div>
                     <!-- Date range filter -->
                     <!-- Match status filter -->
                     <div class="border-top pt-3 mt-2">
@@ -409,6 +452,8 @@ foreach ($records as $rec) {
                             </select>
                             <label class="text-white small mb-0">per page</label>
                         </div>
+                        <!-- Show / Hide Columns (# and Actions stay locked) -->
+                        <span class="col-toggle" data-table="l113Table" data-locked="0,9"></span>
                         <div class="btn-group" role="group">
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="exportL113Csv()" title="Export CSV"><i class="bi bi-filetype-csv me-1"></i>CSV</button>
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="exportL113Excel()" title="Export Excel"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
@@ -457,10 +502,14 @@ foreach ($records as $rec) {
                                     $absentCnt  = 0;
                                     foreach ($sessions as $s) { if (strtoupper(trim($s)) === 'A') $absentCnt++; }
                                     $isComplete = ($total > 0 && $absentCnt === 0);
-                                    $gridId     = 'lg_' . $rec['id'];
                                     $recStatus  = $rec['status'] ?? 'active';
+                                    // Certificate eligibility — same shared rule Spiritual Foundations uses.
+                                    // L113 batches vary in length, so the expected-count check is skipped (0).
+                                    $cert = ProgramAttendance::certificateStatus($rec['extra_data'], 0);
                                 ?>
-                                <tr data-sessions="<?php echo htmlspecialchars(json_encode($sessions), ENT_QUOTES); ?>" data-matched="<?php echo $rec['member_id'] ? '1' : '0'; ?>">
+                                <tr data-sessions="<?php echo htmlspecialchars(json_encode($sessions), ENT_QUOTES); ?>"
+                                    data-cert="<?php echo $cert['eligible'] ? '1' : '0'; ?>"
+                                    data-matched="<?php echo $rec['member_id'] ? '1' : '0'; ?>">
                                     <td class="text-muted small"><?php echo $i + 1; ?></td>
                                     <td class="fw-semibold"><?php echo htmlspecialchars($rec['full_name_display']); ?></td>
                                     <td class="small text-nowrap">
@@ -485,55 +534,52 @@ foreach ($records as $rec) {
                                             <i class="bi bi-telephone text-muted me-1"></i><?php echo htmlspecialchars($rec['contact_number']); ?>
                                         <?php else: ?><span class="text-muted">—</span><?php endif; ?>
                                     </td>
-                                    <td>
+                                    <td style="min-width:170px; max-width:220px;">
                                         <?php if (!empty($sessions)): ?>
                                         <div class="d-flex align-items-center gap-1">
-                                            <div class="progress flex-grow-1" style="height:5px; min-width:60px;">
+                                            <div class="progress flex-grow-1" style="height:5px; min-width:55px;">
                                                 <div class="progress-bar bg-<?php echo $pct >= 100 ? 'success' : ($pct >= 75 ? 'info' : ($pct >= 50 ? 'warning' : 'danger')); ?>"
                                                      style="width:<?php echo $pct; ?>%"></div>
                                             </div>
                                             <span class="text-muted small"><?php echo $attended; ?>/<?php echo $total; ?></span>
                                         </div>
-                                        <button class="btn btn-link btn-sm p-0 mt-1" style="font-size:10px;" type="button"
-                                                onclick="toggleGrid('<?php echo $gridId; ?>')">
-                                            <i class="bi bi-grid-3x3 me-1"></i>Sessions
-                                        </button>
-                                        <div id="<?php echo $gridId; ?>" style="display:none; margin-top:4px;">
-                                            <div class="d-flex flex-wrap gap-1">
-                                                <?php foreach ($sessions as $sDate => $sStatus):
-                                                    $sUp = strtoupper(trim($sStatus));
-                                                    if ($sUp === 'P' || in_array($sUp, ['MUSIC SUMMIT','KIDS SUMMIT'])) {
-                                                        $sBg = 'bg-success';
-                                                    } elseif ($sUp === 'A') {
-                                                        $sBg = 'bg-danger';
-                                                    } elseif ($sUp === 'L') {
-                                                        $sBg = 'bg-warning text-dark';
-                                                    } elseif ($sUp === 'NC') {
-                                                        $sBg = 'bg-light text-muted border';
-                                                    } else {
-                                                        // NO CLASS, HOLY WEEK, DC 2023, etc.
-                                                        $sBg = 'bg-secondary';
-                                                    }
-                                                    $sLabel = $sUp === 'NC' ? 'NC' : htmlspecialchars($sStatus);
-                                                ?>
-                                                <span class="badge <?php echo $sBg; ?>"
-                                                      title="<?php echo htmlspecialchars($sDate) . ': ' . htmlspecialchars($sStatus); ?>"
-                                                      style="font-size:9px;">
-                                                    <?php echo htmlspecialchars($sDate); ?>
-                                                    <?php if ($sUp === 'A'): ?><i class="bi bi-x-circle-fill ms-1"></i><?php endif; ?>
-                                                </span>
-                                                <?php endforeach; ?>
-                                            </div>
-                                            <div class="d-flex flex-wrap gap-2 mt-1" style="font-size:10px;">
-                                                <span class="text-success"><i class="bi bi-circle-fill"></i> Present/Summit</span>
-                                                <span class="text-danger"><i class="bi bi-circle-fill"></i> Absent</span>
-                                                <span class="text-warning"><i class="bi bi-circle-fill"></i> Late</span>
-                                                <span class="text-muted"><i class="bi bi-circle-fill"></i> NC (2nd Sem)</span>
-                                                <span class="text-secondary"><i class="bi bi-circle-fill"></i> No Class</span>
-                                            </div>
-                                            <?php if ($remarks): ?>
-                                            <div class="text-muted mt-1" style="font-size:10px;"><i class="bi bi-chat-left-text me-1"></i><?php echo htmlspecialchars($remarks); ?></div>
-                                            <?php endif; ?>
+                                        <?php
+                                        // Compact status strip. Colour = status; the shared legend now
+                                        // lives in the card footer and the dated list in a modal, so the
+                                        // row stays one line tall instead of ~25.
+                                        $l113Detail = [
+                                            'name'    => $rec['full_name_display'],
+                                            'batch'   => $batch ?: ($rec['program_label'] ?? ''),
+                                            'year'    => (int)$rec['program_year'],
+                                            'remarks' => $remarks,
+                                            'rows'    => [],
+                                        ];
+                                        foreach ($sessions as $sDate => $sStatus) {
+                                            $st = ProgramAttendance::statusStyle($sStatus);
+                                            $l113Detail['rows'][] = [
+                                                'date'   => (string)$sDate,
+                                                'badge'  => $st['badge'],
+                                                'label'  => $st['label'],
+                                                'status' => $st['text'],
+                                                'hint'   => $st['title'],
+                                            ];
+                                        }
+                                        ?>
+                                        <div class="d-flex flex-wrap gap-1 mt-1">
+                                            <?php foreach ($sessions as $sDate => $sStatus):
+                                                $st = ProgramAttendance::statusStyle($sStatus);
+                                            ?>
+                                            <span class="badge <?php echo $st['badge']; ?>" style="font-size:9px;"
+                                                  title="<?php echo htmlspecialchars($sDate . ' — ' . $st['title']); ?>">
+                                                <?php echo htmlspecialchars($st['label']); ?>
+                                            </span>
+                                            <?php endforeach; ?>
+                                        </div>
+                                        <div class="mt-1" style="font-size:10px;">
+                                            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" style="font-size:10px;"
+                                                    onclick="openL113SessionsModal(<?php echo htmlspecialchars(json_encode($l113Detail)); ?>)">
+                                                <i class="bi bi-grid-3x3 me-1"></i>Sessions
+                                            </button>
                                         </div>
                                         <?php else: ?>
                                         <span class="text-muted small">—</span>
@@ -582,6 +628,19 @@ foreach ($records as $rec) {
                                                 'sessions'       => $sessions,
                                             ];
                                         ?>
+                                        <?php // Certificate — enabled only when every required session is completed. ?>
+                                        <?php if ($cert['eligible']): ?>
+                                        <button type="button" class="btn btn-sm btn-success me-1 l113-cert-btn"
+                                                title="Certificate available — all sessions completed"
+                                                data-name="<?php echo htmlspecialchars($rec['full_name_display']); ?>">
+                                            <i class="bi bi-award"></i>
+                                        </button>
+                                        <?php else: ?>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary me-1" disabled
+                                                title="Certificate locked — <?php echo htmlspecialchars($cert['reason']); ?>">
+                                            <i class="bi bi-award"></i>
+                                        </button>
+                                        <?php endif; ?>
                                         <button class="btn btn-sm btn-outline-primary me-1" title="Edit"
                                             onclick="openEditL113Modal(<?php echo htmlspecialchars(json_encode($_l113Json)); ?>)">
                                             <i class="bi bi-pencil"></i>
@@ -614,6 +673,45 @@ foreach ($records as $rec) {
                         </table>
                     </div>
                     <?php endif; ?>
+                </div>
+
+                <!-- Status legend — under the table, not inside a cell. -->
+                <?php if (!empty($records)): ?>
+                <div class="card-footer bg-transparent py-2">
+                    <?php $legendSize = 11; unset($legendShow); include 'shared/session_status_legend.php'; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Per-record session breakdown (keeps the table row one line tall) -->
+            <div class="modal fade" id="l113SessionsModal" tabindex="-1">
+                <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <div class="modal-header bg-danger text-white">
+                            <h5 class="modal-title">
+                                <i class="bi bi-grid-3x3 me-2"></i>Session Attendance
+                                <span class="small fw-normal ms-1" id="l113SessionsModalSub"></span>
+                            </h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-0">
+                            <div id="l113SessionsModalRemarks" class="px-3 pt-3 small text-muted" style="display:none"></div>
+                            <table class="table table-sm table-hover mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:60px">#</th>
+                                        <th style="width:150px">Date</th>
+                                        <th style="width:70px">Mark</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="l113SessionsModalBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="modal-footer justify-content-start py-2">
+                            <?php $legendSize = 11; unset($legendShow); include 'shared/session_status_legend.php'; ?>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -755,7 +853,8 @@ foreach ($records as $rec) {
                         <button class="btn btn-sm btn-outline-light" onclick="exportL113BatchPdf()" title="Export PDF"><i class="bi bi-filetype-pdf me-1"></i>PDF</button>
                         <button class="btn btn-sm btn-outline-light" onclick="printL113Batch()" title="Print"><i class="bi bi-printer me-1"></i>Print</button>
                     </div>
-                </div>
+                                    <span class="col-toggle" data-table="l113BatchTable" data-locked="0"></span>
+</div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0" id="l113BatchTable">
@@ -820,9 +919,65 @@ foreach ($records as $rec) {
     </div>
 
 <script>
-function toggleGrid(id) {
-    var g = document.getElementById(id);
-    if (g) g.style.display = g.style.display === 'none' ? 'block' : 'none';
+/**
+ * Opens the per-record session breakdown. The table cell only carries the
+ * compact mark strip, so the dated list lives here rather than stretching every
+ * row to one line per session.
+ */
+function openL113SessionsModal(d) {
+    var body = document.getElementById('l113SessionsModalBody');
+    var sub  = document.getElementById('l113SessionsModalSub');
+    var rem  = document.getElementById('l113SessionsModalRemarks');
+    if (!body) return;
+
+    if (sub) {
+        var bits = [d.name];
+        if (d.batch) bits.push(d.batch);
+        if (d.year)  bits.push(d.year);
+        sub.textContent = '— ' + bits.join(' · ');
+    }
+    if (rem) {
+        if (d.remarks) {
+            rem.style.display = '';
+            rem.innerHTML = '<i class="bi bi-chat-left-text me-1"></i>';
+            rem.appendChild(document.createTextNode(d.remarks));
+        } else {
+            rem.style.display = 'none';
+            rem.textContent = '';
+        }
+    }
+
+    body.innerHTML = '';
+    (d.rows || []).forEach(function (r, i) {
+        var tr = document.createElement('tr');
+
+        var tdNo = document.createElement('td');
+        tdNo.className = 'text-muted small';
+        tdNo.textContent = i + 1;
+
+        var tdDate = document.createElement('td');
+        tdDate.className = 'small';
+        tdDate.textContent = r.date || '—';
+
+        var tdMark = document.createElement('td');
+        var b = document.createElement('span');
+        b.className = 'badge ' + r.badge;
+        b.style.fontSize = '10px';
+        b.textContent = r.label;
+        tdMark.appendChild(b);
+
+        var tdStatus = document.createElement('td');
+        tdStatus.className = 'small';
+        tdStatus.textContent = r.status || '';
+        if (r.hint) tdStatus.title = r.hint;
+
+        tr.appendChild(tdNo); tr.appendChild(tdDate);
+        tr.appendChild(tdMark); tr.appendChild(tdStatus);
+        body.appendChild(tr);
+    });
+
+    var el = document.getElementById('l113SessionsModal');
+    if (el) (bootstrap.Modal.getInstance(el) || new bootstrap.Modal(el)).show();
 }
 
 function openEditL113Modal(rec) {
@@ -1024,38 +1179,52 @@ $(document).on('focusout', '.l113-first, .l113-last', function() {
     l113TryAutoLinkMember($(this).closest('form'));
 });
 
+// Export payload is derived from the table's CURRENTLY VISIBLE columns and the
+// rows that survive the active filters, so hiding a column via Show/Hide Columns
+// (or narrowing a filter) is reflected in CSV / Excel / PDF / Print.
 function _l113TableData() {
-    var headers = ['Participant','Year','Batch','Contact #','Sessions','Completion','Matched Member','Status'];
+    var headers = [];
+    var sessionCol = -1;
+    document.querySelectorAll('#l113Table thead th').forEach(function(th, i, all) {
+        if (i === all.length - 1) return;              // skip the Actions column
+        var label = th.textContent.replace(/\s+/g,' ').trim();
+        if (label === '#') return;                     // row number adds nothing to an export
+        if (label === 'Sessions') sessionCol = headers.length;
+        headers.push(label);
+    });
+
     var rows = [];
-    document.querySelectorAll('#l113Table tbody tr').forEach(function(tr) {
-        if (tr.style.display === 'none') return;
+    var collect = function(tr) {
+        if (!tr || tr.style.display === 'none') return;
         var tds = tr.querySelectorAll('td');
-        if (tds.length < 9) return;
-        // Build session text: summary (e.g. 15/17) then full date list on next line
-        var sessEl = tds[5].querySelector('.text-muted.small');
-        var summary = sessEl ? sessEl.textContent.trim() : '';
-        var dateParts = '';
-        var sessAttr = tr.getAttribute('data-sessions');
-        if (sessAttr) {
+        if (!tds.length) return;
+        var row = [];
+        for (var i = 1; i < tds.length - 1; i++) {     // drop # and Actions
+            var c = tds[i].cloneNode(true);
+            c.querySelectorAll('button, .progress, style').forEach(function(el){ el.remove(); });
+            row.push(c.textContent.replace(/\s+/g,' ').trim());
+        }
+        // Expand the Sessions cell into "15/17" + the full date:status list.
+        if (sessionCol > -1 && row[sessionCol] !== undefined) {
+            var dateParts = '';
             try {
-                var sess = JSON.parse(sessAttr);
+                var sess = JSON.parse(tr.getAttribute('data-sessions') || '{}');
                 var parts = [];
                 for (var date in sess) { parts.push(date + ': ' + sess[date]); }
                 dateParts = parts.join(' | ');
-            } catch(e) {}
+            } catch(e) { /* malformed extra_data — fall back to the cell text */ }
+            var summary = (row[sessionCol] || '').replace(/Sessions$/, '').trim();
+            row[sessionCol] = summary && dateParts ? summary + '\n' + dateParts : (summary || dateParts);
         }
-        var sessText = summary && dateParts ? summary + '\n' + dateParts : (summary || dateParts);
-        rows.push([
-            tds[1].textContent.trim(),
-            tds[2].textContent.trim(),
-            tds[3].textContent.trim().replace(/\s+/g,' '),
-            tds[4].textContent.trim(),
-            sessText,
-            tds[6].textContent.trim(),
-            tds[7].textContent.trim(),
-            tds[8].textContent.trim(),
-        ]);
-    });
+        rows.push(row);
+    };
+
+    // Prefer the DataTables API so every filtered row is exported, not just the current page.
+    if (window.l113Table && typeof window.l113Table.rows === 'function') {
+        window.l113Table.rows({ search: 'applied' }).every(function() { collect(this.node()); });
+    } else {
+        document.querySelectorAll('#l113Table tbody tr').forEach(collect);
+    }
     return {headers: headers, rows: rows};
 }
 
@@ -1101,8 +1270,9 @@ function printL113() {
     html += '</head><body><h2 style="color:#c0392b">Leadership 1-1-3 Records</h2>';
     html += '<table><thead><tr>' + d.headers.map(function(h){return '<th>'+h+'</th>';}).join('') + '</tr></thead><tbody>';
     d.rows.forEach(function(r){
-        html += '<tr>' + r.map(function(c, i) {
-            if (i === 4 && c && c.indexOf('\n') !== -1) {
+        html += '<tr>' + r.map(function(c) {
+            // The Sessions cell is the only multi-line value (summary + date list).
+            if (c && c.indexOf('\n') !== -1) {
                 var lines = c.split('\n');
                 return '<td><strong>' + lines[0] + '</strong><div class="sess-dates">' + (lines[1] || '').replace(/\s*\|\s*/g, '<br>') + '</div></td>';
             }
@@ -1188,6 +1358,8 @@ $(function() {
         var serverSide = <?php echo (int)($l113FilterCount ?? 0); ?>;
         var n = serverSide;
         if (window.l113MatchFilter && window.l113MatchFilter !== 'all') n++;
+        if (window.l113CertFilter  && window.l113CertFilter  !== 'all') n++;
+        if (window.l113SessionKey) n++;
         // Note: page search input is part of $l113FilterCount only via the URL `search` param,
         // not the client-side DataTable search box (which doesn't trigger a URL refresh).
         var liveSearch = (document.getElementById('l113Search') || {}).value || '';
@@ -1269,17 +1441,77 @@ $(function() {
             }
         });
 
-        // Match-status search hook — registered AFTER table init so settings.nTable resolves correctly.
+        // Match-status / certificate / session search hook — registered AFTER table init
+        // so settings.nTable resolves correctly.
         $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
             if (!settings.nTable || settings.nTable.id !== 'l113Table') return true;
-            if (!window.l113MatchFilter || window.l113MatchFilter === 'all') return true;
             var row  = settings.aoData[dataIndex];
             var node = row && row.nTr;
             if (!node) return true;
+
             var matched = node.getAttribute('data-matched');
             if (window.l113MatchFilter === 'matched'   && matched !== '1') return false;
             if (window.l113MatchFilter === 'unmatched' && matched !== '0') return false;
+
+            var cert = node.getAttribute('data-cert');
+            if (window.l113CertFilter === 'eligible' && cert !== '1') return false;
+            if (window.l113CertFilter === 'not'      && cert !== '0') return false;
+
+            // Topic / session filter — the row must have that session key, with the chosen status.
+            if (window.l113SessionKey) {
+                var sess = {};
+                try { sess = JSON.parse(node.getAttribute('data-sessions') || '{}'); } catch (e) { sess = {}; }
+                if (!Object.prototype.hasOwnProperty.call(sess, window.l113SessionKey)) return false;
+                if (window.l113SessionStatus) {
+                    var st = String(sess[window.l113SessionKey] || '').trim().toUpperCase();
+                    var attended = ['P','L','MUSIC SUMMIT','KIDS SUMMIT'].indexOf(st) !== -1;
+                    var noclass  = ['NO CLASS','HOLY WEEK','DC 2023','NC',''].indexOf(st) !== -1;
+                    if (window.l113SessionStatus === 'attended' && !attended) return false;
+                    if (window.l113SessionStatus === 'noclass'  && !noclass)  return false;
+                    if (window.l113SessionStatus === 'missed'   && (attended || noclass)) return false;
+                }
+            }
             return true;
+        });
+
+        // ── Certificate eligibility filter ──────────────────────────────────
+        window.l113CertFilter = 'all';
+        document.querySelectorAll('.l113-cert-filter-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                window.l113CertFilter = btn.dataset.cert;
+                document.querySelectorAll('.l113-cert-filter-btn').forEach(function(b) {
+                    var base = b.dataset.cert === 'eligible' ? 'success'
+                             : (b.dataset.cert === 'not' ? 'warning' : 'danger');
+                    var on   = b.dataset.cert === window.l113CertFilter;
+                    b.className = 'btn btn-sm l113-cert-filter-btn ' + (on ? 'btn-' + base : 'btn-outline-' + base);
+                });
+                try { $('#l113Table').DataTable().draw(); } catch(e) {}
+                window.updateL113FilterBadge();
+            });
+        });
+
+        // ── Topic / session filter ──────────────────────────────────────────
+        window.l113SessionKey    = <?php echo json_encode($activeSession ?? ''); ?>;
+        window.l113SessionStatus = '';
+        function l113OnSessionChange() {
+            var sel  = document.getElementById('l113SessionFilter');
+            var stat = document.getElementById('l113SessionStatusFilter');
+            window.l113SessionKey    = sel  ? sel.value  : '';
+            window.l113SessionStatus = stat ? stat.value : '';
+            try { $('#l113Table').DataTable().draw(); } catch(e) {}
+            window.updateL113FilterBadge();
+        }
+        ['l113SessionFilter', 'l113SessionStatusFilter'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('change', l113OnSessionChange);
+        });
+        l113OnSessionChange();
+
+        // Certificate button — eligibility is decided server-side; this only explains it.
+        $(document).on('click', '.l113-cert-btn', function() {
+            alert('Certificate for ' + ($(this).data('name') || 'this participant')
+                + ' is unlocked — all required sessions are completed.\n\n'
+                + 'Certificate generation is not built yet; this button only reflects eligibility.');
         });
         // Apply initial match filter (might have been restored from URL)
         try { $('#l113Table').DataTable().draw(); } catch(e) {}

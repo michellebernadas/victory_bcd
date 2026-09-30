@@ -48,6 +48,10 @@ database/database.sqlite
 database/database.sqlite3
 databases
 
+# ...but schema migrations ARE source and must be versioned.
+!migrations/
+!migrations/*.sql
+
 # User-uploaded / source data files — contain PII (member rosters, schedules)
 files/
 *.xlsx

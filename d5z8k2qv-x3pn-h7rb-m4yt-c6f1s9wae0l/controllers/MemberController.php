@@ -209,6 +209,13 @@ class MemberController {
             }
         }
 
+        // Serve teams this member volunteers on (module is optional).
+        $serveTeams = [];
+        try {
+            require_once 'models/ServeTeam.php';
+            $serveTeams = (new ServeTeam($this->db))->getByMember((int)$member['id']);
+        } catch (Exception $e) { /* Serve Teams not migrated yet. */ }
+
         // Unique counselors from all attendance records
         $counselors = [];
         foreach ($attendances as $ptRecs) {

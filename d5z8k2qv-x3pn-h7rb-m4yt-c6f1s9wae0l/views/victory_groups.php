@@ -218,7 +218,7 @@ function renderNameList($members, $showGender = true) {
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-search"></i></span>
                                     <input type="text" id="filterSearch" class="form-control"
-                                           placeholder="Search by leader, intern, attendee, location, type...">
+                                           placeholder="Search by leader, intern, attendee, meeting place, type...">
                                     <button class="btn btn-outline-secondary" type="button" onclick="document.getElementById('filterSearch').value=''; applyFilters();">
                                         <i class="bi bi-x"></i>
                                     </button>
@@ -304,16 +304,16 @@ function renderNameList($members, $showGender = true) {
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Location</label>
-                                <select id="filterLocation" class="filter-select2" multiple="multiple" data-placeholder="All locations..." style="display:none">
+                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Meeting Place</label>
+                                <select id="filterLocation" class="filter-select2" multiple="multiple" data-placeholder="All meeting places..." style="display:none">
                                     <?php foreach ($distinctLocations as $loc): ?>
                                     <option value="<?php echo htmlspecialchars(strtolower($loc)); ?>"><?php echo htmlspecialchars($loc); ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Time</label>
-                                <select id="filterTime" class="filter-select2" multiple="multiple" data-placeholder="All times..." style="display:none">
+                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Meetup Time</label>
+                                <select id="filterTime" class="filter-select2" multiple="multiple" data-placeholder="All meetup times..." style="display:none">
                                     <?php foreach ($distinctTimes as $t): ?>
                                     <option value="<?php echo htmlspecialchars(strtolower(date('g:i a', strtotime($t)))); ?>"><?php echo htmlspecialchars(date('g:i A', strtotime($t))); ?></option>
                                     <?php endforeach; ?>
@@ -321,7 +321,45 @@ function renderNameList($members, $showGender = true) {
                             </div>
                         </div>
 
-                        <!-- Row 4: Quick flags -->
+                        <!-- Row 4: Date range (server-side, on the group's created date) -->
+                        <?php
+                        $vgDateFrom = $activeFilters['date_from'] ?? '';
+                        $vgDateTo   = $activeFilters['date_to']   ?? '';
+                        ?>
+                        <div class="row g-3 mb-3 border-top pt-3">
+                            <div class="col-12">
+                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">
+                                    <i class="bi bi-calendar-range me-1"></i>Date Range
+                                </label>
+                                <form method="GET" action="index.php" class="d-flex flex-wrap gap-2 align-items-end">
+                                    <input type="hidden" name="action" value="victoryGroups">
+                                    <input type="hidden" name="tab" value="groups">
+                                    <div>
+                                        <label class="form-label small mb-1">From</label>
+                                        <input type="date" name="date_from" class="form-control form-control-sm"
+                                               value="<?php echo htmlspecialchars($vgDateFrom); ?>">
+                                    </div>
+                                    <div>
+                                        <label class="form-label small mb-1">To</label>
+                                        <input type="date" name="date_to" class="form-control form-control-sm"
+                                               value="<?php echo htmlspecialchars($vgDateTo); ?>">
+                                    </div>
+                                    <div class="d-flex gap-1">
+                                        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Apply</button>
+                                        <?php if ($vgDateFrom || $vgDateTo): ?>
+                                        <a href="index.php?action=victoryGroups&tab=groups" class="btn btn-sm btn-outline-secondary">Clear Date</a>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if ($vgDateFrom || $vgDateTo): ?>
+                                    <span class="badge bg-primary align-self-center">
+                                        <i class="bi bi-calendar-range me-1"></i><?php echo htmlspecialchars($vgDateFrom ?: '…'); ?> → <?php echo htmlspecialchars($vgDateTo ?: '…'); ?>
+                                    </span>
+                                    <?php endif; ?>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Row 5: Quick flags -->
                         <div class="row g-3 mt-0">
                             <div class="col-auto d-flex align-items-end">
                                 <button type="button" id="filterUnregistered"
@@ -357,6 +395,8 @@ function renderNameList($members, $showGender = true) {
                             </select>
                             <label class="text-white small mb-0">per page</label>
                         </div>
+                        <!-- Show / Hide Columns (# and Actions stay locked) -->
+                        <span class="col-toggle" data-table="groupsTable" data-locked="0,12"></span>
                         <div class="btn-group" role="group">
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="exportCSV()" title="Export CSV"><i class="bi bi-filetype-csv me-1"></i>CSV</button>
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="exportExcel()" title="Export Excel"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
@@ -373,8 +413,8 @@ function renderNameList($members, $showGender = true) {
                                     <th>#</th>
                                     <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="type"      style="cursor:pointer">VG/LG <span class="dt-column-order"></span></th>
                                     <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="day"       style="cursor:pointer">DAY <span class="dt-column-order"></span></th>
-                                    <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="time"      style="cursor:pointer">TIME <span class="dt-column-order"></span></th>
-                                    <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="location"  style="cursor:pointer">LOCATION <span class="dt-column-order"></span></th>
+                                    <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="time"      style="cursor:pointer">MEETUP TIME <span class="dt-column-order"></span></th>
+                                    <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="location"  style="cursor:pointer">MEETING PLACE <span class="dt-column-order"></span></th>
                                     <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="leaders"   style="cursor:pointer">VICTORY GROUP LEADER(S) <span class="dt-column-order"></span></th>
                                     <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="interns"   style="cursor:pointer">INTERN(S) <span class="dt-column-order"></span></th>
                                     <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="attendees" style="cursor:pointer">ATTENDEES <span class="dt-column-order"></span></th>
@@ -770,7 +810,8 @@ function renderNameList($members, $showGender = true) {
                         <button class="btn btn-sm btn-outline-light" onclick="exportVgSummaryPdf()" title="Export PDF"><i class="bi bi-filetype-pdf me-1"></i>PDF</button>
                         <button class="btn btn-sm btn-outline-light" onclick="printVgSummary()" title="Print"><i class="bi bi-printer me-1"></i>Print</button>
                     </div>
-                </div>
+                                    <span class="col-toggle" data-table="vgSummaryTable" data-locked="0"></span>
+</div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0" id="vgSummaryTable">
@@ -931,7 +972,8 @@ function renderNameList($members, $showGender = true) {
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="printSd()" title="Print"><i class="bi bi-printer me-1"></i>Print</button>
                         </div>
                     </div>
-                </div>
+                                    <span class="col-toggle" data-table="statDefsTable" data-locked="0"></span>
+</div>
                 <div class="card-body p-0">
                     <?php if (empty($statDefs)): ?>
                     <div class="text-center text-muted py-5">
@@ -1064,11 +1106,11 @@ function renderNameList($members, $showGender = true) {
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label fw-semibold">Meeting Time <span class="text-danger">*</span></label>
+                            <label class="form-label fw-semibold">Meetup Time <span class="text-danger">*</span></label>
                             <input type="time" name="meeting_time" id="ag_time" class="form-control">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Location <span class="text-danger">*</span></label>
+                            <label class="form-label fw-semibold">Meeting Place <span class="text-danger">*</span></label>
                             <select name="location" class="modal-select2" id="ag_location" data-tags="true">
                                 <option value="">— Select or type —</option>
                                 <?php foreach ($distinctLocations as $loc): ?>
@@ -1162,11 +1204,11 @@ function renderNameList($members, $showGender = true) {
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label fw-semibold">Meeting Time</label>
+                            <label class="form-label fw-semibold">Meetup Time</label>
                             <input type="time" name="meeting_time" id="eg_time" class="form-control">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Location</label>
+                            <label class="form-label fw-semibold">Meeting Place</label>
                             <select name="location" id="eg_location" class="modal-select2" data-tags="true">
                                 <option value="">— Select or type —</option>
                                 <?php foreach ($distinctLocations as $loc): ?>
@@ -1490,7 +1532,7 @@ function renderNameList($members, $showGender = true) {
             makeChip('Intern',    selInterns);
             makeChip('Attendee',  selAttendees);
             makeChip('Time',      selTimes);
-            makeChip('Location',  selLocations);
+            makeChip('Meeting Place', selLocations);
             if (txtSearch) {
                 chips.push('<span class="badge bg-light text-dark border">Search: "' + esc(txtSearch) + '"</span>');
             }
@@ -1679,8 +1721,8 @@ function renderNameList($members, $showGender = true) {
             { id: 'ag_type',     label: 'Group Type' },
             { id: 'ag_category', label: 'Category' },
             { id: 'ag_day',      label: 'Day of Week' },
-            { id: 'ag_time',     label: 'Meeting Time' },
-            { id: 'ag_location', label: 'Location' },
+            { id: 'ag_time',     label: 'Meetup Time' },
+            { id: 'ag_location', label: 'Meeting Place' },
             { id: 'ag_freq',     label: 'Meeting Frequency' },
         ];
 
@@ -2321,7 +2363,7 @@ function renderNameList($members, $showGender = true) {
 
     // ── Export helpers ────────────────────────────────────────────────────────
 
-    var EXPORT_HEADERS = ['VG/LG Type','Day','Time','Location','Leader(s)','Intern(s)','Attendees','Category','Frequency','Notes','Status'];
+    var EXPORT_HEADERS = ['VG/LG Type','Day','Meetup Time','Meeting Place','Leader(s)','Intern(s)','Attendees','Category','Frequency','Notes','Status'];
 
     function getExportRows() {
         var rows = [];
@@ -2352,7 +2394,7 @@ function renderNameList($members, $showGender = true) {
                 cells[1] ? cells[1].textContent.trim() : d.type,   // Type
                 d.day        || '',                                   // Day
                 d.time       || '',                                   // Time
-                cells[4] ? cells[4].textContent.trim() : d.location, // Location
+                cells[4] ? cells[4].textContent.trim() : d.location, // Meeting Place
                 cellNames(cells[5]),                                  // Leaders
                 cellNames(cells[6]),                                  // Interns
                 cellNames(cells[7]),                                  // Attendees
@@ -2418,7 +2460,7 @@ function renderNameList($members, $showGender = true) {
                 0: { cellWidth: 45 },  // Type
                 1: { cellWidth: 55 },  // Day
                 2: { cellWidth: 40 },  // Time
-                3: { cellWidth: 80 },  // Location
+                3: { cellWidth: 80 },  // Meeting Place
                 4: { cellWidth: 90 },  // Leaders
                 5: { cellWidth: 70 },  // Interns
                 6: { cellWidth: 80 },  // Attendees

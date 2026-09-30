@@ -6,6 +6,7 @@ $discipleshipSteps      = $discipleshipSteps      ?? [];
 $memberCompletedStepIds = $memberCompletedStepIds  ?? [];
 $memberGroups           = $memberGroups            ?? [];
 $counselors             = $counselors              ?? [];
+$serveTeams             = $serveTeams              ?? [];
 
 $completedCount = count($memberCompletedStepIds);
 $totalSteps     = count($discipleshipSteps);
@@ -94,7 +95,7 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                         <div class="col-auto text-end">
                             <div class="text-center px-3">
                                 <div class="display-6 fw-bold text-primary"><?php echo $completedCount; ?>/<?php echo $totalSteps; ?></div>
-                                <small class="text-muted">Discipleship Steps</small>
+                                <small class="text-muted">Discipleship Journey</small>
                             </div>
                         </div>
                         <div class="col-12 border-top pt-3">
@@ -358,6 +359,141 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                             </ul>
                         </div>
                     </div>
+
+                    <!-- Victory Group Leaders (+ the interns under each) -->
+                    <?php
+                    // Built from the SAME vg_members rows already loaded for the groups card —
+                    // no second source of membership data. Leaders are keyed by member_id when
+                    // linked (so the same person across two groups collapses into one entry),
+                    // otherwise by their lower-cased name.
+                    $leaderIndex = [];
+                    foreach ($memberGroups as $grp) {
+                        $gid      = $grp['group_id'];
+                        $gLeaders = $groupDetails[$gid]['leader'] ?? [];
+                        $gInterns = $groupDetails[$gid]['intern'] ?? [];
+                        $gTitle   = trim(strtoupper($grp['group_type'] ?? '')) . ($grp['group_category'] ? ' — ' . $grp['group_category'] : '');
+                        foreach ($gLeaders as $ldr) {
+                            $key = $ldr['linked_member_id'] ? 'm' . (int)$ldr['linked_member_id'] : 'n' . strtolower(trim($ldr['display_name']));
+                            if (!isset($leaderIndex[$key])) {
+                                $leaderIndex[$key] = [
+                                    'name'      => $ldr['display_name'],
+                                    'member_id' => $ldr['linked_member_id'],
+                                    'groups'    => [],
+                                    'interns'   => [],
+                                ];
+                            }
+                            $leaderIndex[$key]['groups'][] = ['id' => $gid, 'title' => $gTitle ?: 'Group #' . $gid, 'status' => $grp['group_status']];
+                            foreach ($gInterns as $itn) {
+                                $iKey = $itn['linked_member_id'] ? 'm' . (int)$itn['linked_member_id'] : 'n' . strtolower(trim($itn['display_name']));
+                                $leaderIndex[$key]['interns'][$iKey] = [
+                                    'name'       => $itn['display_name'],
+                                    'member_id'  => $itn['linked_member_id'],
+                                    'group_title'=> $gTitle ?: 'Group #' . $gid,
+                                ];
+                            }
+                        }
+                    }
+                    $totalInterns = 0;
+                    foreach ($leaderIndex as $li) $totalInterns += count($li['interns']);
+                    ?>
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0"><i class="bi bi-star-fill me-2"></i>Victory Group Leaders</h6>
+                            <span class="badge bg-light text-dark border"><?php echo count($leaderIndex); ?></span>
+                        </div>
+                        <?php if (empty($leaderIndex)): ?>
+                        <div class="card-body text-muted small text-center py-3">
+                            <i class="bi bi-star display-6 d-block mb-2 opacity-25"></i>
+                            No Victory Group leader linked to this member yet.
+                        </div>
+                        <?php else: ?>
+                        <div class="card-body py-2 px-3">
+                            <p class="text-muted mb-2" style="font-size:11px;">
+                                <i class="bi bi-info-circle me-1"></i>Leaders of the groups this member belongs to, with the interns under each.
+                            </p>
+                            <?php foreach ($leaderIndex as $li): ?>
+                            <div class="border rounded p-2 mb-2">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <div class="rounded-circle d-flex align-items-center justify-content-center text-white flex-shrink-0"
+                                         style="width:26px;height:26px;font-size:12px;background:#dc3545;">
+                                        <?php echo strtoupper(mb_substr(trim($li['name']), 0, 1)); ?>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <?php if ($li['member_id']): ?>
+                                        <a href="index.php?action=memberProfile&id=<?php echo (int)$li['member_id']; ?>" class="small fw-semibold text-decoration-none">
+                                            <?php echo htmlspecialchars($li['name']); ?>
+                                        </a>
+                                        <?php else: ?>
+                                        <span class="small fw-semibold"><?php echo htmlspecialchars($li['name']); ?></span>
+                                        <?php endif; ?>
+                                        <div class="text-muted" style="font-size:10px;">
+                                            <?php
+                                            $gTitles = array_values(array_unique(array_column($li['groups'], 'title')));
+                                            echo htmlspecialchars(implode(' · ', $gTitles));
+                                            ?>
+                                        </div>
+                                    </div>
+                                    <span class="badge bg-warning text-dark" style="font-size:10px;" title="Interns under this leader">
+                                        <i class="bi bi-person-check me-1"></i><?php echo count($li['interns']); ?>
+                                    </span>
+                                </div>
+                                <?php if (!empty($li['interns'])): ?>
+                                <div class="ps-4 border-start ms-2" style="border-color:#ffc107!important;">
+                                    <div class="text-muted text-uppercase fw-semibold mb-1" style="font-size:9px; letter-spacing:.05em;">Interns</div>
+                                    <div class="d-flex flex-wrap gap-1">
+                                        <?php foreach ($li['interns'] as $itn): ?>
+                                        <?php if ($itn['member_id']): ?>
+                                        <a href="index.php?action=memberProfile&id=<?php echo (int)$itn['member_id']; ?>"
+                                           class="badge bg-warning-subtle text-dark border border-warning text-decoration-none"
+                                           style="font-size:10px;" title="<?php echo htmlspecialchars($itn['group_title']); ?>">
+                                            <i class="bi bi-person-check me-1"></i><?php echo htmlspecialchars($itn['name']); ?>
+                                        </a>
+                                        <?php else: ?>
+                                        <span class="badge bg-light text-dark border" style="font-size:10px;" title="<?php echo htmlspecialchars($itn['group_title']); ?>">
+                                            <i class="bi bi-person-check me-1"></i><?php echo htmlspecialchars($itn['name']); ?>
+                                        </span>
+                                        <?php endif; ?>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <?php else: ?>
+                                <div class="ps-4 ms-2 text-muted" style="font-size:10px;">No intern assigned under this leader.</div>
+                                <?php endif; ?>
+                            </div>
+                            <?php endforeach; ?>
+                            <div class="text-muted small border-top pt-2 mt-1">
+                                <?php echo count($leaderIndex); ?> leader<?php echo count($leaderIndex) === 1 ? '' : 's'; ?>
+                                &nbsp;·&nbsp; <?php echo $totalInterns; ?> intern<?php echo $totalInterns === 1 ? '' : 's'; ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Serve Teams -->
+                    <?php if (!empty($serveTeams)): ?>
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0"><i class="bi bi-hand-thumbs-up me-2"></i>Serve Teams</h6>
+                            <span class="badge bg-light text-dark border"><?php echo count($serveTeams); ?></span>
+                        </div>
+                        <div class="card-body py-2">
+                            <?php foreach ($serveTeams as $st): ?>
+                            <div class="d-flex align-items-center justify-content-between border-bottom py-2">
+                                <div>
+                                    <div class="small fw-semibold"><?php echo htmlspecialchars($st['name']); ?></div>
+                                    <div class="text-muted" style="font-size:10px;">
+                                        <?php echo $st['ministry'] ? htmlspecialchars($st['ministry']) : 'No ministry'; ?>
+                                        <?php if ($st['service_time']): ?> · <?php echo htmlspecialchars($st['service_time']); ?><?php endif; ?>
+                                    </div>
+                                </div>
+                                <span class="badge bg-<?php echo $st['role'] === 'leader' ? 'primary' : 'secondary'; ?>" style="font-size:10px;">
+                                    <?php echo ucfirst($st['role']); ?>
+                                </span>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
 
                     <!-- Notes -->
                     <?php if (!empty($member['notes'])): ?>

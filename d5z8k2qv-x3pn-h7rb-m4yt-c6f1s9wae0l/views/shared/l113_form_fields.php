@@ -118,8 +118,10 @@ $_programTypes = [
             <span class="text-success fw-semibold">P</span> = Present &nbsp;|&nbsp;
             <span class="text-danger fw-semibold">A</span> = Absent &nbsp;|&nbsp;
             <span class="text-warning fw-semibold">L</span> = Late &nbsp;|&nbsp;
-            <span class="text-muted fw-semibold">NO CLASS</span> = No session held &nbsp;|&nbsp;
-            <span class="text-muted fw-semibold">NC</span> = Not counted
+            <span class="text-muted fw-semibold">NO CLASS</span> = No class held (whole batch) &nbsp;|&nbsp;
+            <span class="text-muted fw-semibold">NC</span> = Not required of this participant (e.g. joined the batch late)
+            <br>
+            <span class="text-muted">Both are excluded from this participant's attendance, completion and certificate.</span>
         </div>
     </div>
 </div>

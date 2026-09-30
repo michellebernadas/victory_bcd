@@ -11,10 +11,43 @@ $memberModel = new Member($db);
 $groupModel = new VictoryGroup($db);
 $paModel = new ProgramAttendance($db);
 $memberStats = $memberModel->getStats();
+// Discipleship Journey Overview reports "out of ACTIVE members", so it uses its
+// own active-only roll-up rather than the all-members figures above.
+$activeStats = $memberModel->getActiveStats();
 $groupStats = $groupModel->getStats();
 $paStats = $paModel->getSummaryStats();
 $paTotals = $paModel->getTotalByProgram();
 $paUnmatched = $paModel->getUnmatchedCount();
+// Distinct PEOPLE per class (not rows) — the headline figure on the class cards.
+$participantsByProgram = $paModel->getParticipantsByProgram();
+// ── Dashboard filter (Average Attendance + Church Health) ──────────────────
+// Both panels answer "how are we doing", so they share one filter rather than
+// each carrying its own controls.
+$dashClass  = $_GET['dash_class']  ?? '';
+$dashYear   = (int)($_GET['dash_year'] ?? 0);
+$dashBucket = in_array($_GET['dash_bucket'] ?? '', ['weekly','monthly','quarterly','annually'], true)
+    ? $_GET['dash_bucket'] : 'monthly';
+if (!array_key_exists($dashClass, ProgramAttendance::PROGRAM_LABELS)) $dashClass = '';
+
+$attendanceAverages = $paModel->getAttendanceAverages($dashClass, $dashYear);
+$churchHealth       = $paModel->getChurchHealthStats($dashClass, $dashYear);
+$attendanceSeries   = $paModel->getAttendanceSeries($dashBucket, $dashClass, $dashYear,
+                                                    $dashBucket === 'weekly' ? 16 : 12);
+$dashYearOptions    = $paModel->getAvailableYears();
+// Preserves the current filter when building a link that changes one facet.
+$dashUrl = function (array $over = []) use ($dashClass, $dashYear, $dashBucket) {
+    $q = array_merge(['dash_class' => $dashClass, 'dash_year' => $dashYear ?: '', 'dash_bucket' => $dashBucket], $over);
+    $q = array_filter($q, fn($v) => $v !== '' && $v !== null);
+    return 'index.php' . ($q ? '?' . http_build_query($q) : '');
+};
+$dashFilterCount = count(array_filter([$dashClass, $dashYear]));
+$serviceStats       = $memberModel->getServiceAttendanceStats();
+// Serve Teams roll-up (module is optional — tolerate a missing table).
+$serveTeamStats = ['total' => 0, 'active' => 0, 'leaders' => 0, 'servers' => 0];
+try {
+    require_once 'models/ServeTeam.php';
+    $serveTeamStats = (new ServeTeam($db))->getStats();
+} catch (Exception $e) { /* Serve Teams not migrated yet — cards stay at zero. */ }
 
 // Volunteer journey breakdown by discipleship steps
 $volunteerJourneyData = [];
@@ -77,49 +110,58 @@ include 'shared/header.php';
             </div>
             <div class="row mb-4 g-3">
                 <div class="col-6 col-md-4 col-lg-2">
-                    <div class="card text-center h-100 stat-card">
+                    <a href="index.php?action=members" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Members">
                         <div class="card-body py-3">
                             <i class="bi bi-people display-5 text-primary mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo $memberStats['total']; ?></div>
                             <small class="text-muted">Total Members</small>
                         </div>
-                    </div>
+                    </a>
                 </div>
                 <div class="col-6 col-md-4 col-lg-2">
-                    <div class="card text-center h-100 stat-card">
+                    <a href="index.php?action=members&member_status=active" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open active members">
                         <div class="card-body py-3">
                             <i class="bi bi-person-check display-5 text-success mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo $memberStats['active']; ?></div>
                             <small class="text-muted">Active</small>
                         </div>
-                    </div>
+                    </a>
                 </div>
                 <div class="col-6 col-md-4 col-lg-2">
-                    <div class="card text-center h-100 stat-card">
+                    <a href="index.php?action=victoryGroups&group_status=active" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Victory Groups / LG">
                         <div class="card-body py-3">
                             <i class="bi bi-diagram-3 display-5 text-info mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo $groupStats['active']; ?></div>
                             <small class="text-muted">Active VG/LG</small>
                         </div>
-                    </div>
+                    </a>
                 </div>
                 <div class="col-6 col-md-4 col-lg-2">
-                    <div class="card text-center h-100 stat-card">
+                    <a href="index.php?action=victoryGroups&group_type=VG" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Victory Groups">
                         <div class="card-body py-3">
                             <i class="bi bi-people-fill display-5 text-primary mb-2" style="opacity:0.7;"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo $groupStats['vg']; ?></div>
                             <small class="text-muted">Victory Groups</small>
                         </div>
-                    </div>
+                    </a>
                 </div>
                 <div class="col-6 col-md-4 col-lg-2">
-                    <div class="card text-center h-100 stat-card">
+                    <a href="index.php?action=victoryGroups&group_type=LG" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Life Groups">
                         <div class="card-body py-3">
                             <i class="bi bi-heart display-5 text-danger mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo $groupStats['lg']; ?></div>
                             <small class="text-muted">Life Groups</small>
                         </div>
-                    </div>
+                    </a>
+                </div>
+                <div class="col-6 col-md-4 col-lg-2">
+                    <a href="index.php?action=serveTeams" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Serve Teams">
+                        <div class="card-body py-3">
+                            <i class="bi bi-hand-thumbs-up display-5 text-info mb-2"></i>
+                            <div class="h3 mb-0 fw-bold"><?php echo (int)$serveTeamStats['active']; ?></div>
+                            <small class="text-muted">Serve Teams</small>
+                        </div>
+                    </a>
                 </div>
                 <?php if (isset($_SESSION['user']['accounttype']) && $_SESSION['user']['accounttype'] === 'admin'): ?>
                 <div class="col-6 col-md-4 col-lg-2">
@@ -127,16 +169,23 @@ include 'shared/header.php';
                     try { $userCount = $db->query("SELECT COUNT(*) FROM accounts WHERE accountstatus='active'")->fetchColumn(); }
                     catch(Exception $e) { $userCount = 0; }
                     ?>
-                    <div class="card text-center h-100 stat-card">
+                    <a href="index.php?action=users" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Users">
                         <div class="card-body py-3">
                             <i class="bi bi-person-gear display-5 text-warning mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo $userCount; ?></div>
                             <small class="text-muted">Admin Users</small>
                         </div>
-                    </div>
+                    </a>
                 </div>
                 <?php endif; ?>
             </div>
+
+
+            <!-- Attendance & Church Health (one section, one shared filter) -->
+            <?php include 'shared/dashboard_health.php'; ?>
+
+            <!-- Worship Service Attendance -->
+            <?php if (!empty($serviceStats)) include 'shared/dashboard_services.php'; ?>
 
             <!-- Discipleship Journey Progress -->
             <div class="row mb-4">
@@ -150,25 +199,34 @@ include 'shared/header.php';
                         </div>
                         <div class="card-body">
                             <p class="text-muted small mb-3"><i class="bi bi-info-circle me-1"></i>
-                            Counts members with at least one active attendance record per class. Update by adding records on the relevant class page — flags refresh automatically.
+                            Counts <strong>active</strong> members with at least one active attendance record per class. Update by adding records on the relevant class page — flags refresh automatically.
                             </p>
                             <?php
-                            $total = max($memberStats['total'], 1);
+                            // Denominator is ACTIVE members (not all members), so both sides of
+                            // every ratio below exclude inactive and soft-deleted people.
+                            $activeTotal = (int)($activeStats['total'] ?? 0);
+                            $total = max($activeTotal, 1);
                             $steps = [
-                                ['label' => 'Victory Weekend', 'key' => 'victory_weekend', 'color' => 'primary', 'icon' => 'bi-sun'],
-                                ['label' => 'Church Community', 'key' => 'church_community', 'color' => 'secondary', 'icon' => 'bi-building'],
-                                ['label' => 'Making Disciples', 'key' => 'making_disciples', 'color' => 'success', 'icon' => 'bi-person-plus'],
-                                ['label' => 'Empowering Leaders', 'key' => 'empowering_leaders', 'color' => 'warning', 'icon' => 'bi-star'],
-                                ['label' => 'Leadership 113', 'key' => 'leadership_113', 'color' => 'danger', 'icon' => 'bi-trophy'],
+                                ['label' => 'Victory Weekend',       'key' => 'victory_weekend',       'color' => 'primary',   'icon' => 'bi-sun',         'link' => 'index.php?action=attendanceRecords&program_type=victory_weekend'],
+                                ['label' => 'Church Community',      'key' => 'church_community',      'color' => 'secondary', 'icon' => 'bi-building',    'link' => 'index.php?action=attendanceRecords&program_type=church_community'],
+                                ['label' => 'Making Disciples',      'key' => 'making_disciples',      'color' => 'success',   'icon' => 'bi-person-plus', 'link' => 'index.php?action=attendanceRecords&program_type=making_disciples'],
+                                ['label' => 'Empowering Leaders',    'key' => 'empowering_leaders',    'color' => 'warning',   'icon' => 'bi-star',        'link' => 'index.php?action=attendanceRecords&program_type=empowering_leaders'],
+                                ['label' => 'Leadership 1-1-3',      'key' => 'leadership_113',        'color' => 'danger',    'icon' => 'bi-trophy',      'link' => 'index.php?action=leadership113'],
+                                ['label' => 'Spiritual Foundations', 'key' => 'spiritual_foundations', 'color' => 'info',      'icon' => 'bi-shield',      'link' => 'index.php?action=spiritualFoundations'],
                             ];
                             foreach ($steps as $step):
-                                $count = $memberStats[$step['key']];
-                                $pct = $total > 0 ? round(($count / $total) * 100) : 0;
+                                // A step with no members.<column> yet simply reports 0.
+                                if (!array_key_exists($step['key'], $activeStats)) continue;
+                                $count = (int)$activeStats[$step['key']];
+                                $pct = $activeTotal > 0 ? round(($count / $activeTotal) * 100) : 0;
                             ?>
                             <div class="mb-3">
                                 <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <span class="fw-semibold small"><i class="bi <?php echo $step['icon']; ?> me-1 text-<?php echo $step['color']; ?>"></i><?php echo $step['label']; ?></span>
-                                    <span class="badge bg-<?php echo $step['color']; ?>"><?php echo $count; ?> / <?php echo $memberStats['total']; ?> (<?php echo $pct; ?>%)</span>
+                                    <a href="<?php echo $step['link']; ?>" class="fw-semibold small text-decoration-none text-reset" title="Open <?php echo htmlspecialchars($step['label']); ?> records">
+                                        <i class="bi <?php echo $step['icon']; ?> me-1 text-<?php echo $step['color']; ?>"></i><?php echo $step['label']; ?>
+                                        <i class="bi bi-box-arrow-up-right ms-1 text-muted" style="font-size:9px;"></i>
+                                    </a>
+                                    <span class="badge bg-<?php echo $step['color']; ?>"><?php echo $count; ?> / <?php echo $activeTotal; ?> (<?php echo $pct; ?>%)</span>
                                 </div>
                                 <div class="progress" style="height: 10px;">
                                     <div class="progress-bar bg-<?php echo $step['color']; ?>" role="progressbar"
@@ -176,6 +234,11 @@ include 'shared/header.php';
                                 </div>
                             </div>
                             <?php endforeach; ?>
+                            <div class="border-top pt-2 mt-3 small text-muted">
+                                <i class="bi bi-people me-1"></i>
+                                Out of <strong><?php echo $activeTotal; ?></strong> Active Members
+                                <span class="ms-1">(<?php echo (int)$memberStats['total']; ?> total on record)</span>
+                            </div>
                         </div>
                         <div class="card-footer bg-transparent">
                             <a href="index.php?action=members" class="btn btn-sm btn-primary"><i class="bi bi-people me-1"></i>Manage Members</a>
@@ -206,6 +269,21 @@ include 'shared/header.php';
                                 </a>
                                 <a href="index.php?action=victoryGroups" class="btn btn-sm btn-outline-secondary">
                                     <i class="bi bi-list-ul me-1"></i> View All Groups
+                                </a>
+                                <a href="index.php?action=serveTeams" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-hand-thumbs-up me-1"></i> Serve Teams
+                                </a>
+                            </div>
+                            <h6 class="text-muted small fw-bold mb-2 mt-3">CLASSES</h6>
+                            <div class="d-grid gap-2 mb-3">
+                                <a href="index.php?action=attendanceRecords" class="btn btn-sm btn-outline-success">
+                                    <i class="bi bi-calendar-check me-1"></i> Attendance Records
+                                </a>
+                                <a href="index.php?action=leadership113" class="btn btn-sm btn-outline-danger">
+                                    <i class="bi bi-trophy me-1"></i> Leadership 1-1-3
+                                </a>
+                                <a href="index.php?action=spiritualFoundations" class="btn btn-sm btn-outline-info">
+                                    <i class="bi bi-shield me-1"></i> Spiritual Foundations
                                 </a>
                             </div>
                             <?php if (isset($_SESSION['user']['accounttype']) && $_SESSION['user']['accounttype'] === 'admin'): ?>
@@ -250,6 +328,7 @@ include 'shared/header.php';
                     <div class="card">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h6 class="mb-0"><i class="bi bi-calendar-check me-2"></i>Program Attendance Summary</h6>
+                            <span class="col-toggle" data-table="dashProgramSummaryTable" data-locked="0"></span>
                             <?php if ($paUnmatched > 0): ?>
                             <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i><?php echo $paUnmatched; ?> unmatched records</span>
                             <?php endif; ?>
@@ -262,11 +341,11 @@ include 'shared/header.php';
                             }
                             ksort($allYears);
                             $allYears = array_keys($allYears);
-                            $programOrder = ['victory_weekend', 'church_community', 'making_disciples', 'empowering_leaders', 'leadership_113'];
+                            $programOrder = ['victory_weekend', 'church_community', 'making_disciples', 'empowering_leaders', 'leadership_113', 'spiritual_foundations'];
                             if (!empty($allYears)):
                             ?>
                             <div class="table-responsive">
-                                <table class="table table-bordered table-sm mb-0">
+                                <table class="table table-bordered table-sm mb-0" id="dashProgramSummaryTable">
                                     <thead class="table-light">
                                         <tr>
                                             <th>Program</th>
@@ -295,10 +374,16 @@ include 'shared/header.php';
                                             $rowTotal = 0;
                                             $matched = $paTotalsByType[$pType]['matched_members'] ?? 0;
                                             $grandMatched += $matched;
+                                            // Session-based classes have their own pages (the generic
+                                            // attendance table can't render a per-session grid).
+                                            $pLink = [
+                                                'leadership_113'        => 'index.php?action=leadership113',
+                                                'spiritual_foundations' => 'index.php?action=spiritualFoundations',
+                                            ][$pType] ?? ('index.php?action=attendanceRecords&program_type=' . $pType);
                                         ?>
                                         <tr>
                                             <td>
-                                                <a href="index.php?action=attendanceRecords&program_type=<?php echo $pType; ?>" class="text-decoration-none text-dark">
+                                                <a href="<?php echo $pLink; ?>" class="text-decoration-none text-dark">
                                                 <span class="badge bg-<?php echo $color; ?> me-1"><i class="bi <?php echo $icon; ?>"></i></span>
                                                 <span class="fw-semibold"><?php echo $label; ?></span>
                                                 </a>
@@ -309,7 +394,8 @@ include 'shared/header.php';
                                                 $totalsRow[$yr] += $cnt;
                                                 $grandTotal += $cnt;
                                             ?>
-                                            <td class="text-center"><?php echo $cnt > 0 ? '<a href="index.php?action=attendanceRecords&program_type='.$pType.'&program_year='.$yr.'" class="badge bg-light text-dark border text-decoration-none">' . $cnt . '</a>' : '<span class="text-muted">—</span>'; ?></td>
+                                            <?php $pYearLink = $pLink . (strpos($pLink, 'leadership113') !== false || strpos($pLink, 'spiritualFoundations') !== false ? '&year=' : '&program_year=') . $yr; ?>
+                                            <td class="text-center"><?php echo $cnt > 0 ? '<a href="'.$pYearLink.'" class="badge bg-light text-dark border text-decoration-none">' . $cnt . '</a>' : '<span class="text-muted">—</span>'; ?></td>
                                             <?php endforeach; ?>
                                             <td class="text-center fw-bold text-<?php echo $color; ?>"><?php echo $rowTotal; ?></td>
                                             <td class="text-center">
@@ -378,190 +464,51 @@ include 'shared/header.php';
                 </div>
             </div>
 
-            <!-- Discipleship Records Analytics -->
-            <div class="row mb-2">
-                <div class="col-12"><h5 class="text-muted fw-bold" style="font-size:12px; letter-spacing:1px;">DISCIPLESHIP RECORDS ANALYTICS</h5></div>
-            </div>
-
-            <!-- Program Attendance Cards by Year -->
-            <div class="row mb-4 g-3" id="discAnalyticsCards">
-                <?php
-                $programDefs = [
-                    'victory_weekend'    => ['label' => 'Victory Weekend',    'color' => 'primary',   'icon' => 'bi-sun',         'short' => 'VW'],
-                    'church_community'   => ['label' => 'Church Community',   'color' => 'secondary', 'icon' => 'bi-building',    'short' => 'CC'],
-                    'making_disciples'   => ['label' => 'Making Disciples',   'color' => 'success',   'icon' => 'bi-person-plus', 'short' => 'MD'],
-                    'empowering_leaders' => ['label' => 'Empowering Leaders', 'color' => 'warning',   'icon' => 'bi-star',        'short' => 'EL'],
-                    'leadership_113'     => ['label' => 'Leadership 113',     'color' => 'danger',    'icon' => 'bi-trophy',      'short' => 'L113'],
-                ];
-                foreach ($programDefs as $pType => $pDef):
-                    $yearData = $paStats[$pType] ?? [];
-                    ksort($yearData);
-                    $programTotal = array_sum($yearData);
-                    // matched members for this program
-                    $matchedCount = 0;
-                    foreach ($paTotals as $row) { if ($row['program_type'] === $pType) { $matchedCount = $row['matched_members']; break; } }
-                    // member flag count from discipleship journey sheet
-                    $flagCount = $memberStats[$pType] ?? 0;
-                ?>
-                <div class="col-12 col-sm-6 col-lg-4 col-xl-2-4 program-analytics-card" data-program="<?php echo $pType; ?>">
-                    <div class="card h-100 border-<?php echo $pDef['color']; ?> border-opacity-50">
-                        <div class="card-header py-2 bg-<?php echo $pDef['color']; ?> bg-opacity-10">
-                            <div class="d-flex align-items-center justify-content-between">
-                                <span class="fw-semibold small"><i class="bi <?php echo $pDef['icon']; ?> me-1 text-<?php echo $pDef['color']; ?>"></i><?php echo $pDef['label']; ?></span>
-                                <span class="badge bg-<?php echo $pDef['color']; ?>"><?php echo $pDef['short']; ?></span>
-                            </div>
-                        </div>
-                        <div class="card-body p-3">
-                            <div class="d-flex gap-3 mb-3 text-center">
-                                <div class="flex-fill">
-                                    <div class="h4 fw-bold text-<?php echo $pDef['color']; ?> mb-0"><?php echo $programTotal; ?></div>
-                                    <div style="font-size:10px;" class="text-muted text-uppercase">Attendees</div>
-                                </div>
-                                <div class="flex-fill border-start">
-                                    <div class="h4 fw-bold text-success mb-0"><?php echo $matchedCount; ?></div>
-                                    <div style="font-size:10px;" class="text-muted text-uppercase">Matched</div>
-                                </div>
-                                <div class="flex-fill border-start">
-                                    <div class="h4 fw-bold text-secondary mb-0"><?php echo $flagCount; ?></div>
-                                    <div style="font-size:10px;" class="text-muted text-uppercase">Members</div>
-                                </div>
-                            </div>
-                            <?php if (!empty($yearData)): ?>
-                            <div class="border-top pt-2">
-                                <div style="font-size:10px;" class="text-muted fw-bold text-uppercase mb-2">Year Breakdown</div>
-                                <?php foreach ($yearData as $yr => $cnt): ?>
-                                <div class="d-flex align-items-center gap-2 mb-1 dash-yr-row" data-year="<?php echo $yr; ?>">
-                                    <span class="badge bg-secondary" style="font-size:10px; min-width:38px;"><?php echo $yr; ?></span>
-                                    <div class="flex-grow-1">
-                                        <div class="progress" style="height:6px;">
-                                            <div class="progress-bar bg-<?php echo $pDef['color']; ?>" style="width:<?php echo $programTotal>0?round($cnt/$programTotal*100):0; ?>%"></div>
-                                        </div>
-                                    </div>
-                                    <span class="small fw-semibold" style="min-width:24px; text-align:right;"><?php echo $cnt; ?></span>
-                                </div>
-                                <?php endforeach; ?>
-                            </div>
-                            <?php else: ?>
-                            <p class="text-muted small text-center mb-0 pt-2">No attendance records</p>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-            </div>
-
-            <!-- Year Filter + Volunteer Journey -->
-            <div class="row mb-4 g-3">
-                <!-- Year Filter for Cards -->
-                <div class="col-12">
-                    <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                        <span class="text-muted small fw-bold" style="letter-spacing:1px;">FILTER BY YEAR:</span>
-                        <button class="btn btn-sm btn-primary" onclick="filterDashYear('all')">All Years</button>
-                        <?php foreach ($availableYears as $yr): ?>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="filterDashYear('<?php echo $yr; ?>')"><?php echo $yr; ?></button>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-
-                <!-- Volunteer Discipleship Journey Table -->
-                <?php if (!empty($volunteerJourneyData)): ?>
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-header d-flex align-items-center justify-content-between">
-                            <h6 class="mb-0"><i class="bi bi-person-lines-fill me-2 text-primary"></i>Volunteer Discipleship Journey Breakdown</h6>
-                            <span class="badge bg-light text-dark border"><?php echo count($volunteerJourneyData); ?> groups</span>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-hover table-sm mb-0">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Volunteer Status</th>
-                                            <th class="text-center">Members</th>
-                                            <th class="text-center"><i class="bi bi-sun text-primary"></i> VW</th>
-                                            <th class="text-center"><i class="bi bi-building text-secondary"></i> CC</th>
-                                            <th class="text-center"><i class="bi bi-person-plus text-success"></i> MD</th>
-                                            <th class="text-center"><i class="bi bi-star text-warning"></i> EL</th>
-                                            <th class="text-center"><i class="bi bi-trophy text-danger"></i> L113</th>
-                                            <th style="min-width:140px;">Overall Completion</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach ($volunteerJourneyData as $vr):
-                                            $allSteps = (int)$vr['vw'] + (int)$vr['cc'] + (int)$vr['md'] + (int)$vr['el'] + (int)$vr['l113'];
-                                            $maxSteps = (int)$vr['total'] * 5;
-                                            $completionPct = $maxSteps > 0 ? round(($allSteps / $maxSteps) * 100) : 0;
-                                            $pctColor = $completionPct >= 80 ? 'success' : ($completionPct >= 50 ? 'warning' : 'secondary');
-                                        ?>
-                                        <tr>
-                                            <td class="fw-semibold"><?php echo htmlspecialchars($vr['vol_status']); ?></td>
-                                            <td class="text-center"><span class="badge bg-secondary"><?php echo $vr['total']; ?></span></td>
-                                            <td class="text-center">
-                                                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25"><?php echo $vr['vw']; ?></span>
-                                                <?php $vpct = $vr['total']>0?round($vr['vw']/$vr['total']*100):0; ?>
-                                                <div style="font-size:10px;" class="text-muted"><?php echo $vpct; ?>%</div>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25"><?php echo $vr['cc']; ?></span>
-                                                <?php $cpct = $vr['total']>0?round($vr['cc']/$vr['total']*100):0; ?>
-                                                <div style="font-size:10px;" class="text-muted"><?php echo $cpct; ?>%</div>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25"><?php echo $vr['md']; ?></span>
-                                                <?php $mpct = $vr['total']>0?round($vr['md']/$vr['total']*100):0; ?>
-                                                <div style="font-size:10px;" class="text-muted"><?php echo $mpct; ?>%</div>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25"><?php echo $vr['el']; ?></span>
-                                                <?php $epct = $vr['total']>0?round($vr['el']/$vr['total']*100):0; ?>
-                                                <div style="font-size:10px;" class="text-muted"><?php echo $epct; ?>%</div>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25"><?php echo $vr['l113']; ?></span>
-                                                <?php $lpct = $vr['total']>0?round($vr['l113']/$vr['total']*100):0; ?>
-                                                <div style="font-size:10px;" class="text-muted"><?php echo $lpct; ?>%</div>
-                                            </td>
-                                            <td>
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <div class="progress flex-grow-1" style="height:8px;">
-                                                        <div class="progress-bar bg-<?php echo $pctColor; ?>" style="width:<?php echo $completionPct; ?>%"></div>
-                                                    </div>
-                                                    <small class="fw-semibold text-<?php echo $pctColor; ?>" style="min-width:35px;"><?php echo $completionPct; ?>%</small>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <?php endif; ?>
-            </div>
-
-            <script>
-            function filterDashYear(yr) {
-                document.querySelectorAll('.dash-yr-row').forEach(function(el) {
-                    if (yr === 'all' || el.dataset.year === yr) {
-                        el.style.display = '';
-                    } else {
-                        el.style.display = 'none';
-                    }
-                });
-                // Update button states
-                document.querySelectorAll('[onclick^="filterDashYear"]').forEach(function(btn) {
-                    btn.classList.remove('btn-primary','btn-outline-secondary','btn-secondary');
-                    if (btn.getAttribute('onclick') === "filterDashYear('" + yr + "')" || (yr==='all' && btn.getAttribute('onclick')==="filterDashYear('all')")) {
-                        btn.classList.add('btn-primary');
-                    } else {
-                        btn.classList.add('btn-outline-secondary');
-                    }
-                });
-            }
-            </script>
+            <!-- Class participation + volunteer journey (rewritten for clarity) -->
+            <?php include 'shared/dashboard_analytics.php'; ?>
 
         </div>
     </div>
 
 <?php include 'shared/footer.php'; ?>
+<script>
+// Attendance trend. Uses the same bounded .chart-box container as the other
+// charts (fixed height + maintainAspectRatio:false), so it fills its box and
+// can't feed its own size back into the layout.
+(function () {
+    if (typeof Chart === 'undefined') return;
+    var el = document.getElementById('dashTrendChart');
+    if (!el) return;
+    var labels = <?php echo json_encode($attendanceSeries['labels'] ?? []); ?>;
+    var values = <?php echo json_encode($attendanceSeries['values'] ?? []); ?>;
+    if (!labels.length) return;
+    new Chart(el, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Attendance records',
+                data: values,
+                borderColor: 'rgba(23,66,245,.9)',
+                backgroundColor: 'rgba(23,66,245,.12)',
+                borderWidth: 2,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                fill: true,
+                tension: .3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            resizeDelay: 120,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 0, autoSkipPadding: 8 } },
+                y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } }
+            }
+        }
+    });
+})();
+</script>

@@ -390,6 +390,158 @@ switch ($action) {
         else { header('Location: index.php?action=leadership113'); exit(); }
         break;
 
+    // ─── Spiritual Foundations (Classes) ──────────────────────────────
+    case 'spiritualFoundations':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        (new SpiritualFoundationsController($db))->listRecords();
+        break;
+    case 'addSfRecord':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') (new SpiritualFoundationsController($db))->addRecord($_POST);
+        else { header('Location: index.php?action=spiritualFoundations'); exit(); }
+        break;
+    case 'updateSfRecord':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        $sfId = (int)($_GET['id'] ?? 0);
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && $sfId) (new SpiritualFoundationsController($db))->updateRecord($sfId, $_POST);
+        else { header('Location: index.php?action=spiritualFoundations'); exit(); }
+        break;
+    case 'deactivateSfRecord':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        $sfId = (int)($_GET['id'] ?? 0);
+        if ($sfId) (new SpiritualFoundationsController($db))->deactivateRecord($sfId);
+        else { header('Location: index.php?action=spiritualFoundations'); exit(); }
+        break;
+    case 'activateSfRecord':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        $sfId = (int)($_GET['id'] ?? 0);
+        if ($sfId) (new SpiritualFoundationsController($db))->activateRecord($sfId);
+        else { header('Location: index.php?action=spiritualFoundations'); exit(); }
+        break;
+    case 'deleteSfRecord':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        $sfId = (int)($_GET['id'] ?? 0);
+        if ($sfId) (new SpiritualFoundationsController($db))->deleteRecord($sfId);
+        else { header('Location: index.php?action=spiritualFoundations'); exit(); }
+        break;
+
+    // ─── Spiritual Foundations curriculum (Admin only) ────────────────
+    case 'addSfTopic':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=spiritualFoundations&tab=curriculum'); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') (new SpiritualFoundationsController($db))->addTopic($_POST);
+        else { header('Location: index.php?action=spiritualFoundations&tab=curriculum'); exit(); }
+        break;
+    case 'updateSfTopic':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=spiritualFoundations&tab=curriculum'); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        $sfTopicId = (int)($_GET['id'] ?? 0);
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && $sfTopicId) (new SpiritualFoundationsController($db))->updateTopic($sfTopicId, $_POST);
+        else { header('Location: index.php?action=spiritualFoundations&tab=curriculum'); exit(); }
+        break;
+    case 'activateSfTopic':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=spiritualFoundations&tab=curriculum'); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        (new SpiritualFoundationsController($db))->activateTopic((int)($_GET['id'] ?? 0));
+        break;
+    case 'deactivateSfTopic':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=spiritualFoundations&tab=curriculum'); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        (new SpiritualFoundationsController($db))->deactivateTopic((int)($_GET['id'] ?? 0));
+        break;
+    case 'deleteSfTopic':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=spiritualFoundations&tab=curriculum'); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        (new SpiritualFoundationsController($db))->deleteTopic((int)($_GET['id'] ?? 0));
+        break;
+    case 'reorderSfTopics':
+        if (!isset($_SESSION['user']) || $currentUserType !== 'admin') { http_response_code(403); exit(); }
+        require_once 'controllers/SpiritualFoundationsController.php';
+        $sfIds = $_POST['ids'] ?? [];
+        (new SpiritualFoundationsController($db))->reorderTopics(is_array($sfIds) ? $sfIds : []);
+        break;
+
+    // ─── Serve Teams ──────────────────────────────────────────────────
+    case 'serveTeams':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/ServeTeamController.php';
+        (new ServeTeamController($db))->listTeams();
+        break;
+    case 'addServeTeam':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/ServeTeamController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') (new ServeTeamController($db))->addTeam($_POST);
+        else { header('Location: index.php?action=serveTeams'); exit(); }
+        break;
+    case 'updateServeTeam':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/ServeTeamController.php';
+        $stId = (int)($_GET['id'] ?? 0);
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && $stId) (new ServeTeamController($db))->updateTeam($stId, $_POST);
+        else { header('Location: index.php?action=serveTeams'); exit(); }
+        break;
+    case 'activateServeTeam':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/ServeTeamController.php';
+        (new ServeTeamController($db))->activateTeam((int)($_GET['id'] ?? 0));
+        break;
+    case 'deactivateServeTeam':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/ServeTeamController.php';
+        (new ServeTeamController($db))->deactivateTeam((int)($_GET['id'] ?? 0));
+        break;
+    case 'deleteServeTeam':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/ServeTeamController.php';
+        (new ServeTeamController($db))->deleteTeam((int)($_GET['id'] ?? 0));
+        break;
+
+    // ─── Serve Team Service / Place dropdown values (Admin only) ──────
+    case 'addServeOption':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=serveTeams&tab=options'); exit(); }
+        require_once 'controllers/ServeTeamController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') (new ServeTeamController($db))->addOption($_POST);
+        else { header('Location: index.php?action=serveTeams&tab=options'); exit(); }
+        break;
+    case 'updateServeOption':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=serveTeams&tab=options'); exit(); }
+        require_once 'controllers/ServeTeamController.php';
+        $soId = (int)($_GET['id'] ?? 0);
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && $soId) (new ServeTeamController($db))->updateOption($soId, $_POST);
+        else { header('Location: index.php?action=serveTeams&tab=options'); exit(); }
+        break;
+    case 'activateServeOption':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=serveTeams&tab=options'); exit(); }
+        require_once 'controllers/ServeTeamController.php';
+        (new ServeTeamController($db))->activateOption((int)($_GET['id'] ?? 0));
+        break;
+    case 'deactivateServeOption':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=serveTeams&tab=options'); exit(); }
+        require_once 'controllers/ServeTeamController.php';
+        (new ServeTeamController($db))->deactivateOption((int)($_GET['id'] ?? 0));
+        break;
+    case 'deleteServeOption':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=serveTeams&tab=options'); exit(); }
+        require_once 'controllers/ServeTeamController.php';
+        (new ServeTeamController($db))->deleteOption((int)($_GET['id'] ?? 0));
+        break;
+
     // ─── Settings (Admin only) ────────────────────────────────────────
     case 'settings':
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }

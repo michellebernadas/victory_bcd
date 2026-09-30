@@ -98,13 +98,16 @@ $ICONS  = [
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-building me-2"></i>Ministries <span class="badge bg-light text-dark ms-1"><?php echo count($ministries); ?></span></span>
-                    <button class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#addMinistryModal">
-                        <i class="bi bi-plus-lg me-1"></i>Add Ministry
-                    </button>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="col-toggle" data-table="ministriesTable" data-locked="0,1"></span>
+                        <button class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#addMinistryModal">
+                            <i class="bi bi-plus-lg me-1"></i>Add Ministry
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table class="table table-hover mb-0" id="ministriesTable">
                             <thead>
                                 <tr>
                                     <th style="width:30px"></th>
@@ -173,18 +176,22 @@ $ICONS  = [
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-clock me-2"></i>Church Services <span class="badge bg-light text-dark ms-1"><?php echo count($services); ?></span></span>
-                    <button class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#addServiceModal">
-                        <i class="bi bi-plus-lg me-1"></i>Add Church Service
-                    </button>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="col-toggle" data-table="servicesTable" data-locked="0,1"></span>
+                        <button class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#addServiceModal">
+                            <i class="bi bi-plus-lg me-1"></i>Add Church Service
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table class="table table-hover mb-0" id="servicesTable">
                             <thead>
                                 <tr>
                                     <th style="width:30px"></th>
                                     <th>#</th>
                                     <th>Name</th>
+                                    <th class="text-center">Period</th>
                                     <th class="text-center">Members</th>
                                     <th class="text-center">Status</th>
                                     <th class="text-center">Actions</th>
@@ -193,11 +200,21 @@ $ICONS  = [
                             <tbody class="settings-sortable" data-reorder-url="index.php?action=reorderServices">
                                 <?php foreach ($services as $i => $svc):
                                     $cnt = $serviceCounts[(int)$svc['id']] ?? 0;
+                                    $period = trim($svc['service_period'] ?? '');
                                 ?>
                                 <tr data-id="<?php echo (int)$svc['id']; ?>">
                                     <td class="text-center text-muted" style="cursor:grab" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></td>
                                     <td><?php echo $i + 1; ?></td>
                                     <td class="fw-semibold"><?php echo htmlspecialchars($svc['name']); ?></td>
+                                    <td class="text-center">
+                                        <?php if ($period === 'AM'): ?>
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-sunrise me-1"></i>AM</span>
+                                        <?php elseif ($period === 'PM'): ?>
+                                        <span class="badge bg-primary"><i class="bi bi-sunset me-1"></i>PM</span>
+                                        <?php else: ?>
+                                        <span class="text-muted" title="Not one of the four worship service schedules">—</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td class="text-center">
                                         <span class="badge <?php echo $cnt > 0 ? 'bg-primary' : 'bg-light text-muted border'; ?>" title="Members currently attending this service">
                                             <?php echo $cnt; ?>
@@ -232,7 +249,7 @@ $ICONS  = [
                                 </tr>
                                 <?php endforeach; ?>
                                 <?php if (empty($services)): ?>
-                                <tr><td colspan="6" class="text-center text-muted py-4">No church services found. Add one above.</td></tr>
+                                <tr><td colspan="7" class="text-center text-muted py-4">No church services found. Add one above.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -248,13 +265,16 @@ $ICONS  = [
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-bar-chart-steps me-2"></i>Discipleship Steps <span class="badge bg-light text-dark ms-1"><?php echo count($steps); ?></span></span>
-                    <button class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#addStepModal">
-                        <i class="bi bi-plus-lg me-1"></i>Add Step
-                    </button>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="col-toggle" data-table="stepsTable" data-locked="0,1"></span>
+                        <button class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#addStepModal">
+                            <i class="bi bi-plus-lg me-1"></i>Add Step
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table class="table table-hover mb-0" id="stepsTable">
                             <thead>
                                 <tr>
                                     <th style="width:30px"></th>
@@ -338,12 +358,15 @@ $ICONS  = [
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-tag me-2"></i><?php echo htmlspecialchars($typeLabel); ?> <span class="badge bg-light text-dark ms-1"><?php echo count($opts); ?></span></span>
-                    <button class="btn btn-sm btn-outline-light" onclick="openAddVgOption('<?php echo $typeKey; ?>', '<?php echo htmlspecialchars(addslashes($typeLabel)); ?>')">
-                        <i class="bi bi-plus-lg me-1"></i>Add
-                    </button>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="col-toggle" data-table="vgOptTable_<?php echo $typeKey; ?>" data-locked="0,1"></span>
+                        <button class="btn btn-sm btn-outline-light" onclick="openAddVgOption('<?php echo $typeKey; ?>', '<?php echo htmlspecialchars(addslashes($typeLabel)); ?>')">
+                            <i class="bi bi-plus-lg me-1"></i>Add
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body p-0">
-                    <table class="table table-sm table-hover mb-0">
+                    <table class="table table-sm table-hover mb-0" id="vgOptTable_<?php echo $typeKey; ?>">
                         <thead class="table-light">
                             <tr>
                                 <th style="width:30px"></th>

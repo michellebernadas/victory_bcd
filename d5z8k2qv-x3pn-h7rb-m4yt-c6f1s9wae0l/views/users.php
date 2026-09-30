@@ -61,12 +61,14 @@ $editUser = $editUser ?? null;
 
             <!-- Users Table -->
             <div class="card">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span><i class="bi bi-table me-2"></i>Users List</span>
+                    <!-- Show / Hide Columns (# and Actions stay locked) -->
+                    <span class="col-toggle" data-table="usersTable" data-locked="0,6"></span>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover data-table mb-0" style="width:100%">
+                        <table id="usersTable" class="table table-hover data-table mb-0" style="width:100%">
                             <thead>
                                 <tr>
                                     <th>#</th>

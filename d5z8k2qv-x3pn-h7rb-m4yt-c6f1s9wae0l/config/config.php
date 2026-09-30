@@ -31,6 +31,24 @@ function loadEnv($path)
 
 loadEnv(__DIR__ . '/../.env');
 
+/**
+ * Cache-busted URL for a local asset.
+ *
+ * Browsers cache js/ and css/ aggressively, and because the filename never
+ * changes a deploy can leave a stale script in place — which shows up as
+ * "function is not defined" or a feature that simply does nothing. Appending
+ * the file's mtime changes the URL whenever the file changes, so the browser
+ * refetches exactly when it should and keeps caching the rest of the time.
+ *
+ * Falls back to the plain path if the file can't be stat'd.
+ */
+function asset(string $path): string
+{
+    $full = __DIR__ . '/../' . ltrim($path, '/');
+    $mt   = @filemtime($full);
+    return $mt ? ($path . '?v=' . $mt) : $path;
+}
+
 function getDB()
 {
     try {

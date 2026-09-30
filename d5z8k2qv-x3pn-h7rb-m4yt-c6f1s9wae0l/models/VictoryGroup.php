@@ -33,6 +33,15 @@ class VictoryGroup {
                 $sql .= " AND vg.group_type LIKE ?";
                 $params[] = '%' . $filters['group_type'] . '%';
             }
+            // Date range — filters on when the group was created (victory_groups.dateadded).
+            if (!empty($filters['date_from'])) {
+                $sql .= " AND DATE(vg.dateadded) >= ?";
+                $params[] = $filters['date_from'];
+            }
+            if (!empty($filters['date_to'])) {
+                $sql .= " AND DATE(vg.dateadded) <= ?";
+                $params[] = $filters['date_to'];
+            }
 
             $dayOrder = "CASE vg.day_of_week
                 WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2 WHEN 'Wednesday' THEN 3

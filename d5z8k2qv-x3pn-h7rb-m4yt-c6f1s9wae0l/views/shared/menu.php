@@ -36,6 +36,11 @@
                 <i class="bi bi-diagram-3 me-2"></i>Victory Groups / LG
             </a>
         </li>
+        <li class="nav-item">
+            <a href="index.php?action=serveTeams" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'serveTeams') ? 'active' : ''; ?>">
+                <i class="bi bi-hand-thumbs-up me-2"></i>Serve Teams
+            </a>
+        </li>
         <li class="mt-2 mb-1">
             <small class="text-muted px-3 fw-bold" style="font-size: 11px; letter-spacing: 1px;">CLASSES</small>
         </li>
@@ -72,6 +77,12 @@
             <a href="index.php?action=leadership113"
                class="nav-link <?php echo ((isset($_GET['action']) && $_GET['action'] == 'leadership113') || ($isAtRecs && $atProgram === 'leadership_113')) ? 'active' : ''; ?>">
                 <i class="bi bi-trophy me-2"></i>Leadership 1-1-3
+            </a>
+        </li>
+        <li class="nav-item">
+            <a href="index.php?action=spiritualFoundations"
+               class="nav-link <?php echo ((isset($_GET['action']) && $_GET['action'] == 'spiritualFoundations') || ($isAtRecs && $atProgram === 'spiritual_foundations')) ? 'active' : ''; ?>">
+                <i class="bi bi-shield me-2"></i>Spiritual Foundations
             </a>
         </li>
         <?php if (isset($_SESSION['user']['accounttype']) && $_SESSION['user']['accounttype'] === 'admin') { ?>
