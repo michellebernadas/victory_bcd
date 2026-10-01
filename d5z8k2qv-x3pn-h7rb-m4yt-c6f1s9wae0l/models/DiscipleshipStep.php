@@ -83,11 +83,13 @@ class DiscipleshipStep {
                     $count = (int)$this->db->query($sql)->fetchColumn();
                 }
             }
-            // Also count completions stored in the member_discipleship pivot table (only for non-deleted members)
+            // Also count completions stored in the member_discipleship pivot table (only for non-deleted members).
+            // Excludes rejected historical rows — a rejected review no longer counts as a completion.
             $stmt = $this->db->prepare(
                 "SELECT COUNT(*) FROM member_discipleship md
                  JOIN members m ON m.id = md.member_id
-                 WHERE md.step_id = ? AND m.is_deleted = 0"
+                 WHERE md.step_id = ? AND m.is_deleted = 0
+                   AND NOT (md.completion_source = 'historical' AND md.historical_verification_status = 'rejected')"
             );
             $stmt->execute([$id]);
             $count += (int)$stmt->fetchColumn();
@@ -138,11 +140,13 @@ class DiscipleshipStep {
         try {
             // Only return junction rows for ACTIVE steps. Otherwise legacy entries for
             // now-deactivated steps (PBC / SF) make the completion ratio show e.g. 6/5.
+            // Rejected historical rows are excluded — a rejected review is not a completion.
             $stmt = $this->db->prepare(
                 "SELECT md.step_id
                  FROM member_discipleship md
                  JOIN discipleship_steps ds ON ds.id = md.step_id
-                 WHERE md.member_id = ? AND ds.is_active = 1 AND ds.is_deleted = 0"
+                 WHERE md.member_id = ? AND ds.is_active = 1 AND ds.is_deleted = 0
+                   AND NOT (md.completion_source = 'historical' AND md.historical_verification_status = 'rejected')"
             );
             $stmt->execute([$memberId]);
             return $stmt->fetchAll(PDO::FETCH_COLUMN);

@@ -165,6 +165,12 @@ class MemberController {
         }
         $discipleshipSteps      = $this->memberModel->getDiscipleshipSteps();
         $memberCompletedStepIds = $member['completed_step_ids'] ?? [];
+
+        // Authoritative derived progress, including WHERE each completion came
+        // from (attendance evidence vs an approved historical record).
+        require_once 'models/DiscipleshipProgressService.php';
+        $progressByStep = (new DiscipleshipProgressService($this->db))
+            ->getMemberProgress((int)$member['id']);
         // Active ministry / service name sets so the view can flag deactivated assignments with a warning icon.
         $activeMinistryNames = array_flip(array_column($this->memberModel->getAllMinistries(), 'name'));
         $activeServiceNames  = array_flip(array_column($this->memberModel->getAllServices(),  'name'));

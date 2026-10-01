@@ -17,7 +17,8 @@ class Member {
                             (SELECT GROUP_CONCAT(md.step_id ORDER BY md.step_id SEPARATOR ',')
                              FROM member_discipleship md
                              JOIN discipleship_steps ds ON ds.id = md.step_id
-                             WHERE md.member_id = members.id AND ds.is_active = 1 AND ds.is_deleted = 0),
+                             WHERE md.member_id = members.id AND ds.is_active = 1 AND ds.is_deleted = 0
+                               AND NOT (md.completion_source = 'historical' AND md.historical_verification_status = 'rejected')),
                             ''
                         ) AS completed_step_ids_str
                     FROM members WHERE is_deleted = 0";
@@ -46,10 +47,10 @@ class Member {
                     if ($val === '' || $val === null) continue;
                     $stepId = (int)$stepId;
                     if ($val == '1') {
-                        $sql .= " AND EXISTS (SELECT 1 FROM member_discipleship md WHERE md.member_id = members.id AND md.step_id = ?)";
+                        $sql .= " AND EXISTS (SELECT 1 FROM member_discipleship md WHERE md.member_id = members.id AND md.step_id = ? AND NOT (md.completion_source = 'historical' AND md.historical_verification_status = 'rejected'))";
                         $params[] = $stepId;
                     } elseif ($val == '0') {
-                        $sql .= " AND NOT EXISTS (SELECT 1 FROM member_discipleship md WHERE md.member_id = members.id AND md.step_id = ?)";
+                        $sql .= " AND NOT EXISTS (SELECT 1 FROM member_discipleship md WHERE md.member_id = members.id AND md.step_id = ? AND NOT (md.completion_source = 'historical' AND md.historical_verification_status = 'rejected'))";
                         $params[] = $stepId;
                     }
                 }
@@ -193,21 +194,29 @@ class Member {
         return ['first_name' => $first, 'last_name' => $last, 'full_name' => $full];
     }
 
+    /**
+     * Updates the member's own details only.
+     *
+     * Discipleship completion is NOT written here any more. This method used to
+     * set members.purple_book_class and members.spiritual_foundations straight
+     * from the form's checkbox group, which made the edit form a second source
+     * of truth: ticking a box marked a step complete with no evidence, and SF
+     * could disagree with its own attendance records.
+     *
+     * Completion is now derived by DiscipleshipProgressService from attendance,
+     * plus admin-approved historical completions (Settings › Historical
+     * Completions). We recalculate after saving because member_status affects
+     * the dashboard's active-member roll-ups.
+     */
     public function updateMember($id, $data) {
         try {
             $names = $this->normalizeNameFields($data);
-            // The 5 attendance-tracked steps (VW/CC/MD/EL/L113) are auto-derived from records and
-            // intentionally not written here. PBC + SF have no attendance flow, so we still accept
-            // their values from the form's checkbox group.
-            $manualKeys = ['purple_book_class', 'spiritual_foundations'];
-            $manualFlags = $this->buildManualBooleans($data['discipleship_steps'] ?? [], $manualKeys);
 
             $stmt = $this->db->prepare("
                 UPDATE members SET
                     full_name = ?, last_name = ?, first_name = ?,
                     civil_status = ?, ministry = ?, service_attending = ?,
                     volunteer_status = ?, contact_number = ?,
-                    purple_book_class = ?, spiritual_foundations = ?,
                     member_status = ?, notes = ?
                 WHERE id = ?
             ");
@@ -220,63 +229,19 @@ class Member {
                 $data['service_attending'] ?? '',
                 strtoupper(trim($data['volunteer_status'] ?? '')),
                 $data['contact_number'] ?? '',
-                $manualFlags['purple_book_class'],
-                $manualFlags['spiritual_foundations'],
                 $data['member_status'] ?? 'active',
                 $data['notes'] ?? '',
                 $id
             ]);
 
-            // Keep the junction table aligned for the manual steps only.
-            $this->syncManualJunction($id, $data['discipleship_steps'] ?? [], $manualKeys);
+            // Re-derive the journey from current evidence (no-op if nothing changed).
+            require_once 'models/DiscipleshipProgressService.php';
+            (new DiscipleshipProgressService($this->db))->recalculateMember((int)$id);
 
             return true;
         } catch (PDOException $e) {
             error_log("Update member error: " . $e->getMessage());
             return false;
-        }
-    }
-
-    /**
-     * For the given submitted step-ids, returns ['column_key' => 1|0] but only for the keys in
-     * $allowedKeys. Used to scope which boolean columns the member form is allowed to write.
-     */
-    private function buildManualBooleans(array $stepIds, array $allowedKeys): array {
-        $out = array_fill_keys($allowedKeys, 0);
-        if (empty($stepIds)) return $out;
-        $stepIds = array_map('intval', $stepIds);
-        $placeholders = implode(',', array_fill(0, count($stepIds), '?'));
-        $stmt = $this->db->prepare(
-            "SELECT column_key FROM discipleship_steps WHERE id IN ($placeholders) AND column_key IS NOT NULL"
-        );
-        $stmt->execute($stepIds);
-        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $key) {
-            if (in_array($key, $allowedKeys, true)) $out[$key] = 1;
-        }
-        return $out;
-    }
-
-    /**
-     * Add/remove junction rows for the given manual steps. Attendance-tracked junction rows are
-     * managed by ProgramAttendance::syncMemberFlag and are NOT touched here.
-     */
-    private function syncManualJunction(int $memberId, array $stepIds, array $allowedKeys): void {
-        // Resolve step ids whose column_key is in $allowedKeys
-        $idsForAllowed = $this->db->prepare(
-            "SELECT id, column_key FROM discipleship_steps WHERE column_key IN (" . implode(',', array_fill(0, count($allowedKeys), '?')) . ")"
-        );
-        $idsForAllowed->execute($allowedKeys);
-        $allowedIds = [];
-        foreach ($idsForAllowed->fetchAll(PDO::FETCH_KEY_PAIR) as $sid => $_k) $allowedIds[(int)$sid] = true;
-        // Wipe just the allowed rows
-        $this->db->prepare(
-            "DELETE FROM member_discipleship WHERE member_id = ? AND step_id IN (" . implode(',', array_keys($allowedIds) ?: [0]) . ")"
-        )->execute([$memberId]);
-        // Insert ticked allowed step ids
-        $tickedAllowed = array_intersect(array_map('intval', $stepIds), array_keys($allowedIds));
-        if ($tickedAllowed) {
-            $ins = $this->db->prepare("INSERT IGNORE INTO member_discipleship (member_id, step_id) VALUES (?, ?)");
-            foreach ($tickedAllowed as $sid) $ins->execute([$memberId, (int)$sid]);
         }
     }
 
@@ -381,21 +346,50 @@ class Member {
         }
     }
 
+    /**
+     * Step counts read from member_discipleship — the authoritative derived
+     * state — rather than the members.<step> cache columns, so the dashboard
+     * can't disagree with a member's own profile.
+     */
     public function getStats() {
+        $stats = ['total' => 0, 'active' => 0];
         try {
-            $stats = [];
-            $stats['total'] = $this->db->query("SELECT COUNT(*) FROM members WHERE is_deleted = 0")->fetchColumn();
-            $stats['active'] = $this->db->query("SELECT COUNT(*) FROM members WHERE is_deleted = 0 AND member_status = 'active'")->fetchColumn();
-            $stats['victory_weekend'] = $this->db->query("SELECT COUNT(*) FROM members WHERE is_deleted = 0 AND victory_weekend = 1")->fetchColumn();
-            $stats['church_community'] = $this->db->query("SELECT COUNT(*) FROM members WHERE is_deleted = 0 AND church_community = 1")->fetchColumn();
-            $stats['making_disciples'] = $this->db->query("SELECT COUNT(*) FROM members WHERE is_deleted = 0 AND making_disciples = 1")->fetchColumn();
-            $stats['empowering_leaders'] = $this->db->query("SELECT COUNT(*) FROM members WHERE is_deleted = 0 AND empowering_leaders = 1")->fetchColumn();
-            $stats['leadership_113'] = $this->db->query("SELECT COUNT(*) FROM members WHERE is_deleted = 0 AND leadership_113 = 1")->fetchColumn();
-            return $stats;
+            $stats['total']  = (int)$this->db->query("SELECT COUNT(*) FROM members WHERE is_deleted = 0")->fetchColumn();
+            $stats['active'] = (int)$this->db->query("SELECT COUNT(*) FROM members WHERE is_deleted = 0 AND member_status = 'active'")->fetchColumn();
+            foreach ($this->stepCompletionCounts(false) as $key => $n) $stats[$key] = $n;
         } catch (PDOException $e) {
-            return ['total' => 0, 'active' => 0, 'victory_weekend' => 0, 'church_community' => 0,
-                    'making_disciples' => 0, 'empowering_leaders' => 0, 'leadership_113' => 0];
+            error_log("getStats error: " . $e->getMessage());
         }
+        // Keys the dashboard reads unconditionally.
+        foreach (['victory_weekend','church_community','making_disciples','empowering_leaders','leadership_113'] as $k) {
+            $stats[$k] = $stats[$k] ?? 0;
+        }
+        return $stats;
+    }
+
+    /**
+     * column_key => number of completed members, from the derived state.
+     * @param bool $activeOnly restrict to members whose status is active
+     */
+    private function stepCompletionCounts(bool $activeOnly): array {
+        $out = [];
+        try {
+            $sql = "SELECT ds.column_key, COUNT(*) AS n
+                      FROM member_discipleship md
+                      JOIN discipleship_steps ds ON ds.id = md.step_id
+                      JOIN members m ON m.id = md.member_id
+                     WHERE m.is_deleted = 0
+                       AND ds.column_key IS NOT NULL AND ds.column_key != ''
+                       AND NOT (md.completion_source = 'historical' AND md.historical_verification_status = 'rejected')";
+            if ($activeOnly) $sql .= " AND m.member_status = 'active'";
+            $sql .= " GROUP BY ds.column_key";
+            foreach ($this->db->query($sql)->fetchAll() as $r) {
+                $out[$r['column_key']] = (int)$r['n'];
+            }
+        } catch (PDOException $e) {
+            error_log("stepCompletionCounts error: " . $e->getMessage());
+        }
+        return $out;
     }
 
     /**
@@ -414,40 +408,12 @@ class Member {
                 "SELECT COUNT(*) FROM members WHERE is_deleted = 0 AND member_status = 'active'"
             )->fetchColumn();
             $stats['active'] = $stats['total'];
-
-            $cols = $this->db->query(
-                "SELECT column_key FROM discipleship_steps
-                  WHERE column_key IS NOT NULL AND column_key != '' AND is_deleted = 0"
-            )->fetchAll(PDO::FETCH_COLUMN) ?: [];
-            // Whitelist against the real members columns — column_key is admin-editable.
-            $allowed = $this->getMemberBooleanColumns();
-            foreach ($cols as $col) {
-                if (!in_array($col, $allowed, true)) continue;
-                $stats[$col] = (int)$this->db->query(
-                    "SELECT COUNT(*) FROM members
-                      WHERE is_deleted = 0 AND member_status = 'active' AND `{$col}` = 1"
-                )->fetchColumn();
-            }
+            // Derived state, not the members.<step> cache columns.
+            foreach ($this->stepCompletionCounts(true) as $key => $n) $stats[$key] = $n;
         } catch (PDOException $e) {
             error_log("getActiveStats error: " . $e->getMessage());
         }
         return $stats;
-    }
-
-    /** Boolean discipleship columns that actually exist on `members`. */
-    private function getMemberBooleanColumns(): array {
-        static $cache = null;
-        if ($cache !== null) return $cache;
-        $cache = [];
-        try {
-            foreach ($this->db->query("SHOW COLUMNS FROM members")->fetchAll() as $c) {
-                if (stripos($c['Type'], 'tinyint') === 0) $cache[] = $c['Field'];
-            }
-        } catch (PDOException $e) {
-            $cache = ['victory_weekend','church_community','making_disciples',
-                      'empowering_leaders','leadership_113','purple_book_class','spiritual_foundations'];
-        }
-        return $cache;
     }
 
     /** Active-member counts per worship service, split into AM / PM. */
@@ -478,66 +444,15 @@ class Member {
         return $out;
     }
 
+    // ── Removed: former duplicate sources of truth ──────────────────────────
+    // buildManualBooleans / syncManualJunction / syncMemberDiscipleship /
+    // buildLegacyBooleans / getMemberBooleanColumns used to write the
+    // members.<step> flags and member_discipleship rows straight from form
+    // input. They are gone so completion can only ever come from
+    // DiscipleshipProgressService, which derives it from attendance plus
+    // admin-approved historical completions.
+
     // ── Private helpers ────────────────────────────────────────────────────
-
-    /**
-     * Syncs the member_discipleship junction table for a given member.
-     * $stepIds is an array of step IDs (integers or strings).
-     */
-    private function syncMemberDiscipleship($memberId, $stepIds) {
-        // Delete existing rows
-        $stmt = $this->db->prepare("DELETE FROM member_discipleship WHERE member_id = ?");
-        $stmt->execute([$memberId]);
-
-        if (empty($stepIds)) return;
-
-        $stmt = $this->db->prepare("INSERT IGNORE INTO member_discipleship (member_id, step_id) VALUES (?, ?)");
-        foreach ($stepIds as $stepId) {
-            $stepId = (int)$stepId;
-            if ($stepId > 0) {
-                $stmt->execute([$memberId, $stepId]);
-            }
-        }
-    }
-
-    /**
-     * Given an array of step IDs, look up their column_keys and return an array
-     * of legacy boolean column values [column_key => 0|1].
-     */
-    private function buildLegacyBooleans($stepIds) {
-        $defaults = [
-            'victory_weekend'     => 0,
-            'church_community'    => 0,
-            'making_disciples'    => 0,
-            'empowering_leaders'  => 0,
-            'leadership_113'      => 0,
-            'purple_book_class'   => 0,
-            'spiritual_foundations' => 0,
-        ];
-
-        if (empty($stepIds)) return $defaults;
-
-        try {
-            if (count($stepIds) === 0) return $defaults;
-
-            $placeholders = implode(',', array_fill(0, count($stepIds), '?'));
-            $stmt = $this->db->prepare(
-                "SELECT column_key FROM discipleship_steps WHERE id IN ($placeholders) AND column_key IS NOT NULL"
-            );
-            $stmt->execute(array_map('intval', $stepIds));
-            $keys = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-            foreach ($keys as $key) {
-                if (isset($defaults[$key])) {
-                    $defaults[$key] = 1;
-                }
-            }
-        } catch (PDOException $e) {
-            error_log("Build legacy booleans error: " . $e->getMessage());
-        }
-
-        return $defaults;
-    }
 
     public function searchByName(string $term, int $limit = 30): array {
         try {

@@ -120,14 +120,14 @@ foreach ($scStatuses as $s) {
             <!-- Header -->
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h1 class="h3 mb-0"><i class="bi bi-shield me-2 text-info"></i>Spiritual Foundations</h1>
+                    <h1 class="h3 mb-0"><i class="bi bi-shield me-2 text-purple"></i>Spiritual Foundations</h1>
                     <p class="text-muted mb-0">
                         Session attendance for the Spiritual Foundations class
                         &mdash; <?php echo count($requiredWeekNos); ?> required topics, completed across any batch
                     </p>
                 </div>
                 <?php if ($activeTab === 'records'): ?>
-                <button class="btn btn-info text-white" data-bs-toggle="modal" data-bs-target="#addSfModal">
+                <button class="btn btn-purple" data-bs-toggle="modal" data-bs-target="#addSfModal">
                     <i class="bi bi-plus-circle me-1"></i>Add Spiritual Foundations Record
                 </button>
                 <?php endif; ?>

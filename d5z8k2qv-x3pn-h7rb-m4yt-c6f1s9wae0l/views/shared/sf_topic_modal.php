@@ -7,7 +7,7 @@ $nextWeek = (int)($sfWeekCount ?? 0) + 1;
 <div class="modal fade" id="<?php echo $sfTopicModalId; ?>" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header bg-info text-white">
+            <div class="modal-header bg-purple text-white">
                 <h5 class="modal-title"><i class="bi bi-journal-text me-2"></i><?php echo htmlspecialchars($sfTopicTitle); ?></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -65,7 +65,7 @@ $nextWeek = (int)($sfWeekCount ?? 0) + 1;
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-info text-white"><i class="bi bi-save me-1"></i>Save Topic</button>
+                <button type="submit" class="btn btn-purple"><i class="bi bi-save me-1"></i>Save Topic</button>
             </div>
             </form>
         </div>

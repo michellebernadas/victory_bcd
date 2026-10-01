@@ -2,13 +2,35 @@
 if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
 include 'shared/header.php';
 
+/**
+ * Classes this page can CREATE. A plain attendance row is the whole completion
+ * evidence for these four.
+ *
+ * Leadership 1-1-3 and Spiritual Foundations are deliberately absent: their
+ * completion depends on a per-session / per-topic grid, so a generic row could
+ * never be valid evidence and would only create a record the dedicated module
+ * then has to repair. They are created in their own modules instead
+ * (AttendanceController rejects them server-side too).
+ */
 $PROGRAM_DEFS = [
     'victory_weekend'    => ['label' => 'Victory Weekend',    'color' => 'primary',   'icon' => 'bi-sun',         'short' => 'VW'],
     'church_community'   => ['label' => 'Church Community',   'color' => 'secondary', 'icon' => 'bi-building',    'short' => 'CC'],
     'making_disciples'   => ['label' => 'Making Disciples',   'color' => 'success',   'icon' => 'bi-person-plus', 'short' => 'MD'],
     'empowering_leaders' => ['label' => 'Empowering Leaders', 'color' => 'warning',   'icon' => 'bi-star',        'short' => 'EL'],
-    'leadership_113'     => ['label' => 'Leadership 113',     'color' => 'danger',    'icon' => 'bi-trophy',      'short' => 'L113'],
 ];
+
+/**
+ * Presentation for classes this page can DISPLAY but not create. Existing
+ * L113 / SF rows predate the split and must keep rendering with their proper
+ * label, colour and icon rather than falling back to a raw program_type.
+ */
+$DEDICATED_DEFS = [
+    'leadership_113'        => ['label' => 'Leadership 1-1-3',      'color' => 'danger', 'icon' => 'bi-trophy', 'short' => 'L113', 'action' => 'leadership113'],
+    'spiritual_foundations' => ['label' => 'Spiritual Foundations', 'color' => 'purple', 'icon' => 'bi-shield', 'short' => 'SF',   'action' => 'spiritualFoundations'],
+];
+
+/** Every class this page may render — creation is still limited to $PROGRAM_DEFS. */
+$ALL_CLASS_DEFS = $PROGRAM_DEFS + $DEDICATED_DEFS;
 $activeFilters       = $activeFilters       ?? [];
 $records             = $records             ?? [];
 $availableYears      = $availableYears      ?? [];
@@ -21,7 +43,7 @@ $availableEventDates = $availableEventDates ?? [];
 $activeTab      = $_GET['tab']    ?? 'records';
 // Active class helpers
 $activePt       = $activeFilters['program_type'] ?? '';
-$activePtDef    = $activePt ? ($PROGRAM_DEFS[$activePt] ?? null) : null;
+$activePtDef    = $activePt ? ($ALL_CLASS_DEFS[$activePt] ?? null) : null;
 $isAllView      = !$activePt;
 $isVWView       = $activePt === 'victory_weekend';
 $isCCView       = $activePt === 'church_community';
@@ -73,11 +95,43 @@ if (!$isL113View) {
                     <p class="text-muted mb-0">All program attendance data — all classes, all years</p>
                     <?php endif; ?>
                 </div>
-                <button class="btn btn-<?php echo $activePtDef ? $activePtDef['color'] : 'primary'; ?>"
-                        data-bs-toggle="modal" data-bs-target="#addAttendanceModal">
-                    <i class="bi bi-plus-circle me-1"></i>Add <?php echo $activePtDef ? htmlspecialchars($activePtDef['label']).' ' : ''; ?>Record
-                </button>
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <?php
+                    // Shortcuts to the dedicated modules. Their records are driven by a
+                    // session/topic grid, so they are created there, not here.
+                    $isDedicatedView = isset($DEDICATED_DEFS[$activePt]);
+                    foreach ($DEDICATED_DEFS as $dKey => $dDef): ?>
+                    <a href="index.php?action=<?php echo $dDef['action']; ?>"
+                       class="btn btn-outline-<?php echo $dDef['color']; ?>"
+                       title="<?php echo htmlspecialchars($dDef['label']); ?> is managed in its own module">
+                        <i class="bi <?php echo $dDef['icon']; ?> me-1"></i><?php echo htmlspecialchars($dDef['label']); ?>
+                        <i class="bi bi-box-arrow-up-right ms-1" style="font-size:10px;"></i>
+                    </a>
+                    <?php endforeach; ?>
+                    <?php if (!$isDedicatedView): ?>
+                    <button class="btn btn-<?php echo $activePtDef ? $activePtDef['color'] : 'primary'; ?>"
+                            data-bs-toggle="modal" data-bs-target="#addAttendanceModal">
+                        <i class="bi bi-plus-circle me-1"></i>Add <?php echo $activePtDef ? htmlspecialchars($activePtDef['label']).' ' : ''; ?>Record
+                    </button>
+                    <?php endif; ?>
+                </div>
             </div>
+
+            <?php if ($isDedicatedView): ?>
+            <?php // Viewing legacy L113 / SF rows: readable, but not editable from here. ?>
+            <div class="alert alert-info d-flex align-items-center flex-wrap gap-2">
+                <i class="bi bi-info-circle-fill me-1"></i>
+                <span>
+                    <strong><?php echo htmlspecialchars($activePtDef['label']); ?></strong> records are managed in their own
+                    module, because completion depends on the full session/topic grid. Existing records below stay
+                    visible and unchanged.
+                </span>
+                <a href="index.php?action=<?php echo $DEDICATED_DEFS[$activePt]['action']; ?>"
+                   class="btn btn-sm btn-<?php echo $activePtDef['color']; ?> ms-auto">
+                    <i class="bi <?php echo $activePtDef['icon']; ?> me-1"></i>Open <?php echo htmlspecialchars($activePtDef['label']); ?>
+                </a>
+            </div>
+            <?php endif; ?>
 
             <!-- Tabs -->
             <ul class="nav nav-tabs mb-4">
@@ -215,17 +269,37 @@ if (!$isL113View) {
             <?php else: ?>
             <!-- All-classes program cards -->
             <div class="row mb-4 g-2">
-                <?php foreach ($PROGRAM_DEFS as $pType => $pDef):
+                <?php foreach ($ALL_CLASS_DEFS as $pType => $pDef):
                     $totalForProgram = 0;
                     foreach ($paStats[$pType] ?? [] as $yr => $cnt) $totalForProgram += $cnt;
                 ?>
+                <?php
+                // L113 / SF are managed in their own modules, so their card links
+                // straight there rather than to a generic filtered view.
+                $cardHref = isset($pDef['action'])
+                    ? 'index.php?action=' . $pDef['action']
+                    : 'index.php?action=attendanceRecords&program_type=' . $pType;
+                ?>
                 <div class="col-6 col-md-4 col-xl-2-4">
-                    <a href="index.php?action=attendanceRecords&program_type=<?php echo $pType; ?>"
-                       class="text-decoration-none">
-                        <div class="card text-center h-100" style="cursor:pointer;">
+                    <a href="<?php echo $cardHref; ?>"
+                       class="text-decoration-none"
+                       title="<?php echo isset($pDef['action']) ? 'Open the ' . htmlspecialchars($pDef['label']) . ' module' : 'Filter by ' . htmlspecialchars($pDef['label']); ?>">
+                        <div class="card text-center h-100<?php echo isset($pDef['action']) ? ' border-' . $pDef['color'] . ' border-opacity-50' : ''; ?>" style="cursor:pointer;">
                             <div class="card-body py-2 px-1">
                                 <div class="h4 fw-bold text-<?php echo $pDef['color']; ?> mb-0"><?php echo $totalForProgram; ?></div>
-                                <div style="font-size:11px;" class="text-muted"><?php echo $pDef['label']; ?></div>
+                                <div style="font-size:11px;" class="text-muted">
+                                    <?php echo $pDef['label']; ?>
+                                    <?php if (isset($pDef['action'])): ?>
+                                    <i class="bi bi-box-arrow-up-right ms-1" style="font-size:9px;"></i>
+                                    <?php endif; ?>
+                                </div>
+                                <?php if (isset($pDef['action'])): ?>
+                                <?php // Legacy records stay readable, but creation lives in the module. ?>
+                                <div class="badge bg-light text-muted border mt-1" style="font-size:9px;font-weight:500;">
+                                    <i class="bi bi-box-arrow-up-right me-1"></i>Managed in dedicated module
+                                </div>
+                                <div class="text-muted" style="font-size:9px;">legacy records</div>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </a>
@@ -347,7 +421,7 @@ if (!$isL113View) {
                                 <i class="bi bi-bar-chart me-1"></i>Filter by Class &amp; Year
                             </div>
                         </div>
-                        <?php foreach ($PROGRAM_DEFS as $pType => $pDef):
+                        <?php foreach ($ALL_CLASS_DEFS as $pType => $pDef):
                             // Use unique-member counts here so the badge totals match the pivot rows
                             // shown when this class/year is clicked. The pivot displays one row per
                             // member — so a member with two records in the same year counts once.
@@ -432,36 +506,80 @@ if (!$isL113View) {
             </div>
 
             <?php if ($isAllView): ?>
-            <!-- All Classes completion overview — counts members who have any record per class. Updates with filters. -->
+            <?php
+            /**
+             * Discipleship Journey Overview — DERIVED completion, all six classes.
+             *
+             * This used to be computed in JavaScript from the visible pivot rows,
+             * which meant it answered "who has any attendance record" (including
+             * unmatched people who can never complete a step) and drifted from the
+             * Dashboard and Member Profile. It now renders server-side from
+             * DiscipleshipProgressService — the same member_discipleship state
+             * those two read — so all three agree by construction.
+             *
+             * It is intentionally NOT filter-reactive: completion is a property of
+             * the member, not of whichever rows the table is currently showing.
+             */
+            $derivedStepCounts   = $derivedStepCounts   ?? [];
+            $derivedActiveCounts = $derivedActiveCounts ?? [];
+            $activeMemberTotal   = $activeMemberTotal   ?? 0;
+            $allMemberTotal      = $allMemberTotal      ?? 0;
+
+            $overviewCards = [
+                ['key' => 'victory_weekend',       'label' => 'Victory Weekend',       'color' => 'primary',   'icon' => 'bi-sun'],
+                ['key' => 'church_community',      'label' => 'Church Community',      'color' => 'secondary', 'icon' => 'bi-building'],
+                ['key' => 'making_disciples',      'label' => 'Making Disciples',      'color' => 'success',   'icon' => 'bi-person-plus'],
+                ['key' => 'empowering_leaders',    'label' => 'Empowering Leaders',    'color' => 'warning',   'icon' => 'bi-star'],
+                ['key' => 'leadership_113',        'label' => 'Leadership 1-1-3',      'color' => 'danger',    'icon' => 'bi-trophy'],
+                ['key' => 'spiritual_foundations', 'label' => 'Spiritual Foundations', 'color' => 'purple',    'icon' => 'bi-shield'],
+            ];
+            $ovDenom = max(1, $activeMemberTotal);
+            ?>
             <div class="card mb-3">
-                <div class="card-header py-2 px-3">
-                    <span class="text-white fw-semibold"><i class="bi bi-bar-chart-line-fill me-1"></i>Discipleship Journey Overview</span>
-                    <span class="badge bg-white text-primary ms-2" id="atOverviewTotal">0 members</span>
+                <div class="card-header py-2 px-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span class="text-white fw-semibold">
+                        <i class="bi bi-bar-chart-line-fill me-1"></i>Discipleship Journey Overview
+                        <span class="badge bg-white text-dark border ms-1" style="font-size:10px;">Derived completion</span>
+                    </span>
+                    <span class="badge bg-white text-primary">
+                        out of <?php echo (int)$activeMemberTotal; ?> active members
+                    </span>
                 </div>
                 <div class="card-body py-3 px-3" id="atOverviewBody">
                     <div class="row g-2">
-                        <?php
-                        $overviewCards = [
-                            ['key' => 'vw',   'label' => 'Victory Weekend',     'color' => 'primary',   'icon' => 'bi-sun'],
-                            ['key' => 'cc',   'label' => 'Church Community',    'color' => 'secondary', 'icon' => 'bi-building'],
-                            ['key' => 'md',   'label' => 'Making Disciples',    'color' => 'success',   'icon' => 'bi-person-plus'],
-                            ['key' => 'el',   'label' => 'Empowering Leaders',  'color' => 'warning',   'icon' => 'bi-star'],
-                            ['key' => 'l113', 'label' => 'Leadership 1-1-3',    'color' => 'danger',    'icon' => 'bi-trophy'],
-                        ];
-                        foreach ($overviewCards as $c): ?>
-                        <div class="col-6 col-md">
+                        <?php foreach ($overviewCards as $c):
+                            $done = (int)($derivedActiveCounts[$c['key']]['total'] ?? 0);
+                            $hist = (int)($derivedActiveCounts[$c['key']]['historical'] ?? 0);
+                            $pct  = (int)round($done / $ovDenom * 100);
+                        ?>
+                        <div class="col-6 col-md-4 col-xl-2">
                             <div class="border rounded p-2 h-100">
                                 <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <span class="small fw-semibold"><i class="bi <?php echo $c['icon']; ?> text-<?php echo $c['color']; ?> me-1"></i><?php echo $c['label']; ?></span>
-                                    <span class="badge bg-<?php echo $c['color']; ?>" id="atOv_<?php echo $c['key']; ?>">0/0</span>
+                                    <span class="small fw-semibold">
+                                        <i class="bi <?php echo $c['icon']; ?> text-<?php echo $c['color']; ?> me-1"></i><?php echo $c['label']; ?>
+                                    </span>
+                                    <span class="badge bg-<?php echo $c['color']; ?>"><?php echo $done; ?>/<?php echo (int)$activeMemberTotal; ?></span>
                                 </div>
                                 <div class="progress" style="height:6px;">
-                                    <div class="progress-bar bg-<?php echo $c['color']; ?>" id="atOvBar_<?php echo $c['key']; ?>" style="width:0%"></div>
+                                    <div class="progress-bar bg-<?php echo $c['color']; ?>" style="width:<?php echo $pct; ?>%"></div>
                                 </div>
-                                <div class="text-end small text-muted mt-1"><span id="atOvPct_<?php echo $c['key']; ?>">0%</span></div>
+                                <div class="d-flex justify-content-between mt-1" style="font-size:10px;">
+                                    <span class="text-muted">
+                                        <?php if ($hist > 0): ?>
+                                        <i class="bi bi-clock-history me-1" title="<?php echo $hist; ?> completed via an approved historical record"></i><?php echo $hist; ?> hist.
+                                        <?php endif; ?>
+                                    </span>
+                                    <span class="text-muted"><?php echo $pct; ?>%</span>
+                                </div>
                             </div>
                         </div>
                         <?php endforeach; ?>
+                    </div>
+                    <div class="border-top pt-2 mt-2 text-muted" style="font-size:11px;">
+                        <i class="bi bi-shield-check me-1"></i>
+                        Members whose discipleship step is <strong>complete</strong>, derived from attendance evidence plus
+                        approved historical completions — the same source as the Dashboard and each Member Profile.
+                        This is a <em>member</em> count and does not change with the record filters below.
                     </div>
                 </div>
             </div>
@@ -832,7 +950,7 @@ if (!$isL113View) {
 
                                 <?php else: // record view (specific class) ?>
                                 <?php $rowNum = 0; foreach ($records as $rec):
-                                    $pDef      = $PROGRAM_DEFS[$rec['program_type']] ?? ['label' => $rec['program_type'], 'color' => 'secondary', 'icon' => 'bi-circle', 'short' => '?'];
+                                    $pDef      = $ALL_CLASS_DEFS[$rec['program_type']] ?? ['label' => $rec['program_type'], 'color' => 'secondary', 'icon' => 'bi-circle', 'short' => '?'];
                                     $extraData = $rec['extra_data'] ? json_decode($rec['extra_data'], true) : null;
                                     $isVW      = $rec['program_type'] === 'victory_weekend';
                                     $recCc     = $rec['counselor_contact'] ?? null;
@@ -1079,6 +1197,113 @@ if (!$isL113View) {
             <?php elseif ($activeTab === 'stats'): ?>
 
             <!-- ── Statistics Tab ─────────────────────────────────────────── -->
+            <?php
+            /**
+             * Discipleship Completion — derived member state, all six classes.
+             *
+             * Deliberately separated from the record/enrollment statistics further
+             * down: those count ROWS in program_attendances, this counts MEMBERS
+             * whose derived journey step is complete. They are different units and
+             * were previously easy to read as the same thing.
+             *
+             * L113 and SF use their own dedicated completion rules (no missed
+             * sessions / all required topics cumulatively), applied by the service.
+             */
+            $derivedStepCounts   = $derivedStepCounts   ?? [];
+            $derivedActiveCounts = $derivedActiveCounts ?? [];
+            $activeMemberTotal   = $activeMemberTotal   ?? 0;
+            $allMemberTotal      = $allMemberTotal      ?? 0;
+
+            $completionCards = [
+                ['key' => 'victory_weekend',       'label' => 'Victory Weekend',       'short' => 'VW',   'color' => 'primary',   'icon' => 'bi-sun',         'link' => 'index.php?action=attendanceRecords&program_type=victory_weekend'],
+                ['key' => 'church_community',      'label' => 'Church Community',      'short' => 'CC',   'color' => 'secondary', 'icon' => 'bi-building',    'link' => 'index.php?action=attendanceRecords&program_type=church_community'],
+                ['key' => 'making_disciples',      'label' => 'Making Disciples',      'short' => 'MD',   'color' => 'success',   'icon' => 'bi-person-plus', 'link' => 'index.php?action=attendanceRecords&program_type=making_disciples'],
+                ['key' => 'empowering_leaders',    'label' => 'Empowering Leaders',    'short' => 'EL',   'color' => 'warning',   'icon' => 'bi-star',        'link' => 'index.php?action=attendanceRecords&program_type=empowering_leaders'],
+                ['key' => 'leadership_113',        'label' => 'Leadership 1-1-3',      'short' => 'L113', 'color' => 'danger',    'icon' => 'bi-trophy',      'link' => 'index.php?action=leadership113',          'dedicated' => true],
+                ['key' => 'spiritual_foundations', 'label' => 'Spiritual Foundations', 'short' => 'SF',   'color' => 'purple',    'icon' => 'bi-shield',      'link' => 'index.php?action=spiritualFoundations',  'dedicated' => true],
+            ];
+            $compDenom = max(1, $activeMemberTotal);
+            ?>
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span class="text-white fw-semibold">
+                        <i class="bi bi-patch-check-fill me-2"></i>Discipleship Completion
+                        <span class="badge bg-white text-dark border ms-1" style="font-size:10px;">Derived member state</span>
+                    </span>
+                    <span class="badge bg-white text-dark border">
+                        Denominator: <?php echo (int)$activeMemberTotal; ?> active members
+                    </span>
+                </div>
+                <div class="card-body p-0">
+                    <p class="small text-muted px-3 pt-3 mb-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <strong>Members</strong> whose discipleship step is complete, derived from attendance evidence
+                        plus approved historical completions. This is <em>not</em> a record count &mdash; see
+                        <em>Attendance Records</em> below for enrollments.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0 align-middle" id="atCompletionTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Class</th>
+                                    <th class="text-center text-success">Completed</th>
+                                    <th class="text-center text-warning">Incomplete</th>
+                                    <th style="min-width:150px">Completion % <span class="text-muted fw-normal">(of active members)</span></th>
+                                    <th class="text-center text-muted" title="Completed via an approved historical record rather than attendance">Historical</th>
+                                    <th class="text-center" title="Rows in program_attendances — enrollments, not completions">Records</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($completionCards as $cc):
+                                    $done   = (int)($derivedActiveCounts[$cc['key']]['total'] ?? 0);
+                                    $hist   = (int)($derivedActiveCounts[$cc['key']]['historical'] ?? 0);
+                                    $todo   = max(0, $activeMemberTotal - $done);
+                                    $pct    = (int)round($done / $compDenom * 100);
+                                    $recs   = array_sum($paStats[$cc['key']] ?? []);
+                                    $barCol = $pct >= 60 ? 'success' : ($pct >= 30 ? 'warning' : 'danger');
+                                ?>
+                                <tr>
+                                    <td>
+                                        <a href="<?php echo $cc['link']; ?>" class="text-decoration-none text-reset fw-semibold">
+                                            <span class="badge bg-<?php echo $cc['color']; ?> me-1"><i class="bi <?php echo $cc['icon']; ?>"></i></span>
+                                            <?php echo htmlspecialchars($cc['label']); ?>
+                                        </a>
+                                        <?php if (!empty($cc['dedicated'])): ?>
+                                        <div class="text-muted" style="font-size:10px;">
+                                            <i class="bi bi-box-arrow-up-right me-1"></i>Managed in dedicated module
+                                        </div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="text-center fw-bold text-success"><?php echo $done; ?></td>
+                                    <td class="text-center text-warning"><?php echo $todo; ?></td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="progress flex-grow-1" style="height:8px;">
+                                                <div class="progress-bar bg-<?php echo $barCol; ?>" style="width:<?php echo $pct; ?>%"></div>
+                                            </div>
+                                            <small class="fw-semibold text-<?php echo $barCol; ?>" style="min-width:34px;"><?php echo $pct; ?>%</small>
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <?php if ($hist > 0): ?>
+                                        <span class="badge bg-light text-dark border"><?php echo $hist; ?></span>
+                                        <?php else: ?><span class="text-muted">—</span><?php endif; ?>
+                                    </td>
+                                    <td class="text-center text-muted"><?php echo (int)$recs; ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent small text-muted">
+                    <i class="bi bi-exclamation-circle me-1"></i>
+                    <strong>Completed</strong> counts members; <strong>Records</strong> counts attendance rows. They
+                    differ legitimately &mdash; one member can hold several records, and a record that doesn't meet a
+                    class's completion rule (or isn't linked to a member) never completes anyone.
+                </div>
+            </div>
+
             <?php if ($isVWView): ?>
             <?php
             /* ── Victory Weekend statistics computation ── */
@@ -1877,7 +2102,7 @@ if (!$isL113View) {
 
             // Discipleship pipeline totals
             $pipelineTotals = [];
-            foreach ($PROGRAM_DEFS as $_pt => $_pd) {
+            foreach ($ALL_CLASS_DEFS as $_pt => $_pd) {
                 $pipelineTotals[$_pt] = array_sum($paStats[$_pt] ?? []);
             }
             $pipelineMax = max(array_values($pipelineTotals) ?: [1]);
@@ -1886,7 +2111,7 @@ if (!$isL113View) {
 
             <!-- Match Stats Cards -->
             <div class="row mb-4 g-3">
-                <?php foreach ($PROGRAM_DEFS as $pType => $pDef):
+                <?php foreach ($ALL_CLASS_DEFS as $pType => $pDef):
                     $ms = $matchStats[$pType] ?? ['total'=>0,'matched'=>0,'unmatched'=>0];
                     $pct = $ms['total'] > 0 ? round($ms['matched'] / $ms['total'] * 100) : 0;
                 ?>
@@ -1917,7 +2142,7 @@ if (!$isL113View) {
             <?php
             // Tally how many of the 5 classes (VW/CC/MD/EL/L113) each unique member has records for.
             // Bucket members by that count so the chart shows depth of discipleship engagement.
-            $classKeysAll = array_keys($PROGRAM_DEFS);
+            $classKeysAll = array_keys($ALL_CLASS_DEFS);
             $memberClassSet = [];   // key => [classes_attended]
             foreach ($records as $_r) {
                 $k = $_r['member_id'] ? ('m_' . (int)$_r['member_id']) : ('u_' . strtolower(trim($_r['full_name_display'])));
@@ -1999,7 +2224,7 @@ if (!$isL113View) {
                         <div class="card-body pb-2">
                             <p class="text-muted small mb-3">Total attendees per class — bars scaled to the largest class. Percentages are relative to Victory Weekend (entry point).</p>
                             <div class="row g-3">
-                            <?php foreach ($PROGRAM_DEFS as $_pt => $_pd):
+                            <?php foreach ($ALL_CLASS_DEFS as $_pt => $_pd):
                                 $_cnt    = $pipelineTotals[$_pt];
                                 $_barPct = $pipelineMax > 0 ? round($_cnt / $pipelineMax * 100) : 0;
                                 $_vwPct  = $pipelineVW  > 0 ? round($_cnt / $pipelineVW  * 100) : ($cnt > 0 ? 100 : 0);
@@ -2057,7 +2282,7 @@ if (!$isL113View) {
                                     <thead>
                                         <tr>
                                             <th>Year</th>
-                                            <?php foreach ($PROGRAM_DEFS as $pt => $pd): ?>
+                                            <?php foreach ($ALL_CLASS_DEFS as $pt => $pd): ?>
                                             <th class="text-<?php echo $pd['color']; ?>"><?php echo $pd['short']; ?></th>
                                             <?php endforeach; ?>
                                             <th class="fw-bold">Total</th>
@@ -2067,7 +2292,7 @@ if (!$isL113View) {
                                         <?php
                                             // Column totals across all years — built as we render the per-year rows
                                             // and emitted as a final "Total" row so it shows up in the exports.
-                                            $colTotals  = array_fill_keys(array_keys($PROGRAM_DEFS), 0);
+                                            $colTotals  = array_fill_keys(array_keys($ALL_CLASS_DEFS), 0);
                                             $grandTotal = 0;
                                         ?>
                                         <?php foreach ($allYears as $yr):
@@ -2075,7 +2300,7 @@ if (!$isL113View) {
                                         ?>
                                         <tr>
                                             <td><span class="badge bg-secondary"><?php echo $yr; ?></span></td>
-                                            <?php foreach ($PROGRAM_DEFS as $pt => $pd):
+                                            <?php foreach ($ALL_CLASS_DEFS as $pt => $pd):
                                                 $cnt = $paStats[$pt][$yr] ?? 0;
                                                 $rowTotal           += $cnt;
                                                 $colTotals[$pt]     += $cnt;
@@ -2087,7 +2312,7 @@ if (!$isL113View) {
                                         <?php $grandTotal += $rowTotal; endforeach; ?>
                                         <tr class="table-secondary fw-bold">
                                             <td>TOTAL</td>
-                                            <?php foreach ($PROGRAM_DEFS as $pt => $pd): ?>
+                                            <?php foreach ($ALL_CLASS_DEFS as $pt => $pd): ?>
                                             <td class="text-<?php echo $pd['color']; ?>"><?php echo $colTotals[$pt] ?: 0; ?></td>
                                             <?php endforeach; ?>
                                             <td><?php echo $grandTotal; ?></td>
@@ -2194,8 +2419,8 @@ function updateAtExtraFields(form) {
     $(form).find('.at-field-counselor').toggle(!isCC && !isMD && !isEL);
     $(form).find('.at-field-couns-contact').toggle(!isCC && !isMD && !isEL);
     // Update modal header color + title based on selected class
-    var progDefs  = <?php echo json_encode(array_map(fn($p) => $p['label'], $PROGRAM_DEFS)); ?>;
-    var progColors = <?php echo json_encode(array_map(fn($p) => $p['color'], $PROGRAM_DEFS)); ?>;
+    var progDefs  = <?php echo json_encode(array_map(fn($p) => $p['label'], $ALL_CLASS_DEFS)); ?>;
+    var progColors = <?php echo json_encode(array_map(fn($p) => $p['color'], $ALL_CLASS_DEFS)); ?>;
     var ptLabel = progDefs[pt] || '';
     var ptColor = progColors[pt] || 'primary';
     var $modal = $(form).closest('.modal');
@@ -3049,7 +3274,7 @@ var PA_STATS        = <?php echo json_encode($paStats); ?>;
 var MATCH_STATS     = <?php echo json_encode($matchStats); ?>;
 var ALL_YEARS       = <?php echo json_encode($allYears ?? []); ?>;
 var MONTHLY_BY_YEAR = <?php echo json_encode($monthlyByYear ?? []); ?>;
-var PROG_DEFS   = <?php echo json_encode(array_map(fn($p) => ['label'=>$p['label'],'color'=>$p['color'],'short'=>$p['short']], $PROGRAM_DEFS)); ?>;
+var PROG_DEFS   = <?php echo json_encode(array_map(fn($p) => ['label'=>$p['label'],'color'=>$p['color'],'short'=>$p['short']], $ALL_CLASS_DEFS)); ?>;
 var CHART_COLORS = {
     victory_weekend:    {fill:'rgba(13,110,253,.8)',   border:'rgb(13,110,253)',   area:'rgba(13,110,253,.12)'},
     church_community:   {fill:'rgba(25,135,84,.8)',    border:'rgb(25,135,84)',    area:'rgba(25,135,84,.12)'},
@@ -3499,43 +3724,12 @@ function initAttendanceFilters() {
         dom: 'rt<"d-flex justify-content-between align-items-center mt-2 px-2"ip>'
     });
 
-    // Recompute the All Classes overview (per-class member counts) from currently-visible (post-filter) pivot rows.
-    function atUpdateAllClassesOverview() {
-        var box = document.getElementById('atOverviewBody');
-        if (!box || !window.atTable) return;
-        var classes = ['vw','cc','md','el','l113'];
-        // Map a data-pt token to our short key
-        var keyMap = {
-            'victory_weekend': 'vw',
-            'church_community': 'cc',
-            'making_disciples': 'md',
-            'empowering_leaders': 'el',
-            'leadership_113': 'l113'
-        };
-        var counts = { vw:0, cc:0, md:0, el:0, l113:0 };
-        var total = 0;
-        window.atTable.rows({ search: 'applied' }).every(function() {
-            var n = this.node(); if (!n) return;
-            total++;
-            var pts = (n.getAttribute('data-pt') || '').split(',').filter(Boolean);
-            pts.forEach(function(pt) {
-                var k = keyMap[pt];
-                if (k) counts[k]++;
-            });
-        });
-        var totalEl = document.getElementById('atOverviewTotal');
-        if (totalEl) totalEl.textContent = total + (total === 1 ? ' member' : ' members');
-        classes.forEach(function(k) {
-            var c = counts[k];
-            var pct = total > 0 ? Math.round(c / total * 100) : 0;
-            var cellNum = document.getElementById('atOv_'    + k);
-            var cellPct = document.getElementById('atOvPct_' + k);
-            var bar     = document.getElementById('atOvBar_' + k);
-            if (cellNum) cellNum.textContent = c + '/' + total;
-            if (cellPct) cellPct.textContent = pct + '%';
-            if (bar)     bar.style.width = pct + '%';
-        });
-    }
+    // The Discipleship Journey Overview is now rendered server-side from the
+    // derived discipleship state (DiscipleshipProgressService), so there is
+    // nothing to recompute here. It previously counted visible pivot rows,
+    // which measured "has any attendance record" — including unmatched people —
+    // and therefore disagreed with the Dashboard and Member Profile.
+    function atUpdateAllClassesOverview() { /* intentionally empty */ }
 
     // Recompute the post-filter summary line.
     // VW view: Water Baptism count. MD view: P1/P2/both/neither counts.

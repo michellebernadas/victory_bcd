@@ -751,60 +751,29 @@ class ProgramAttendance {
      * @param int    $memberId    The members.id; pass 0/null to skip silently.
      * @param string $programType e.g. 'victory_weekend' — maps 1:1 to a members boolean column.
      */
-    public function syncMemberFlag(?int $memberId, string $programType): void {
+    /**
+     * Re-derives the member's WHOLE discipleship journey from current evidence.
+     *
+     * This used to decide completion itself — "any active record exists → set
+     * the flag to 1" — which made it a second source of truth alongside the
+     * member form and a blind UPDATE in AttendanceController, and meant a
+     * session class could be marked complete on a record with absences.
+     *
+     * It now delegates to DiscipleshipProgressService, the only thing allowed
+     * to decide completion. The signature is unchanged so every existing call
+     * site keeps working; $programType is no longer needed because the service
+     * recalculates all steps (cheap, and it can't leave a stale one behind).
+     */
+    public function syncMemberFlag(?int $memberId, string $programType = ''): void {
         if (!$memberId) return;
-        // Whitelist of program_type → members column. Anything else is a no-op.
-        $colMap = [
-            'victory_weekend'       => 'victory_weekend',
-            'church_community'      => 'church_community',
-            'making_disciples'      => 'making_disciples',
-            'empowering_leaders'    => 'empowering_leaders',
-            'leadership_113'        => 'leadership_113',
-            'spiritual_foundations' => 'spiritual_foundations',
-        ];
-        if (!isset($colMap[$programType])) return;
-        $col = $colMap[$programType];
-        try {
-            $stmt = $this->db->prepare(
-                "SELECT 1 FROM program_attendances
-                 WHERE member_id = ? AND program_type = ? AND is_deleted = 0 AND status = 'active'
-                 LIMIT 1"
-            );
-            $stmt->execute([$memberId, $programType]);
-            $hasActive = $stmt->fetchColumn() !== false ? 1 : 0;
-            $this->db->prepare("UPDATE members SET {$col} = ? WHERE id = ?")
-                ->execute([$hasActive, $memberId]);
-
-            // Also mirror the change into the member_discipleship junction table so list filters
-            // (which join against it) stay accurate.
-            $stmt = $this->db->prepare("SELECT id FROM discipleship_steps WHERE column_key = ? LIMIT 1");
-            $stmt->execute([$col]);
-            $stepId = $stmt->fetchColumn();
-            if ($stepId) {
-                if ($hasActive) {
-                    $this->db->prepare("INSERT IGNORE INTO member_discipleship (member_id, step_id) VALUES (?, ?)")
-                        ->execute([$memberId, (int)$stepId]);
-                } else {
-                    $this->db->prepare("DELETE FROM member_discipleship WHERE member_id = ? AND step_id = ?")
-                        ->execute([$memberId, (int)$stepId]);
-                }
-            }
-        } catch (PDOException $e) {
-            error_log("ProgramAttendance::syncMemberFlag error: " . $e->getMessage());
-        }
+        require_once 'models/DiscipleshipProgressService.php';
+        (new DiscipleshipProgressService($this->db))->recalculateMember((int)$memberId);
     }
 
-    /** Helper for the controller deactivate / activate / delete actions — looks up the member_id + program_type, then syncs. */
+    /** Recalculates the member behind an attendance record (deactivate / activate / delete). */
     public function syncMemberFlagFromRecord(int $recordId): void {
-        try {
-            $stmt = $this->db->prepare("SELECT member_id, program_type FROM program_attendances WHERE id = ?");
-            $stmt->execute([$recordId]);
-            $row = $stmt->fetch();
-            if (!$row) return;
-            $this->syncMemberFlag((int)($row['member_id'] ?? 0), (string)($row['program_type'] ?? ''));
-        } catch (PDOException $e) {
-            error_log("ProgramAttendance::syncMemberFlagFromRecord error: " . $e->getMessage());
-        }
+        require_once 'models/DiscipleshipProgressService.php';
+        (new DiscipleshipProgressService($this->db))->recalculateFromRecord($recordId);
     }
 
     /**

@@ -149,6 +149,15 @@ foreach ($records as $rec) {
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
             <?php endif; ?>
+            <?php // Surfaces messages redirected here, e.g. a generic attendance
+                  // submission for this class being rejected. ?>
+            <?php if (isset($_GET['error'])): ?>
+            <div class="alert alert-danger alert-dismissible fade show">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                <?php echo htmlspecialchars($_GET['msg'] ?? 'An error occurred.'); ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            <?php endif; ?>
 
             <?php if ($activeTab === 'records'): ?>
 
@@ -1009,7 +1018,6 @@ function openEditL113Modal(rec) {
     }
 
     setSelect2('program_year',  String(rec.program_year), String(rec.program_year));
-    setSelect2('program_type',  rec.program_type,   rec.program_type);
     setSelect2('l113_batch',    rec.l113_batch,     rec.l113_batch);
 
     // Linked member Select2 (AJAX)
@@ -1070,7 +1078,6 @@ function openDuplicateL113Modal(rec) {
         $sel.val(value || null);
     }
     setSel('program_year', String(rec.program_year || ''), String(rec.program_year || ''));
-    setSel('program_type', rec.program_type || 'leadership_113', rec.program_type || 'leadership_113');
     setSel('l113_batch',   rec.l113_batch   || '',                rec.l113_batch   || '');
 
     // Linked member cleared (new person). Drop leftover options from a previous match.
@@ -1081,7 +1088,7 @@ function openDuplicateL113Modal(rec) {
     $(form).find('.l113-auto-link-notice').hide();
 
     // Refresh every Select2 chip so the visible UI matches the underlying values.
-    ['program_year', 'program_type', 'l113_batch', 'member_id'].forEach(function(name) {
+    ['program_year', 'l113_batch', 'member_id'].forEach(function(name) {
         var $el = $(form).find('[name="' + name + '"]');
         if ($el.hasClass('select2-hidden-accessible')) $el.trigger('change.select2');
     });
@@ -1577,14 +1584,7 @@ $(function() {
 
     // Select2 for all L113 modal fields
     if (typeof $.fn.select2 !== 'undefined') {
-        // Class (program_type)
-        $('.l113-program-select2').each(function() {
-            $(this).select2({
-                dropdownParent: $(this).closest('.modal'),
-                placeholder: '\u2014 Select Class \u2014',
-                minimumResultsForSearch: Infinity,
-            });
-        });
+        // (Class picker removed \u2014 the class is fixed to Leadership 1-1-3 by the page.)
 
         // Year (tags — can type new)
         $('.l113-year-select2').each(function() {

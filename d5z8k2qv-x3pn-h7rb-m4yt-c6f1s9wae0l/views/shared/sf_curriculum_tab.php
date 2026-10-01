@@ -78,7 +78,7 @@ $sfRequiredCount = count(array_filter($sfActiveClass, fn($r) => (int)$r['is_requ
                         <?php endif; ?>
                         <td class="text-center">
                             <?php if ($isClass && $row['week_no'] !== null): ?>
-                            <span class="badge bg-info">Week <?php echo (int)$row['week_no']; ?></span>
+                            <span class="badge bg-purple">Week <?php echo (int)$row['week_no']; ?></span>
                             <?php else: ?>
                             <span class="badge bg-secondary" title="Class/session-level break — not a numbered topic">Break</span>
                             <?php endif; ?>
@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', function () {
         animation: 150,
         onEnd: function () {
             var ids = Array.from(body.querySelectorAll('tr[data-id]'))
-                .filter(function (tr) { return tr.querySelector('.badge.bg-info'); })   // class weeks only
+                .filter(function (tr) { return tr.querySelector('.badge.bg-purple'); })   // class weeks only
                 .map(function (tr) { return tr.dataset.id; });
             var params = new URLSearchParams();
             ids.forEach(function (id) { params.append('ids[]', id); });

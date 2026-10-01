@@ -890,15 +890,15 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                             <input type="text" class="form-control" name="contact_number" placeholder="09XXXXXXXXX">
                         </div>
                         <div class="col-md-8">
-                            <label class="form-label fw-semibold d-block">Discipleship Journey &mdash; Steps Completed</label>
+                            <label class="form-label fw-semibold d-block">Discipleship Journey</label>
+                            <?php // Read-only: completion is derived by DiscipleshipProgressService
+                                  // from attendance evidence plus admin-approved historical records.
+                                  // No editable control here can set it. ?>
                             <div class="alert alert-info py-2 mb-0 small">
-                                <i class="bi bi-info-circle me-1"></i>
-                                Discipleship steps are derived automatically from <strong>Attendance Records</strong>.
-                                After saving this member, head to
-                                <a href="index.php?action=attendanceRecords" target="_blank" class="alert-link">Attendance Records</a>
-                                to add VW / CC / MD / EL records, or
-                                <a href="index.php?action=leadership113" target="_blank" class="alert-link">Leadership&nbsp;1-1-3</a>
-                                for L113 — those records drive the steps shown on this member's profile.
+                                <i class="bi bi-shield-check me-1"></i>
+                                Discipleship Journey is managed automatically from attendance and class
+                                completion records. Historical completions can be managed by an administrator
+                                under <strong>Settings &rarr; Historical Completions</strong>.
                             </div>
                         </div>
                         <div class="col-12">
@@ -982,52 +982,15 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                             <input type="text" class="form-control" name="contact_number" id="edit_contact_number" placeholder="09XXXXXXXXX">
                         </div>
                         <div class="col-md-8">
-                            <label class="form-label fw-semibold d-block">Discipleship Journey &mdash; Steps Completed</label>
-                            <?php
-                                // Attendance-tracked steps (the 5 classes) sync from Attendance Records / L113 — read-only here.
-                                // Other steps (PBC, SF) have no attendance flow, so they stay editable.
-                                $_attendanceKeys = ['victory_weekend','church_community','making_disciples','empowering_leaders','leadership_113'];
-                                $_autoSteps   = array_filter($discipleshipSteps, fn($s) => in_array($s['column_key'] ?? '', $_attendanceKeys, true));
-                                $_manualSteps = array_filter($discipleshipSteps, fn($s) => !in_array($s['column_key'] ?? '', $_attendanceKeys, true));
-                            ?>
-                            <?php if (!empty($_autoSteps)): ?>
-                            <div class="small text-muted mt-1 mb-1">
-                                <i class="bi bi-link-45deg me-1"></i>Auto-derived from attendance:
-                            </div>
-                            <div class="d-flex flex-wrap gap-2 mb-2" id="edit_discipleship_container">
-                                <?php foreach ($_autoSteps as $step): ?>
-                                <span class="badge edit-step-badge bg-light text-muted border"
-                                      data-step-id="<?php echo $step['id']; ?>"
-                                      data-step-color="<?php echo htmlspecialchars($step['color']); ?>"
-                                      style="font-size:12px;padding:.45em .7em;">
-                                    <i class="bi <?php echo htmlspecialchars($step['icon']); ?> me-1"></i><?php echo htmlspecialchars($step['name']); ?>
-                                </span>
-                                <?php endforeach; ?>
-                            </div>
-                            <?php endif; ?>
-                            <?php if (!empty($_manualSteps)): ?>
-                            <div class="small text-muted mt-2 mb-1">
-                                <i class="bi bi-pencil-square me-1"></i>Manual (no attendance flow — tick to mark complete):
-                            </div>
-                            <div class="d-flex flex-wrap gap-3 mt-1">
-                                <?php foreach ($_manualSteps as $step): ?>
-                                <div class="form-check">
-                                    <input class="form-check-input edit-step-cb" type="checkbox" name="discipleship_steps[]"
-                                           id="edit_step_<?php echo $step['id']; ?>" value="<?php echo $step['id']; ?>">
-                                    <label class="form-check-label" for="edit_step_<?php echo $step['id']; ?>">
-                                        <i class="bi <?php echo htmlspecialchars($step['icon']); ?> text-<?php echo htmlspecialchars($step['color']); ?> me-1"></i><?php echo htmlspecialchars($step['name']); ?>
-                                    </label>
-                                </div>
-                                <?php endforeach; ?>
-                            </div>
-                            <?php endif; ?>
-                            <div class="form-text small mt-2">
-                                <i class="bi bi-info-circle me-1"></i>
-                                The first 5 steps auto-update when you add records on
-                                <a href="index.php?action=attendanceRecords" target="_blank">Attendance Records</a>
-                                or
-                                <a href="index.php?action=leadership113" target="_blank">Leadership&nbsp;1-1-3</a>.
-                                PBC / SF have no attendance grid so you set them here.
+                            <label class="form-label fw-semibold d-block">Discipleship Journey</label>
+                            <?php // Read-only: completion is derived by DiscipleshipProgressService
+                                  // from attendance evidence plus admin-approved historical records.
+                                  // No editable control here can set it. ?>
+                            <div class="alert alert-info py-2 mb-0 small">
+                                <i class="bi bi-shield-check me-1"></i>
+                                Discipleship Journey is managed automatically from attendance and class
+                                completion records. Historical completions can be managed by an administrator
+                                under <strong>Settings &rarr; Historical Completions</strong>.
                             </div>
                         </div>
                         <div class="col-12">
@@ -1138,20 +1101,9 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
         // Single-select dropdowns now wrapped in Select2 — also need change.select2 trigger
         $('#edit_civil_status, #edit_member_status, #edit_volunteer_status').trigger('change.select2');
 
-        // Read-only badges: color them with the step's color when completed; muted-grey otherwise.
-        var completedIds = member.completed_step_ids || [];
-        document.querySelectorAll('.edit-step-badge').forEach(function(badge) {
-            var stepId = parseInt(badge.dataset.stepId, 10);
-            var color  = badge.dataset.stepColor || 'success';
-            badge.className = 'badge edit-step-badge';
-            badge.style.fontSize = '12px';
-            badge.style.padding = '.45em .7em';
-            if (completedIds.indexOf(stepId) !== -1) {
-                badge.classList.add('bg-' + color, color === 'warning' ? 'text-dark' : 'text-white');
-            } else {
-                badge.classList.add('bg-light', 'text-muted', 'border');
-            }
-        });
+        // No discipleship controls to populate here any more — completion is
+        // derived, so the form shows a read-only note instead. The member's
+        // actual progress (and its source) lives on their profile page.
 
         document.getElementById('editMemberForm').action = 'index.php?action=updateMember&id=' + member.id;
         var modal = new bootstrap.Modal(document.getElementById('editMemberModal'));

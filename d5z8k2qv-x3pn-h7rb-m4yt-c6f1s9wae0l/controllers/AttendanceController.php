@@ -37,10 +37,57 @@ class AttendanceController {
         }
         // Match-status filter persists across server-side navigation via the `match` URL parameter.
         $activeMatch = in_array($_GET['match'] ?? '', ['matched', 'unmatched'], true) ? $_GET['match'] : 'all';
+
+        // Authoritative derived discipleship state — the SAME source the Dashboard
+        // and Member Profile read. The Journey Overview used to be computed in JS
+        // from visible pivot rows (i.e. "has any attendance record", counting
+        // unmatched people too), which is why its numbers disagreed with theirs.
+        require_once 'models/DiscipleshipProgressService.php';
+        require_once 'models/Member.php';
+        $progressService    = new DiscipleshipProgressService($this->db);
+        $derivedStepCounts  = $progressService->getStepCounts(false);        // all non-deleted members
+        $derivedActiveCounts= $progressService->getStepCounts(true);         // active members only
+        $memberTotals       = (new Member($this->db))->getStats();
+        $activeMemberTotal  = (int)($memberTotals['active'] ?? 0);
+        $allMemberTotal     = (int)($memberTotals['total'] ?? 0);
+
         include 'views/attendance_records.php';
     }
 
+    /**
+     * Classes the generic attendance form may create, and the module that owns
+     * each of the rest.
+     *
+     * Leadership 1-1-3 and Spiritual Foundations completion is decided by a
+     * per-session / per-topic grid that this form cannot capture, so a generic
+     * row for them would never be valid completion evidence — it would just be
+     * a record the dedicated module has to repair. They are rejected here as
+     * well as hidden from the dropdown, so a crafted POST can't slip one in.
+     */
+    private const DEDICATED_MODULES = [
+        'leadership_113'        => ['label' => 'Leadership 1-1-3',      'action' => 'leadership113'],
+        'spiritual_foundations' => ['label' => 'Spiritual Foundations', 'action' => 'spiritualFoundations'],
+    ];
+
+    /**
+     * Blocks a generic submission for a dedicated class. Returns only when the
+     * program_type is one this form owns.
+     */
+    private function rejectDedicatedClass(array $data): void {
+        $pt = trim((string)($data['program_type'] ?? ''));
+        if (!isset(self::DEDICATED_MODULES[$pt])) return;
+
+        $mod = self::DEDICATED_MODULES[$pt];
+        $msg = sprintf(
+            '%s attendance is managed from the %s module. Nothing was saved — please add or edit the record there.',
+            $mod['label'], $mod['label']
+        );
+        header('Location: index.php?action=' . $mod['action'] . '&error=1&msg=' . urlencode($msg));
+        exit();
+    }
+
     public function addAttendance(array $data): void {
+        $this->rejectDedicatedClass($data);
         $data = $this->normalizeMdParts($data);
         $result = $this->paModel->add($data);
         if ($result) {
@@ -57,9 +104,16 @@ class AttendanceController {
     }
 
     public function updateAttendance(int $id, array $data): void {
+        // Blocks both directions: converting a generic row INTO an L113/SF row,
+        // and editing an existing legacy L113/SF row through this form (which
+        // would drop its session grid).
+        $this->rejectDedicatedClass($data);
+        $existing = $this->paModel->getById($id);
+        if ($existing) $this->rejectDedicatedClass(['program_type' => $existing['program_type']]);
+
         $data = $this->normalizeMdParts($data);
         // Capture the OLD member_id+pt before update so we can also re-sync the previous member if the row moved.
-        $oldRow = $this->paModel->getById($id);
+        $oldRow = $existing;
         $result = $this->paModel->update($id, $data);
         if ($result) {
             $this->paModel->syncMemberFlag((int)($data['member_id'] ?? 0), (string)($data['program_type'] ?? ''));
@@ -104,18 +158,21 @@ class AttendanceController {
     }
 
     /**
-     * When saving a Victory Weekend record with water_baptism=1, mark the linked
-     * member's victory_weekend flag. (CC/MD/EL follow-up sync was removed — those
-     * classes have their own records, no need to mirror via VW.)
+     * REMOVED: this used to run `UPDATE members SET victory_weekend = 1` when a
+     * Victory Weekend record had water_baptism=1.
+     *
+     * That was a second source of truth, and a write-only one — it could set the
+     * flag but never clear it, so deleting the record left the member showing
+     * Victory Weekend complete forever. The flag is now derived from the
+     * attendance record itself by DiscipleshipProgressService, which handles the
+     * water-baptism case automatically (the VW record IS the evidence) and
+     * correctly reverts the step if that record is removed.
+     *
+     * Kept as a no-op so the call sites stay readable in diffs; safe to delete
+     * once the Laravel port lands.
      */
     private function syncMemberDiscipleship(int $memberId, array $data): void {
-        if (!$memberId || ($data['program_type'] ?? '') !== 'victory_weekend') return;
-        if (empty($data['water_baptism'])) return;
-        try {
-            $this->db->prepare("UPDATE members SET victory_weekend = 1 WHERE id = ?")->execute([$memberId]);
-        } catch (Exception $e) {
-            error_log("syncMemberDiscipleship error: " . $e->getMessage());
-        }
+        // Intentionally empty — see DiscipleshipProgressService::recalculateMember().
     }
 
     public function deactivateAttendance(int $id): void {

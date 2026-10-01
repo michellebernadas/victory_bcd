@@ -212,7 +212,7 @@ include 'shared/header.php';
                                 ['label' => 'Making Disciples',      'key' => 'making_disciples',      'color' => 'success',   'icon' => 'bi-person-plus', 'link' => 'index.php?action=attendanceRecords&program_type=making_disciples'],
                                 ['label' => 'Empowering Leaders',    'key' => 'empowering_leaders',    'color' => 'warning',   'icon' => 'bi-star',        'link' => 'index.php?action=attendanceRecords&program_type=empowering_leaders'],
                                 ['label' => 'Leadership 1-1-3',      'key' => 'leadership_113',        'color' => 'danger',    'icon' => 'bi-trophy',      'link' => 'index.php?action=leadership113'],
-                                ['label' => 'Spiritual Foundations', 'key' => 'spiritual_foundations', 'color' => 'info',      'icon' => 'bi-shield',      'link' => 'index.php?action=spiritualFoundations'],
+                                ['label' => 'Spiritual Foundations', 'key' => 'spiritual_foundations', 'color' => 'purple',    'icon' => 'bi-shield',      'link' => 'index.php?action=spiritualFoundations'],
                             ];
                             foreach ($steps as $step):
                                 // A step with no members.<column> yet simply reports 0.

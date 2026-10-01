@@ -18,7 +18,7 @@ $programDefs = [
     'making_disciples'      => ['label' => 'Making Disciples',      'color' => 'success',   'icon' => 'bi-person-plus', 'short' => 'MD',   'link' => 'index.php?action=attendanceRecords&program_type=making_disciples'],
     'empowering_leaders'    => ['label' => 'Empowering Leaders',    'color' => 'warning',   'icon' => 'bi-star',        'short' => 'EL',   'link' => 'index.php?action=attendanceRecords&program_type=empowering_leaders'],
     'leadership_113'        => ['label' => 'Leadership 1-1-3',      'color' => 'danger',    'icon' => 'bi-trophy',      'short' => 'L113', 'link' => 'index.php?action=leadership113'],
-    'spiritual_foundations' => ['label' => 'Spiritual Foundations', 'color' => 'info',      'icon' => 'bi-shield',      'short' => 'SF',   'link' => 'index.php?action=spiritualFoundations'],
+    'spiritual_foundations' => ['label' => 'Spiritual Foundations', 'color' => 'purple',    'icon' => 'bi-shield',      'short' => 'SF',   'link' => 'index.php?action=spiritualFoundations'],
 ];
 $daActiveTotal = max(1, (int)($activeStats['total'] ?? 0));
 ?>
