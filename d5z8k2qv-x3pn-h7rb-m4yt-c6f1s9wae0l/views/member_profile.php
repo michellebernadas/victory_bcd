@@ -326,11 +326,21 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                             <h6 class="mb-0"><i class="bi bi-bar-chart-steps me-2"></i>Discipleship Journey</h6>
                         </div>
                         <div class="card-body p-0">
+                            <?php
+                            // Reads the authoritative derived state from
+                            // DiscipleshipProgressService, not the legacy
+                            // members.<step> columns, and surfaces the evidence
+                            // source so a completion is never unexplained.
+                            $progressByStep = $progressByStep ?? [];
+                            ?>
                             <ul class="list-group list-group-flush">
                                 <?php foreach ($discipleshipSteps as $step):
-                                    $done     = in_array((int)$step['id'], $memberCompletedStepIds);
-                                    $pType    = $step['column_key'];
-                                    // Get years from attendance records (only if column_key is set)
+                                    $sid   = (int)$step['id'];
+                                    $prog  = $progressByStep[$sid] ?? null;
+                                    // Fall back to the junction list if the service wasn't loaded.
+                                    $done  = $prog ? $prog['completed'] : in_array($sid, $memberCompletedStepIds);
+                                    $src   = $prog['source'] ?? null;
+                                    $pType = $step['column_key'];
                                     $yearsAttended = ($pType && isset($attendances[$pType])) ? array_keys($attendances[$pType]) : [];
                                     sort($yearsAttended);
                                 ?>
@@ -341,6 +351,33 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                     </div>
                                     <div class="flex-grow-1">
                                         <div class="fw-semibold"><?php echo htmlspecialchars($step['name']); ?></div>
+                                        <?php if ($done && $src): ?>
+                                        <div class="text-muted" style="font-size:11px;">
+                                            <?php if ($src === 'attendance'): ?>
+                                            <i class="bi bi-journal-check me-1 text-success"></i>Source: Attendance
+                                            <?php elseif (($prog['historical_verification_status'] ?? '') === 'verified'): ?>
+                                            <i class="bi bi-clock-history me-1 text-success"></i>Source: Historical — Verified
+                                            <?php if (!empty($prog['completed_at'])): ?>
+                                                &middot; <?php echo date('M Y', strtotime($prog['completed_at'])); ?>
+                                            <?php endif; ?>
+                                            <?php if (!empty($prog['notes'])): ?>
+                                            <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip"
+                                               title="<?php echo htmlspecialchars($prog['notes']); ?>"></i>
+                                            <?php endif; ?>
+                                            <?php else: ?>
+                                            <i class="bi bi-clock-history me-1 text-warning"></i>Source: Historical — Needs Verification
+                                            <?php if (!empty($prog['completed_at'])): ?>
+                                                &middot; <?php echo date('M Y', strtotime($prog['completed_at'])); ?>
+                                            <?php endif; ?>
+                                            <?php if (!empty($prog['notes'])): ?>
+                                            <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip"
+                                               title="<?php echo htmlspecialchars($prog['notes']); ?>"></i>
+                                            <?php endif; ?>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php elseif (!$done): ?>
+                                        <div class="text-muted" style="font-size:11px;">No attendance or historical record</div>
+                                        <?php endif; ?>
                                         <?php if (!empty($yearsAttended)): ?>
                                         <div class="mt-1">
                                             <?php foreach ($yearsAttended as $yr): ?>
@@ -357,6 +394,10 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                 </li>
                                 <?php endforeach; ?>
                             </ul>
+                            <div class="card-footer bg-transparent small text-muted">
+                                <i class="bi bi-shield-check me-1"></i>
+                                Derived from attendance records, plus admin-approved historical completions.
+                            </div>
                         </div>
                     </div>
 

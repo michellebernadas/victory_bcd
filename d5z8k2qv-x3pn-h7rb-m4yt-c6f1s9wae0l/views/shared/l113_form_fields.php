@@ -12,13 +12,6 @@ foreach ([$_curYear - 1, $_curYear] as $_y) {
 }
 rsort($_yearOpts);
 
-$_programTypes = [
-    'victory_weekend'    => 'Victory Weekend',
-    'church_community'   => 'Church Community',
-    'making_disciples'   => 'Making Disciples',
-    'empowering_leaders' => 'Empowering Leaders',
-    'leadership_113'     => 'Leadership 113',
-];
 ?>
 <div class="row g-3">
     <!-- Participant Name -->
@@ -32,15 +25,15 @@ $_programTypes = [
     </div>
 
     <!-- Class / Year / Batch -->
+    <?php // The class is fixed by the page. It used to be a dropdown listing every
+          // class, which meant one mis-click could convert an L113 participant —
+          // session grid and all — into a Victory Weekend record. ?>
+    <input type="hidden" name="program_type" value="leadership_113">
     <div class="col-md-5">
-        <label class="form-label fw-semibold">Class <span class="text-danger">*</span></label>
-        <select name="program_type" class="form-select l113-program-select2" required style="width:100%">
-            <?php foreach ($_programTypes as $_pt => $_label): ?>
-            <option value="<?php echo $_pt; ?>" <?php echo $_pt === 'leadership_113' ? 'selected' : ''; ?>>
-                <?php echo htmlspecialchars($_label); ?>
-            </option>
-            <?php endforeach; ?>
-        </select>
+        <label class="form-label fw-semibold">Class</label>
+        <div class="form-control-plaintext fw-semibold text-danger">
+            <i class="bi bi-trophy me-1"></i>Leadership 1-1-3
+        </div>
     </div>
     <div class="col-md-2">
         <label class="form-label fw-semibold">Year <span class="text-danger">*</span></label>

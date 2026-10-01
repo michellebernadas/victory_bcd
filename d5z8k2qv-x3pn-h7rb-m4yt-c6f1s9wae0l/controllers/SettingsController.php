@@ -26,6 +26,16 @@ class SettingsController {
         $vgOptions = $this->vgOptionModel->getAllGrouped();
         $vgOptionTypes = VgOption::TYPES;
 
+        // Historical completions tab — legacy completions with no attendance record.
+        // Status / step / member filters are applied client-side (DataTables) so
+        // they compose with the existing search box and 50-row pagination instead
+        // of round-tripping the page; listHistorical() is called unfiltered here.
+        require_once 'models/DiscipleshipProgressService.php';
+        $progressService    = new DiscipleshipProgressService($this->db);
+        $historicalRows     = $progressService->listHistorical();
+        $historicalCounts   = $progressService->historicalCounts();
+        $historicalStepList = $steps;
+
         // Pre-compute usage counts (members / records / groups still referencing each row)
         // Keyed by id for O(1) lookup in the view.
         $ministryCounts = [];
@@ -170,6 +180,91 @@ class SettingsController {
     public function activateService($id) {
         $result = $this->serviceModel->activateService((int)$id);
         header('Location: index.php?action=settings&tab=services&notif=' . ($result ? 'activate' : 'error') . ($result ? '' : '&msg=' . urlencode('Failed to activate service.')));
+        exit();
+    }
+
+    // ── Historical discipleship completions (admin only) ───────────────────
+    //
+    // For people whose old church records show a completed step but for whom no
+    // attendance record exists. Recalculation never removes these, so they are
+    // the only way a step stays complete without evidence.
+
+    public function addHistoricalCompletion(array $data): void {
+        require_once 'models/DiscipleshipProgressService.php';
+        $svc = new DiscipleshipProgressService($this->db);
+        $res = $svc->setHistorical(
+            (int)($data['member_id'] ?? 0),
+            (int)($data['step_id'] ?? 0),
+            $data['completed_at'] ?? null,
+            $data['notes'] ?? null,
+            (int)($_SESSION['user']['id'] ?? 0) ?: null
+        );
+        $this->historicalRedirect($res, 'hist_add');
+    }
+
+    /** Admin confirms a pending historical completion is valid. */
+    public function verifyHistoricalCompletion(int $memberId, int $stepId, ?string $notes): void {
+        require_once 'models/DiscipleshipProgressService.php';
+        $svc = new DiscipleshipProgressService($this->db);
+        $res = $svc->verifyHistorical($memberId, $stepId, $notes, (int)($_SESSION['user']['id'] ?? 0) ?: null);
+        $this->historicalRedirect($res, 'hist_verify');
+    }
+
+    /**
+     * Admin rejects a historical completion (from pending or verified). The
+     * row is kept — not deleted — with the rejection's who/when/why preserved
+     * as an audit trail; see DiscipleshipProgressService::rejectHistorical().
+     */
+    public function rejectHistoricalCompletion(int $memberId, int $stepId, ?string $notes): void {
+        require_once 'models/DiscipleshipProgressService.php';
+        $svc = new DiscipleshipProgressService($this->db);
+        $res = $svc->rejectHistorical($memberId, $stepId, $notes, (int)($_SESSION['user']['id'] ?? 0) ?: null);
+        $this->historicalRedirect($res, 'hist_reject');
+    }
+
+    /** Admin reopens a verified completion back to Needs Verification (never auto-reverified). */
+    public function reopenHistoricalCompletion(int $memberId, int $stepId, ?string $notes): void {
+        require_once 'models/DiscipleshipProgressService.php';
+        $svc = new DiscipleshipProgressService($this->db);
+        $res = $svc->reopenHistorical($memberId, $stepId, $notes, (int)($_SESSION['user']['id'] ?? 0) ?: null);
+        $this->historicalRedirect($res, 'hist_reopen');
+    }
+
+    /** Admin restores a rejected completion back to Needs Verification (never auto-reverified). */
+    public function restoreHistoricalCompletion(int $memberId, int $stepId, ?string $notes): void {
+        require_once 'models/DiscipleshipProgressService.php';
+        $svc = new DiscipleshipProgressService($this->db);
+        $res = $svc->restoreHistorical($memberId, $stepId, $notes, (int)($_SESSION['user']['id'] ?? 0) ?: null);
+        $this->historicalRedirect($res, 'hist_restore');
+    }
+
+    /** AJAX-only: review-history entries for one member+step, for the Review History modal. */
+    public function ajaxHistoricalReviewHistory(int $memberId, int $stepId): void {
+        require_once 'models/DiscipleshipProgressService.php';
+        $svc = new DiscipleshipProgressService($this->db);
+        header('Content-Type: application/json');
+        echo json_encode(['entries' => $svc->reviewHistory($memberId, $stepId)]);
+        exit();
+    }
+
+    /** Re-derives every member's journey from current evidence. Idempotent. */
+    public function recalculateAllProgress(): void {
+        require_once 'models/DiscipleshipProgressService.php';
+        $svc  = new DiscipleshipProgressService($this->db);
+        $sum  = $svc->recalculateAll();
+        header('Location: index.php?action=settings&tab=historical&notif=hist_recalc'
+             . '&n=' . (int)$sum['members'] . '&c=' . (int)$sum['completed']
+             . '&a=' . (int)$sum['attendance'] . '&h=' . (int)$sum['historical']);
+        exit();
+    }
+
+    private function historicalRedirect(array $res, string $notif): void {
+        if (!empty($res['ok'])) {
+            header('Location: index.php?action=settings&tab=historical&notif=' . $notif);
+        } else {
+            header('Location: index.php?action=settings&tab=historical&error=1&msg='
+                 . urlencode($res['error'] ?? 'Could not save.'));
+        }
         exit();
     }
 

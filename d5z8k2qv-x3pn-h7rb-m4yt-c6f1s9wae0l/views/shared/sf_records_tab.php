@@ -7,9 +7,9 @@
 <!-- Summary Cards -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
-        <div class="card text-center h-100 border-info border-opacity-50">
+        <div class="card text-center h-100 border-purple border-opacity-50">
             <div class="card-body py-3">
-                <div class="h3 fw-bold text-info mb-0"><?php echo $totalRecords; ?></div>
+                <div class="h3 fw-bold text-purple mb-0"><?php echo $totalRecords; ?></div>
                 <div class="text-muted small">Batch Records</div>
                 <div class="text-muted" style="font-size:10px;"><?php echo $totalParticipants; ?> distinct participants</div>
             </div>
@@ -361,7 +361,7 @@
 <div class="modal fade" id="sfTopicsModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header bg-info text-white">
+            <div class="modal-header bg-purple text-white">
                 <h5 class="modal-title">
                     <i class="bi bi-grid-3x3 me-2"></i>Topic Attendance
                     <span class="small fw-normal ms-1" id="sfTopicsModalSub"></span>
@@ -392,7 +392,7 @@
 <div class="modal fade" id="addSfModal" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
-            <div class="modal-header bg-info text-white">
+            <div class="modal-header bg-purple text-white">
                 <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Add Spiritual Foundations Record</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -400,7 +400,7 @@
             <div class="modal-body"><?php include __DIR__ . '/sf_form_fields.php'; ?></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-info text-white"><i class="bi bi-save me-1"></i>Save Record</button>
+                <button type="submit" class="btn btn-purple"><i class="bi bi-save me-1"></i>Save Record</button>
             </div>
             </form>
         </div>

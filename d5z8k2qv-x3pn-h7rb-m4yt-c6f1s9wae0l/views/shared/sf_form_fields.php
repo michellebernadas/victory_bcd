@@ -109,7 +109,7 @@ rsort($_yearOpts);
                     ?>
                     <tr data-week="<?php echo (int)$wk; ?>">
                         <td class="text-center">
-                            <span class="badge bg-info"><?php echo (int)$wk; ?></span>
+                            <span class="badge bg-purple"><?php echo (int)$wk; ?></span>
                             <?php // Explicit week number travels with the record, so a later
                                   // curriculum edit can never re-point this row at another topic. ?>
                             <input type="hidden" name="session_weeks[]" value="<?php echo (int)$wk; ?>">
@@ -151,7 +151,7 @@ rsort($_yearOpts);
                 </span>
             </div>
             <div>
-                <i class="bi bi-award me-1 text-info"></i>
+                <i class="bi bi-award me-1 text-purple"></i>
                 <span class="text-muted">The <strong>Certificate</strong> unlocks once the participant has a
                     Present/Late for all <?php echo count($sfRequiredWeeks ?? $sfWeeks); ?> required topics
                     <strong>across any of their batches</strong> — topics already completed earlier don't need repeating.

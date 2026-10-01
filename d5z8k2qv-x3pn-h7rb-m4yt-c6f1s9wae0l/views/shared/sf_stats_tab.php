@@ -66,8 +66,8 @@ window.SF_STATS = {
 <!-- Headline cards -->
 <div class="row mb-4 g-3">
     <div class="col-6 col-md-3">
-        <div class="card h-100 border-info"><div class="card-body text-center py-3">
-            <div class="display-6 fw-bold text-info mb-0"><?php echo (int)$totalParticipants; ?></div>
+        <div class="card h-100 border-purple"><div class="card-body text-center py-3">
+            <div class="display-6 fw-bold text-purple mb-0"><?php echo (int)$totalParticipants; ?></div>
             <div class="small text-muted mt-1">Participants</div>
         </div></div>
     </div>
@@ -201,7 +201,7 @@ window.SF_STATS = {
                         $out   = (int)($stillMissing[$wk] ?? 0);
                     ?>
                     <tr>
-                        <td><span class="badge bg-info">W<?php echo (int)$wk; ?></span></td>
+                        <td><span class="badge bg-purple">W<?php echo (int)$wk; ?></span></td>
                         <td class="fw-semibold small"><?php echo htmlspecialchars($t['topic']); ?></td>
                         <td class="text-center text-success fw-semibold"><?php echo $t['present']; ?></td>
                         <td class="text-center text-warning fw-semibold"><?php echo $t['late']; ?></td>
@@ -244,7 +244,7 @@ window.SF_STATS = {
                         <th class="text-center text-success">Completed in batch</th>
                         <th class="text-center text-warning">Incomplete in batch</th>
                         <th class="text-center">Batch completion %</th>
-                        <th class="text-center text-info" title="Of this batch's participants, how many are complete overall (possibly finished in another batch)">Complete overall</th>
+                        <th class="text-center text-purple" title="Of this batch's participants, how many are complete overall (possibly finished in another batch)">Complete overall</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -261,7 +261,7 @@ window.SF_STATS = {
                             <span class="badge bg-<?php echo $bsPct >= 80 ? 'success' : ($bsPct >= 50 ? 'warning' : 'danger'); ?>"><?php echo $bsPct; ?>%</span>
                         </td>
                         <td class="text-center">
-                            <span class="badge bg-info"><?php echo (int)$bs['overallComplete']; ?></span>
+                            <span class="badge bg-purple"><?php echo (int)$bs['overallComplete']; ?></span>
                         </td>
                     </tr>
                     <?php endforeach; ?>

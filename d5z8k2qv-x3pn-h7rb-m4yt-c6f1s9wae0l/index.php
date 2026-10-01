@@ -549,6 +549,63 @@ switch ($action) {
         $settingsController->showSettings();
         break;
 
+    // ─── Historical discipleship completions (Admin only) ────────────
+    case 'addHistoricalCompletion':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php'); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $settingsController->addHistoricalCompletion($_POST);
+        } else {
+            header('Location: index.php?action=settings&tab=historical');
+        }
+        break;
+
+    case 'verifyHistoricalCompletion':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php'); exit(); }
+        $settingsController->verifyHistoricalCompletion(
+            (int)($_POST['member_id'] ?? 0), (int)($_POST['step_id'] ?? 0), $_POST['notes'] ?? null
+        );
+        break;
+
+    case 'rejectHistoricalCompletion':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php'); exit(); }
+        $settingsController->rejectHistoricalCompletion(
+            (int)($_POST['member_id'] ?? 0), (int)($_POST['step_id'] ?? 0), $_POST['notes'] ?? null
+        );
+        break;
+
+    case 'reopenHistoricalCompletion':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php'); exit(); }
+        $settingsController->reopenHistoricalCompletion(
+            (int)($_POST['member_id'] ?? 0), (int)($_POST['step_id'] ?? 0), $_POST['notes'] ?? null
+        );
+        break;
+
+    case 'restoreHistoricalCompletion':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php'); exit(); }
+        $settingsController->restoreHistoricalCompletion(
+            (int)($_POST['member_id'] ?? 0), (int)($_POST['step_id'] ?? 0), $_POST['notes'] ?? null
+        );
+        break;
+
+    case 'ajaxHistoricalReviewHistory':
+        if (!isset($_SESSION['user'])) { http_response_code(401); exit(); }
+        if ($currentUserType !== 'admin') { http_response_code(403); exit(); }
+        $settingsController->ajaxHistoricalReviewHistory(
+            (int)($_GET['member_id'] ?? 0), (int)($_GET['step_id'] ?? 0)
+        );
+        break;
+
+    case 'recalculateProgress':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php'); exit(); }
+        $settingsController->recalculateAllProgress();
+        break;
+
     case 'addMinistry':
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
         if ($currentUserType !== 'admin') { header('Location: index.php'); exit(); }

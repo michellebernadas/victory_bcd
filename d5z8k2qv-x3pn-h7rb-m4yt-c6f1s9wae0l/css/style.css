@@ -48,15 +48,110 @@ body {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
 }
 
-/* Custom purple badge color (Bootstrap 5 has no built-in purple) */
-.bg-purple {
-  background-color: #6f42c1 !important;
-  color: #fff !important;
+/* ── Purple theme colour (Bootstrap 5 has no built-in purple) ──────────────
+   #51154B is the aubergine sampled from the Spiritual Foundations curriculum
+   sheet header, so the module matches the printed material it represents.
+   Bootstrap's `info` cyan was previously reused for SF; these utilities give
+   purple the same full variant set (bg / text / border / btn / subtle), so
+   markup can just say `purple` wherever it said `info`. */
+:root {
+  --vb-purple: #51154b;
+  --vb-purple-rgb: 81, 21, 75;
+  --vb-purple-dark: #3c0f38;   /* hover / active */
+  --vb-purple-soft: #f3e8f2;   /* tinted surfaces */
+
+  /* Lighter tint of the same Spiritual Foundations hue, for Purple Book Class —
+     same family, visually distinguishable from SF's darker aubergine. */
+  --vb-purple-light: #99298e;
+  --vb-purple-light-rgb: 153, 41, 142;
+  --vb-purple-light-dark: #7d2174;
+  --vb-purple-light-soft: #f8ecf6;
 }
-.text-bg-purple {
-  background-color: #6f42c1 !important;
-  color: #fff !important;
+
+.bg-purple      { background-color: var(--vb-purple) !important; color: #fff !important; }
+.text-bg-purple { background-color: var(--vb-purple) !important; color: #fff !important; }
+.text-purple    { color: var(--vb-purple) !important; }
+.border-purple  { border-color: var(--vb-purple) !important; }
+
+/* Subtle variants, mirroring Bootstrap's -subtle scale. */
+.bg-purple-subtle     { background-color: var(--vb-purple-soft) !important; }
+.border-purple-subtle { border-color: rgba(var(--vb-purple-rgb), .35) !important; }
+
+/* `bg-purple bg-opacity-10` etc. need the RGB channel set. */
+.bg-purple { --bs-bg-opacity: 1; background-color: rgba(var(--vb-purple-rgb), var(--bs-bg-opacity)) !important; }
+
+.btn-purple {
+  background-color: var(--vb-purple);
+  border-color: var(--vb-purple);
+  color: #fff;
 }
+.btn-purple:hover,
+.btn-purple:focus,
+.btn-purple:active {
+  background-color: var(--vb-purple-dark);
+  border-color: var(--vb-purple-dark);
+  color: #fff;
+}
+.btn-outline-purple {
+  color: var(--vb-purple);
+  border-color: var(--vb-purple);
+  background-color: transparent;
+}
+.btn-outline-purple:hover,
+.btn-outline-purple:focus,
+.btn-outline-purple:active {
+  background-color: var(--vb-purple);
+  border-color: var(--vb-purple);
+  color: #fff;
+}
+.btn-check:checked + .btn-outline-purple {
+  background-color: var(--vb-purple);
+  border-color: var(--vb-purple);
+  color: #fff;
+}
+.progress-bar.bg-purple { background-color: var(--vb-purple) !important; }
+
+/* ── Purple Book Class — lighter tint of the purple family ───────────────── */
+.bg-purple-light      { background-color: var(--vb-purple-light) !important; color: #fff !important; }
+.text-bg-purple-light { background-color: var(--vb-purple-light) !important; color: #fff !important; }
+.text-purple-light    { color: var(--vb-purple-light) !important; }
+.border-purple-light  { border-color: var(--vb-purple-light) !important; }
+
+.bg-purple-light-subtle     { background-color: var(--vb-purple-light-soft) !important; }
+.border-purple-light-subtle { border-color: rgba(var(--vb-purple-light-rgb), .35) !important; }
+
+.bg-purple-light { --bs-bg-opacity: 1; background-color: rgba(var(--vb-purple-light-rgb), var(--bs-bg-opacity)) !important; }
+
+.btn-purple-light {
+  background-color: var(--vb-purple-light);
+  border-color: var(--vb-purple-light);
+  color: #fff;
+}
+.btn-purple-light:hover,
+.btn-purple-light:focus,
+.btn-purple-light:active {
+  background-color: var(--vb-purple-light-dark);
+  border-color: var(--vb-purple-light-dark);
+  color: #fff;
+}
+.btn-outline-purple-light {
+  color: var(--vb-purple-light);
+  border-color: var(--vb-purple-light);
+  background-color: transparent;
+}
+.btn-outline-purple-light:hover,
+.btn-outline-purple-light:focus,
+.btn-outline-purple-light:active {
+  background-color: var(--vb-purple-light);
+  border-color: var(--vb-purple-light);
+  color: #fff;
+}
+.btn-check:checked + .btn-outline-purple-light {
+  background-color: var(--vb-purple-light);
+  border-color: var(--vb-purple-light);
+  color: #fff;
+}
+.progress-bar.bg-purple-light { background-color: var(--vb-purple-light) !important; }
 
 /* Select2 dropdowns parented to <body> must layer above Bootstrap modals (z-index 1055) */
 .select2-container--open {

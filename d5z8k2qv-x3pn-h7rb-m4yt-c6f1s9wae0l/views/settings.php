@@ -6,11 +6,12 @@ if (!isset($_SESSION['user']['accounttype']) || $_SESSION['user']['accounttype']
 include 'shared/header.php';
 
 $activeTab = $_GET['tab'] ?? 'ministries';
-if (!in_array($activeTab, ['ministries', 'services', 'discipleship', 'vgoptions'])) {
+if (!in_array($activeTab, ['ministries', 'services', 'discipleship', 'vgoptions', 'historical'])) {
     $activeTab = 'ministries';
 }
 
-$COLORS = ['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'dark', 'purple'];
+$COLORS = ['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'dark', 'purple', 'purple-light'];
+$COLOR_LABELS = ['purple-light' => 'Purple (Light)'];
 $ICONS  = [
     'bi-check-circle', 'bi-sun', 'bi-building', 'bi-person-plus', 'bi-star',
     'bi-trophy', 'bi-book', 'bi-heart-pulse', 'bi-people', 'bi-lightbulb',
@@ -40,6 +41,7 @@ $ICONS  = [
                     'services'     => ['label' => 'Church service',    'where' => 'in the Service Attending dropdown wherever members are added or edited', 'records' => 'all members attending this service'],
                     'discipleship' => ['label' => 'Discipleship step', 'where' => 'in the Discipleship Steps list across the admin panel',                  'records' => 'all members linked to this step'],
                     'vgoptions'    => ['label' => 'VG option',         'where' => 'in the related Victory Group dropdowns wherever groups are added or edited', 'records' => 'all victory groups using this value'],
+                    'historical'   => ['label' => 'Historical completion', 'where' => 'on the member profile Discipleship Journey', 'records' => 'that member derived progress'],
                 ][$activeTab] ?? ['label' => 'Item', 'where' => 'across the admin panel', 'records' => 'related records'];
                 $messages = [
                     'add'        => $resCfg['label'] . ' has been added successfully. It is now available ' . $resCfg['where'] . '.',
@@ -47,6 +49,15 @@ $ICONS  = [
                     'deactivate' => $resCfg['label'] . ' has been deactivated successfully. Press the activate button to enable it again.',
                     'activate'   => $resCfg['label'] . ' has been reactivated successfully.',
                     'delete'     => $resCfg['label'] . ' has been deleted successfully. The record has been removed from the list.',
+                    'hist_add'    => 'Historical completion approved. The Discipleship Journey has been recalculated.',
+                    'hist_verify' => 'Historical completion verified. The member remains completed with confirmed historical evidence.',
+                    'hist_reject' => 'Historical completion rejected. The step now reflects the attendance evidence only — the review is kept on file.',
+                    'hist_reopen' => 'Historical completion reopened for review. It is back to Needs Verification and still counts as completed while pending.',
+                    'hist_restore' => 'Historical completion restored for review. It is back to Needs Verification and counts as completed again while pending.',
+                    'hist_recalc' => 'Recalculated ' . (int)($_GET['n'] ?? 0) . ' members — '
+                                     . (int)($_GET['c'] ?? 0) . ' completed steps ('
+                                     . (int)($_GET['a'] ?? 0) . ' from attendance, '
+                                     . (int)($_GET['h'] ?? 0) . ' historical).',
                 ];
             ?>
             <div class="alert alert-success alert-dismissible fade show">
@@ -89,7 +100,17 @@ $ICONS  = [
                         <i class="bi bi-sliders me-1"></i>VG Options
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link <?php echo $activeTab === 'historical' ? 'active' : ''; ?>"
+                       href="index.php?action=settings&tab=historical">
+                        <i class="bi bi-clock-history me-1"></i>Historical Completions
+                    </a>
+                </li>
             </ul>
+
+            <?php if ($activeTab === 'historical'): ?>
+            <?php include 'shared/settings_historical_tab.php'; ?>
+            <?php endif; ?>
 
             <!-- ──────────────────────────────────────────────────────── -->
             <!-- MINISTRIES TAB                                          -->
@@ -640,7 +661,7 @@ $ICONS  = [
                             <label class="form-label fw-semibold">Color</label>
                             <select name="color" class="form-select">
                                 <?php foreach ($COLORS as $c): ?>
-                                <option value="<?php echo $c; ?>"><?php echo ucfirst($c); ?></option>
+                                <option value="<?php echo $c; ?>"><?php echo $COLOR_LABELS[$c] ?? ucfirst($c); ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -682,7 +703,7 @@ $ICONS  = [
                             <label class="form-label fw-semibold">Color</label>
                             <select name="color" id="esd_color" class="form-select">
                                 <?php foreach ($COLORS as $c): ?>
-                                <option value="<?php echo $c; ?>"><?php echo ucfirst($c); ?></option>
+                                <option value="<?php echo $c; ?>"><?php echo $COLOR_LABELS[$c] ?? ucfirst($c); ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>

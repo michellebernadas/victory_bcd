@@ -24,7 +24,7 @@ $_keep = function (array $skip = []) use ($activeYear, $activeBatch, $activeSear
     <div class="card-header d-flex justify-content-between align-items-center py-2">
         <span class="text-white fw-semibold d-flex align-items-center gap-2">
             <i class="bi bi-funnel me-2"></i>Search & Filter
-            <span class="badge bg-white text-info" id="sfActiveFilterBadge" style="display:none">0 active</span>
+            <span class="badge bg-white text-purple" id="sfActiveFilterBadge" style="display:none">0 active</span>
         </span>
         <div class="d-flex align-items-center gap-2">
             <a href="<?php echo $sfClearUrl; ?>" class="btn btn-sm btn-outline-light" id="sfClearFiltersBtn"
@@ -93,13 +93,13 @@ $_keep = function (array $skip = []) use ($activeYear, $activeBatch, $activeSear
             </div>
             <div class="d-flex align-items-center flex-wrap gap-2">
                 <a href="index.php?action=spiritualFoundations<?php echo $_keep(['year', 'batch']); ?>"
-                   class="btn btn-sm <?php echo !$activeYear ? 'btn-info text-white' : 'btn-outline-info'; ?>">
-                    All Years <span class="badge bg-white text-info ms-1"><?php echo (int)$_sfTotalCount; ?></span>
+                   class="btn btn-sm <?php echo !$activeYear ? 'btn-purple' : 'btn-outline-purple'; ?>">
+                    All Years <span class="badge bg-white text-purple ms-1"><?php echo (int)$_sfTotalCount; ?></span>
                 </a>
                 <?php foreach ($availableYears as $yr): ?>
                 <a href="index.php?action=spiritualFoundations&year=<?php echo (int)$yr; ?><?php echo $_keep(['year', 'batch']); ?>"
-                   class="btn btn-sm <?php echo (string)$activeYear === (string)$yr ? 'btn-info text-white' : 'btn-outline-info'; ?>">
-                    <?php echo (int)$yr; ?> <span class="badge bg-white text-info ms-1"><?php echo (int)($_sfYearCounts[(int)$yr] ?? 0); ?></span>
+                   class="btn btn-sm <?php echo (string)$activeYear === (string)$yr ? 'btn-purple' : 'btn-outline-purple'; ?>">
+                    <?php echo (int)$yr; ?> <span class="badge bg-white text-purple ms-1"><?php echo (int)($_sfYearCounts[(int)$yr] ?? 0); ?></span>
                 </a>
                 <?php endforeach; ?>
             </div>
@@ -114,10 +114,10 @@ $_keep = function (array $skip = []) use ($activeYear, $activeBatch, $activeSear
             </div>
             <div class="d-flex align-items-center flex-wrap gap-2">
                 <a href="index.php?action=spiritualFoundations<?php echo $_keep(['batch']); ?>"
-                   class="btn btn-sm <?php echo !$activeBatch ? 'btn-info text-white' : 'btn-outline-info'; ?>">All Batches</a>
+                   class="btn btn-sm <?php echo !$activeBatch ? 'btn-purple' : 'btn-outline-purple'; ?>">All Batches</a>
                 <?php foreach ($batchesForYear as $bl): ?>
                 <a href="index.php?action=spiritualFoundations&batch=<?php echo urlencode($bl); ?><?php echo $_keep(['batch']); ?>"
-                   class="btn btn-sm <?php echo $activeBatch === $bl ? 'btn-info text-white' : 'btn-outline-info'; ?>">
+                   class="btn btn-sm <?php echo $activeBatch === $bl ? 'btn-purple' : 'btn-outline-purple'; ?>">
                     <?php echo htmlspecialchars($bl); ?>
                 </a>
                 <?php endforeach; ?>
@@ -132,7 +132,7 @@ $_keep = function (array $skip = []) use ($activeYear, $activeBatch, $activeSear
                 <span class="text-lowercase fw-normal">(overall, across all batches)</span>
             </div>
             <div class="d-flex align-items-center flex-wrap gap-2">
-                <button type="button" class="btn btn-sm btn-info text-white sf-cert-filter-btn" data-cert="all">All</button>
+                <button type="button" class="btn btn-sm btn-purple sf-cert-filter-btn" data-cert="all">All</button>
                 <button type="button" class="btn btn-sm btn-outline-success sf-cert-filter-btn" data-cert="eligible"><i class="bi bi-award me-1"></i>Eligible</button>
                 <button type="button" class="btn btn-sm btn-outline-warning sf-cert-filter-btn" data-cert="not"><i class="bi bi-hourglass-split me-1"></i>Not Yet Eligible</button>
             </div>
@@ -168,7 +168,7 @@ $_keep = function (array $skip = []) use ($activeYear, $activeBatch, $activeSear
                     <input type="date" name="event_date_to" class="form-control form-control-sm" value="<?php echo htmlspecialchars($activeDateTo); ?>">
                 </div>
                 <div class="d-flex gap-1">
-                    <button type="submit" class="btn btn-sm btn-info text-white"><i class="bi bi-funnel me-1"></i>Apply</button>
+                    <button type="submit" class="btn btn-sm btn-purple"><i class="bi bi-funnel me-1"></i>Apply</button>
                     <?php if ($activeDateFrom || $activeDateTo): ?>
                     <a href="index.php?action=spiritualFoundations<?php echo $_keep(['event_date_from', 'event_date_to']); ?>"
                        class="btn btn-sm btn-outline-secondary">Clear Date</a>

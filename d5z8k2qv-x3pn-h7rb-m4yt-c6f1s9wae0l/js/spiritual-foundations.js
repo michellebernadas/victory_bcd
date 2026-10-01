@@ -206,7 +206,7 @@
         var doc = new JsPDF({ orientation: 'landscape' });
         doc.setFontSize(13);
         doc.text('Spiritual Foundations Records', 14, 14);
-        doc.autoTable({ head: [d.headers], body: d.rows, startY: 20, styles: { fontSize: 7 }, headStyles: { fillColor: [13, 202, 240] } });
+        doc.autoTable({ head: [d.headers], body: d.rows, startY: 20, styles: { fontSize: 7 }, headStyles: { fillColor: [81, 21, 75] } });
         doc.save('spiritual_foundations_' + new Date().toISOString().slice(0, 10) + '.pdf');
     };
 
@@ -215,7 +215,7 @@
         var html = '<!DOCTYPE html><html><head><title>Spiritual Foundations Records</title>'
             + '<style>body{font-family:sans-serif;font-size:11px;padding:20px}'
             + 'table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 6px;text-align:left}'
-            + 'th{background:#0dcaf0;color:#fff}tr:nth-child(even){background:#f5f7fa}'
+            + 'th{background:#51154b;color:#fff}tr:nth-child(even){background:#f5f7fa}'
             + '@media print{@page{size:landscape}}</style></head><body>'
             + '<h2>Spiritual Foundations Records</h2>'
             + '<p>Printed: ' + new Date().toLocaleDateString() + ' &nbsp;|&nbsp; ' + d.rows.length + ' record(s)</p>'
@@ -444,7 +444,8 @@
         absent:   'rgba(220,53,69,.85)',    // bg-danger
         complete: 'rgba(25,135,84,.85)',
         pending:  'rgba(255,193,7,.85)',
-        info:     'rgba(13,202,240,.85)',
+        // SF brand aubergine (#51154B), sampled from the curriculum sheet header.
+        info:     'rgba(81,21,75,.85)',
         muted:    'rgba(108,117,125,.75)'
     };
 
