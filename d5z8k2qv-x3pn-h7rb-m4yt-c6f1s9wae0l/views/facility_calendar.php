@@ -24,7 +24,13 @@ $requestTypes     = $requestTypes     ?? FacilityRequest::REQUEST_TYPES;
 $activeFilters    = $activeFilters    ?? [];
 $activeTab        = $activeTab        ?? 'calendar';
 $focusDate        = $focusDate        ?? date('Y-m-d');
+$waitingRequests  = $waitingRequests  ?? [];
+$waitingStatuses  = $waitingStatuses  ?? [];
+$stageEvents      = $stageEvents      ?? [];
+$approvers        = $approvers        ?? [];
+$currentAccount   = $currentAccount   ?? ['username' => '', 'email' => ''];
 $currentUserType  = $_SESSION['user']['accounttype'] ?? null;
+require_once __DIR__ . '/shared/facility_stepper.php';
 
 /** Status badge — one consistent rendering everywhere on the page. */
 function fb_badge($status) {
@@ -68,6 +74,9 @@ foreach ($calendarRequests as $r) {
         'facility'    => $r['facility_name'],
         'facility_id' => $r['facility_id'] !== null ? (int)$r['facility_id'] : null,
         'status'      => $r['status'],
+        // Shown on hover / in the chip's accessible name: whose turn it is.
+        'waiting_for' => facilityStageOwner($r['status']),
+        'when'        => fb_when_range($r['date_needed'], $r['start_time'], $r['end_time']),
     ];
 }
 ?>
@@ -147,22 +156,34 @@ foreach ($calendarRequests as $r) {
                 ['label' => 'Total Requests',     'value' => $stats['total']        ?? 0, 'color' => 'primary'],
                 ['label' => 'Confirmed',          'value' => $stats['confirmed']    ?? 0, 'color' => 'success'],
                 ['label' => 'Upcoming Confirmed', 'value' => $stats['upcoming']     ?? 0, 'color' => 'info'],
-                ['label' => 'Awaiting Action',    'value' => $stats['needs_action'] ?? 0, 'color' => 'warning'],
+                ['label' => 'Awaiting Action',    'value' => $stats['needs_action'] ?? 0, 'color' => 'warning',
+                 'hint'  => 'Waiting on Facilities review, the Minister, or Facilities confirmation'],
+                ['label' => 'Waiting on Requestor', 'value' => $stats['waiting_requestor'] ?? 0, 'color' => 'purple',
+                 'hint'  => 'Returned for clarification', 'href' => 'index.php?action=facilityCalendar&tab=requests&status=for_clarification'],
                 ['label' => 'Declined',           'value' => $stats['declined']     ?? 0, 'color' => 'danger'],
             ];
             ?>
             <div class="row mb-3 g-2">
                 <?php foreach ($statCards as $i => $sc): ?>
                 <div class="col-6 col-md-4 col-xl">
-                    <div class="card text-center h-100<?php echo $i === 0 ? ' border-primary border-2' : ''; ?>">
+                    <div class="card text-center h-100<?php echo $i === 0 ? ' border-primary border-2' : ''; ?>"
+                         <?php if (!empty($sc['hint'])): ?>title="<?php echo htmlspecialchars($sc['hint']); ?>"<?php endif; ?>>
                         <div class="card-body py-2 px-1">
                             <div class="h4 fw-bold text-<?php echo $sc['color']; ?> mb-0"><?php echo (int)$sc['value']; ?></div>
-                            <div style="font-size:11px;" class="text-muted"><?php echo htmlspecialchars($sc['label']); ?></div>
+                            <div style="font-size:11px;" class="text-muted">
+                                <?php if (!empty($sc['href'])): ?>
+                                <a href="<?php echo htmlspecialchars($sc['href']); ?>" class="text-muted"><?php echo htmlspecialchars($sc['label']); ?></a>
+                                <?php else: ?>
+                                <?php echo htmlspecialchars($sc['label']); ?>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
+
+            <?php include 'shared/facility_approvers_panel.php'; ?>
 
             <!-- Tabs -->
             <ul class="nav nav-tabs mb-3">
@@ -181,10 +202,19 @@ foreach ($calendarRequests as $r) {
                         <?php endif; ?>
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link <?php echo $activeTab === 'waiting' ? 'active' : ''; ?>"
+                       href="index.php?action=facilityCalendar&tab=waiting">
+                        <i class="bi bi-person-check me-1" aria-hidden="true"></i>Waiting on me
+                        <span class="badge <?php echo $waitingRequests ? 'bg-danger' : 'bg-secondary'; ?> ms-1"
+                              aria-label="<?php echo count($waitingRequests); ?> waiting"><?php echo count($waitingRequests); ?></span>
+                    </a>
+                </li>
             </ul>
 
 <?php include 'shared/facility_calendar_tab.php'; ?>
 <?php include 'shared/facility_requests_tab.php'; ?>
+<?php include 'shared/facility_waiting_tab.php'; ?>
 
         </div>
     </div>
@@ -202,5 +232,36 @@ window.FACILITY_CALENDAR_DATA = {
 };
 </script>
 <script src="<?php echo asset('js/facility-calendar.js'); ?>"></script>
+<script>
+// Tooltips on the labelled workflow buttons and the compact stepper dots.
+document.addEventListener('DOMContentLoaded', function () {
+    if (!window.bootstrap || !bootstrap.Tooltip) return;
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (n) {
+        bootstrap.Tooltip.getOrCreateInstance(n);
+    });
+});
+</script>
+<style>
+/* ── Stepper ─────────────────────────────────────────────────────────────── */
+.fb-stepper-compact { gap: 0; }
+.fb-stepper-compact .fb-step { font-size: .85rem; line-height: 1; }
+.fb-stepper-compact .fb-step-line { width: 10px; height: 2px; background: #dee2e6; }
+.fb-step-card { border: 1px solid #dee2e6; border-radius: .375rem; padding: .4rem .5rem; background: #fff; }
+.fb-step-card.fb-step-current  { border-color: var(--vb-purple, #51154b); box-shadow: 0 0 0 1px var(--vb-purple, #51154b) inset; }
+.fb-step-card.fb-step-done     { background: #f3faf6; }
+.fb-step-card.fb-step-declined { background: #fdf2f3; border-color: #dc3545; }
+.fb-step-card.fb-step-clarify  { background: #fff9e6; border-color: #ffc107; }
+.fb-step-card.fb-step-cancelled{ background: #f1f3f5; border-color: #495057; }
+.fb-step-card.fb-step-skipped  { opacity: .6; }
+.fb-step-state { font-size: .72rem; font-weight: 600; }
+.fb-step-who   { font-size: .68rem; margin-top: 2px; }
+/* ── Flag chips ──────────────────────────────────────────────────────────── */
+.fb-chip { display: inline-flex; align-items: center; gap: 3px; font-size: .68rem; font-weight: 600;
+           border-radius: 999px; padding: 1px 7px; border: 1px solid; white-space: nowrap; }
+.fb-chip-danger  { color: #b02a37; border-color: #f1aeb5; background: #fdf2f3; }
+.fb-chip-warning { color: #8a6100; border-color: #ffe69c; background: #fff9e6; }
+.fb-chip-muted   { color: #495057; border-color: #ced4da; background: #f8f9fa; }
+.fb-field-msg { font-size: .75rem; }
+</style>
 
 <?php include 'shared/footer.php'; ?>

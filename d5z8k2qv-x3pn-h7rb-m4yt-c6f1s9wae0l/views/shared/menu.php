@@ -94,13 +94,26 @@
                  including Facilities Personnel — canViewFacilityBooking().
                  What each role may DO once inside is decided per button by
                  facility_row_actions.php, not by hiding the whole section. */ ?>
-        <?php if (canViewFacilityBooking()) { ?>
+        <?php if (canViewFacilityBooking()) {
+            // "Waiting on me" badge: one COUNT over the statuses at this
+            // account's stage (facilityWaitingStatuses() in config/permissions.php,
+            // the same list the "Waiting on me" tab uses). 0 hides the badge.
+            $fbWaiting = 0;
+            if (class_exists('FacilityRequest') && isset($GLOBALS['db']) && $GLOBALS['db'] instanceof PDO) {
+                $fbWaiting = (new FacilityRequest($GLOBALS['db']))->countByStatuses(facilityWaitingStatuses());
+            }
+        ?>
         <li class="mt-2 mb-1">
             <small class="text-muted px-3 fw-bold" style="font-size: 11px; letter-spacing: 1px;">FACILITIES</small>
         </li>
         <li class="nav-item">
-            <a href="index.php?action=facilityCalendar" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'facilityCalendar') ? 'active' : ''; ?>">
+            <a href="index.php?action=facilityCalendar<?php echo $fbWaiting ? '&amp;tab=waiting' : ''; ?>" class="nav-link d-flex align-items-center <?php echo (isset($_GET['action']) && $_GET['action'] == 'facilityCalendar') ? 'active' : ''; ?>">
                 <i class="bi bi-calendar3 me-2"></i>Facility Booking
+                <?php if ($fbWaiting > 0): ?>
+                <span class="badge rounded-pill bg-danger ms-auto" title="<?php echo (int)$fbWaiting; ?> request(s) waiting on you">
+                    <?php echo (int)$fbWaiting; ?><span class="visually-hidden"> request(s) waiting on you</span>
+                </span>
+                <?php endif; ?>
             </a>
         </li>
         <?php } ?>

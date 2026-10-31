@@ -92,7 +92,8 @@ $editUser = $editUser ?? null;
                                     <td><?php echo htmlspecialchars($u['email']); ?></td>
                                     <td><span class="badge <?php
                                         echo $u['accounttype'] === ROLE_ADMIN ? 'bg-danger'
-                                           : ($u['accounttype'] === ROLE_FACILITIES ? 'bg-info text-dark' : 'bg-primary');
+                                           : ($u['accounttype'] === ROLE_FACILITIES ? 'bg-info text-dark'
+                                           : ($u['accounttype'] === ROLE_MINISTER ? 'bg-purple' : 'bg-primary'));
                                     ?>"><?php echo htmlspecialchars(accountTypeLabel($u['accounttype'])); ?></span></td>
                                     <td><?php echo ($u['last_login'] && $u['last_login'] != '0000-00-00 00:00:00') ? date('M d, Y g:i A', strtotime($u['last_login'])) : '<span class="text-muted">Never</span>'; ?></td>
                                     <td class="text-center">
@@ -170,13 +171,7 @@ $editUser = $editUser ?? null;
                             </option>
                             <?php endforeach; ?>
                         </select>
-                        <div class="form-text" style="font-size:.75rem">
-                            <strong>Editor</strong> — discipleship records; may submit facility requests.<br>
-                            <strong>Facilities Personnel</strong> — adds the Facilities review and confirmation
-                            steps of the booking workflow. Does <em>not</em> include the Minister's approval
-                            or any admin settings.<br>
-                            <strong>Admin</strong> — everything, including the Minister's approval.
-                        </div>
+                        <?php include __DIR__ . '/shared/role_help.php'; ?>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -222,6 +217,7 @@ $editUser = $editUser ?? null;
                             <option value="<?php echo htmlspecialchars($value); ?>"><?php echo htmlspecialchars($label); ?></option>
                             <?php endforeach; ?>
                         </select>
+                        <?php include __DIR__ . '/shared/role_help.php'; ?>
                     </div>
                 </div>
                 <div class="modal-footer">

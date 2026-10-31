@@ -38,15 +38,28 @@
 const ROLE_ADMIN      = 'admin';
 const ROLE_EDITOR     = 'editor';
 const ROLE_FACILITIES = 'facilities';
+const ROLE_MINISTER   = 'minister';   // migrations/2026_10_20_12_minister_role.sql
 
 /** Every value accounts.accounttype may legally hold — the write whitelist. */
-const VALID_ACCOUNT_TYPES = [ROLE_ADMIN, ROLE_EDITOR, ROLE_FACILITIES];
+const VALID_ACCOUNT_TYPES = [ROLE_ADMIN, ROLE_EDITOR, ROLE_FACILITIES, ROLE_MINISTER];
 
 /** Human labels for the role dropdown / badges. Display only, never stored. */
 const ACCOUNT_TYPE_LABELS = [
     ROLE_ADMIN      => 'Admin',
     ROLE_EDITOR     => 'Editor',
     ROLE_FACILITIES => 'Facilities Personnel',
+    ROLE_MINISTER   => 'Minister',
+];
+
+/**
+ * One-line help per role for the Users page, so whoever assigns a role can see
+ * which facility workflow stages it acts on. Display only.
+ */
+const ACCOUNT_TYPE_HELP = [
+    ROLE_EDITOR     => 'Discipleship records. May submit facility requests and view the calendar; cannot review, approve, confirm or cancel.',
+    ROLE_FACILITIES => 'Facility stage 2 (Facilities Review) and stage 4 (Confirmation), plus cancel. Cannot give the Minister\'s approval or open admin settings.',
+    ROLE_MINISTER   => 'Facility stage 3 only (Approve / Decline / For Clarification). Cannot review or confirm, and has no admin access.',
+    ROLE_ADMIN      => 'Everything, including users and settings. May act on any stage; a Minister decision by an Admin is recorded as an override.',
 ];
 
 /**
@@ -71,6 +84,10 @@ function isAdmin($role = null) {
 
 function isFacilitiesPersonnel($role = null) {
     return currentRole($role) === ROLE_FACILITIES;
+}
+
+function isMinister($role = null) {
+    return currentRole($role) === ROLE_MINISTER;
 }
 
 /** Human label for a stored account type. */
@@ -114,17 +131,22 @@ function canFacilitiesReview($role = null) {
 
 /**
  * Step 3 — the Minister's approve / decline / return-for-clarification
- * (policy section 9). Admin ONLY.
+ * (policy section 9). The Minister, and Admin as an OVERRIDE.
  *
  * This is the deliberate hole in the Facilities Personnel role. Granting it to
  * 'facilities' would let one person review AND approve AND confirm, which is
- * precisely what sections 5 and 6.2 separate. Admin holds it for now because
- * the portal has no Minister account type yet — see the follow-up note in the
- * migration: if the church wants the Minister to sign in personally, this is
- * the single function that changes.
+ * precisely what sections 5 and 6.2 separate. Admin keeps it so the portal
+ * still works when no Minister account exists; ministerActsAsOverride() lets
+ * the append-only history record which capacity acted.
  */
 function canMinisterApprove($role = null) {
-    return currentRole($role) === ROLE_ADMIN;
+    $r = currentRole($role);
+    return $r === ROLE_MINISTER || $r === ROLE_ADMIN;
+}
+
+/** True when a step-3 decision is made by someone other than the Minister (an Admin override). */
+function ministerActsAsOverride($role = null) {
+    return canMinisterApprove($role) && !isMinister($role);
 }
 
 /**
@@ -159,6 +181,75 @@ function canCancelFacilityRequest($role = null) {
 function canActOnFacilityWorkflow($role = null) {
     return canFacilitiesReview($role) || canMinisterApprove($role)
         || canFacilitiesConfirm($role) || canCancelFacilityRequest($role);
+}
+
+/**
+ * "Waiting on me": the request statuses sitting at THIS role's stage.
+ *   Facilities — submitted / facilities_review (stage 2) and approved (stage 4)
+ *   Minister   — pending_minister (stage 3)
+ *   Admin      — every desk above (an admin may act on all of them)
+ *   Requestor  — for_clarification (the request came back for more detail)
+ * for_clarification is the requestor's turn, so approvers see it separately as
+ * "waiting on requestor" rather than in their own queue.
+ */
+function facilityWaitingStatuses($role = null) {
+    $r = currentRole($role);
+    if ($r === null) return [];
+    $statuses = [];
+    if (canFacilitiesReview($r))       { $statuses[] = 'submitted'; $statuses[] = 'facilities_review'; }
+    if (canMinisterApprove($r))        $statuses[] = 'pending_minister';
+    if (canFacilitiesConfirm($r))      $statuses[] = 'approved';
+    if (!canActOnFacilityWorkflow($r)) $statuses[] = 'for_clarification';
+    return array_values(array_unique($statuses));
+}
+
+/**
+ * Who holds the next step for a request in $status, for "Waiting for ...".
+ * Describes the policy, not the viewer, so it takes no role.
+ */
+function facilityStageOwner($status) {
+    $map = [
+        'draft'             => 'Requestor',
+        'submitted'         => 'Facilities Personnel',
+        'facilities_review' => 'Facilities Personnel',
+        'pending_minister'  => 'Minister',
+        'for_clarification' => 'Requestor',
+        'approved'          => 'Facilities Personnel',
+    ];
+    return $map[$status] ?? null;
+}
+
+/**
+ * The ONE next workflow action this account can take on a request in $status,
+ * or null. The status picks the step (mirroring the model's from-status rules,
+ * which still decide); the role helpers above decide whether this person may
+ * take it. Returns ['key' => review|decide|confirm, 'label', 'hint'].
+ *
+ * for_clarification: the requestor's turn. The model still lets Facilities
+ * re-review it and the Minister decide it once the answer is in, so those
+ * roles get a button labelled for that situation.
+ */
+function facilityNextAction($status, $role = null) {
+    $r = currentRole($role);
+    switch ($status) {
+        case 'submitted':
+        case 'facilities_review':
+            if (canFacilitiesReview($r)) return ['key' => 'review', 'label' => 'Facilities review', 'hint' => 'Stage 2 of 4: assess logistics, then forward to the Minister'];
+            break;
+        case 'pending_minister':
+            if (canMinisterApprove($r)) return ['key' => 'decide',
+                'label' => ministerActsAsOverride($r) ? 'Minister decision (override)' : 'Approve / decline',
+                'hint'  => 'Stage 3 of 4: Minister decision' . (ministerActsAsOverride($r) ? ', recorded as an Admin override' : '')];
+            break;
+        case 'for_clarification':
+            if (canFacilitiesReview($r)) return ['key' => 'review', 'label' => 'Re-review', 'hint' => 'Stage 2 of 4: re-review once the requestor has clarified'];
+            if (canMinisterApprove($r))  return ['key' => 'decide', 'label' => 'Decide', 'hint' => 'Stage 3 of 4: record the decision once clarified'];
+            break;
+        case 'approved':
+            if (canFacilitiesConfirm($r)) return ['key' => 'confirm', 'label' => 'Confirm reservation', 'hint' => 'Stage 4 of 4: make it an official reservation that blocks the room'];
+            break;
+    }
+    return null;
 }
 
 // ── Everything else stays admin-only ─────────────────────────────────────────

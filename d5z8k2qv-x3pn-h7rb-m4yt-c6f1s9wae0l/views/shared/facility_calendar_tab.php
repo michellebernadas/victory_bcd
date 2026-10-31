@@ -62,7 +62,8 @@ $activeTab    = $activeTab    ?? 'calendar';
                 </div>
                 <?php endforeach; ?>
                 <p class="text-muted mb-0 mt-2" style="font-size:.7rem">
-                    Solid = official reservation. Dashed = in the workflow, reserves nothing.
+                    <strong>Solid</strong> = Confirmed (reserved). <strong>Faded, dashed</strong> = pending, not reserved.
+                    Hover or click an entry to see its status and who it is waiting on.
                 </p>
             </div>
         </div>
@@ -76,7 +77,7 @@ $activeTab    = $activeTab    ?? 'calendar';
                     <button type="button" id="fcPrev" class="btn btn-sm btn-outline-light" aria-label="Previous">
                         <i class="bi bi-chevron-left"></i>
                     </button>
-                    <button type="button" id="fcToday" class="btn btn-sm btn-outline-light">Today</button>
+                    <button type="button" id="fcToday" class="btn btn-sm btn-outline-light" title="Jump to today"><i class="bi bi-calendar-event me-1" aria-hidden="true"></i>Today</button>
                     <button type="button" id="fcNext" class="btn btn-sm btn-outline-light" aria-label="Next">
                         <i class="bi bi-chevron-right"></i>
                     </button>
@@ -92,6 +93,11 @@ $activeTab    = $activeTab    ?? 'calendar';
                 </div>
             </div>
             <div class="card-body p-2">
+                <!-- Always-visible legend: colour is never the only signal (icon + text). -->
+                <div class="d-flex flex-wrap align-items-center gap-3 small mb-2" aria-label="Calendar legend">
+                    <span><span class="fc-legend-swatch fw-semibold" style="background:<?php echo htmlspecialchars($statusColors['confirmed'] ?? '#198754'); ?>;color:#fff;border-left:4px solid <?php echo htmlspecialchars($statusColors['confirmed'] ?? '#198754'); ?>;"><i class="bi bi-calendar2-check-fill me-1" aria-hidden="true"></i>Solid</span> = Confirmed (reserved)</span>
+                    <span><span class="fc-legend-swatch" style="background:#ffc1071f;color:#212529;border-left:4px dashed #ffc107;opacity:.85;"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>Faded</span> = pending (not reserved)</span>
+                </div>
                 <div id="fcEmpty" class="alert alert-light border text-muted small d-none mb-2"></div>
                 <div id="facilityCalendar">
                     <div id="fcBody"></div>
@@ -147,6 +153,7 @@ $activeTab    = $activeTab    ?? 'calendar';
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .fc-chip-official { font-weight: 600; }
+.fc-legend-swatch { display: inline-block; border-radius: 3px; font-size: .7rem; padding: 1px 6px; }
 .fc-chip-time { font-weight: 600; opacity: .85; }
 .fc-chip:hover { filter: brightness(.93); }
 .fc-more {

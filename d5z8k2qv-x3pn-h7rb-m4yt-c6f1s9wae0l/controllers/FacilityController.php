@@ -77,14 +77,32 @@ class FacilityController {
         $statusColors   = FacilityRequest::STATUS_COLORS;
         $requestTypes   = FacilityRequest::REQUEST_TYPES;
 
+        // "Waiting on me": the requests at this account's stage
+        // (config/permissions.php decides which statuses those are).
+        $waitingStatuses = facilityWaitingStatuses();
+        $waitingRequests = $waitingStatuses
+            ? $this->requestModel->getAllRequests(['status' => $waitingStatuses]) : [];
+
         // Conflict + lead-time advisories, precomputed per listed request so the
         // table can flag a clash without the view issuing queries in a loop.
         $advisories = [];
-        foreach ($requests as $r) {
-            $advisories[(int)$r['id']] = $this->advisoryFor($r);
+        foreach (array_merge($requests, $waitingRequests) as $r) {
+            if (!isset($advisories[(int)$r['id']])) $advisories[(int)$r['id']] = $this->advisoryFor($r);
         }
 
-        $activeTab = in_array($tab, ['calendar', 'requests'], true) ? $tab : 'calendar';
+        // Stepper data: who acted and when, one history query for every row.
+        $stageEvents = $this->requestModel->stageEventsFor(array_keys($advisories));
+
+        // Approvers panel: who holds each stage.
+        $approvers = $this->requestModel->getApprovers([ROLE_FACILITIES, ROLE_MINISTER, ROLE_ADMIN]);
+
+        // Prefill the request form's requestor block from the signed-in account.
+        $currentAccount = [
+            'username' => $_SESSION['user']['username'] ?? '',
+            'email'    => $_SESSION['user']['email'] ?? '',
+        ];
+
+        $activeTab = in_array($tab, ['calendar', 'requests', 'waiting'], true) ? $tab : 'calendar';
         $focusDate = $focus;
 
         include 'views/facility_calendar.php';
@@ -150,6 +168,10 @@ class FacilityController {
 
     public function submitRequest(array $data) {
         $this->requirePermission(canSubmitFacilityRequest(), 'You are not allowed to submit facility requests.');
+        // Portal-form rules (room + times for a Facility / Room request, end
+        // after start, date required). Lead time still only warns.
+        $invalid = FacilityRequest::validatePortalForm($data);
+        if ($invalid !== '') $this->back(null, $invalid, '&tab=requests');
         $res = $this->requestModel->submit($data, $this->userId());
         if (!$res['ok']) $this->back(null, $res['error'], '&tab=requests');
 
@@ -161,7 +183,9 @@ class FacilityController {
 
     public function updateRequest($id, array $data) {
         $this->requirePermission(canSubmitFacilityRequest(), 'You are not allowed to edit facility requests.');
-        $res = $this->requestModel->updateRequest($id, $data, $this->userId());
+        $invalid = FacilityRequest::validatePortalForm($data);
+        if ($invalid !== '') $this->back(null, $invalid, '&tab=requests');
+        $res =$this->requestModel->updateRequest($id, $data, $this->userId());
         if (!$res['ok']) $this->back(null, $res['error'], '&tab=requests');
         $this->back('updated', null, '&tab=requests');
     }
@@ -181,7 +205,9 @@ class FacilityController {
         // Facilities Personnel are excluded here on purpose (policy 5.2 / 6.2):
         // reviewing and approving must not be the same pair of hands.
         $this->requirePermission(canMinisterApprove(), 'Only the Minister may approve or decline a request.');
-        $res = $this->requestModel->ministerDecision($id, $decision, $comments, $this->userId());
+        // An Admin acting here is an override, and the history says so.
+        $res = $this->requestModel->ministerDecision($id, $decision, $comments, $this->userId(),
+                                                     ministerActsAsOverride());
         if (!$res['ok']) $this->back(null, $res['error'], '&tab=requests');
         $notif = ['approved' => 'approved', 'declined' => 'declined',
                   'for_clarification' => 'clarification'][$decision] ?? 'updated';
@@ -274,7 +300,19 @@ class FacilityController {
         $conflicts = $this->requestModel->conflictsForRequest($r);
         $meta      = FacilityRequest::statusMeta($r['status']);
 
+        // Stepper + the one next action this viewer may take (or whose turn it is).
+        require_once __DIR__ . '/../views/shared/facility_stepper.php';
+        $events = $this->requestModel->stageEventsFor([(int)$r['id']]);
+        $steps  = FacilityRequest::stepper($r['status'], $events[(int)$r['id']] ?? []);
+        $next   = facilityNextAction($r['status']);
+        $owner  = facilityStageOwner($r['status']);
+
         echo json_encode([
+            'stepper_html' => fb_stepper_html($steps, false),
+            'next_action'  => $next,
+            'waiting_for'  => $next ? null : $owner,
+            'can_cancel'   => canCancelFacilityRequest() && !in_array($r['status'], ['cancelled', 'declined'], true),
+            'payload'      => fb_row_payload($r, count($conflicts['hard']), count($conflicts['soft'])),
             'request'   => $r,
             'status_label' => $meta['label'],
             'status_badge' => $meta['badge'],

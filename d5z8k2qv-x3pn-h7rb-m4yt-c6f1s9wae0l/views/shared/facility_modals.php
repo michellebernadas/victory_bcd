@@ -25,28 +25,33 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
 ?>
 
 <!-- ── Step 1: Request form (policy section 7 A–F) ────────────────────────── -->
-<div class="modal fade" id="facilityRequestModal" tabindex="-1">
+<!-- Sections and labels follow the church's paper FACILITIES REQUEST FORM.xlsx. -->
+<?php $currentAccount = $currentAccount ?? ['username' => '', 'email' => '']; ?>
+<div class="modal fade" id="facilityRequestModal" tabindex="-1" aria-labelledby="frTitle">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
-            <form method="POST" action="index.php?action=submitFacilityRequest" id="frForm">
+            <form method="POST" action="index.php?action=submitFacilityRequest" id="frForm" novalidate>
                 <div class="modal-header bg-purple text-white">
-                    <h5 class="modal-title"><i class="bi bi-calendar-plus me-2"></i>Facilities, Equipment &amp; Resource Request</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title" id="frTitle"><i class="bi bi-calendar-plus me-2" aria-hidden="true"></i>Facilities, Equipment &amp; Resource Request</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
 
                     <div class="alert alert-light border small py-2">
-                        <i class="bi bi-info-circle me-1"></i>
-                        Submitting this form does not reserve anything. It goes to Facilities Personnel for
-                        review, then to the Minister for approval, and only becomes an official reservation
-                        once Facilities confirms it.
+                        <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+                        Submitting this form does <strong>not</strong> reserve anything. It goes to
+                        <strong>Facilities Personnel</strong> for review, then to the <strong>Minister</strong> for approval,
+                        and becomes an official reservation only once Facilities <strong>confirms</strong> it.
+                        Fields marked <span class="text-danger">*</span> are required.
                     </div>
+                    <div id="fr_errors" class="alert alert-danger small py-2 d-none" role="alert" tabindex="-1"></div>
 
                     <!-- A. Requestor information -->
                     <h6 class="fw-bold text-purple border-bottom pb-1">A. Requestor Information</h6>
+                    <p class="form-text mt-0 mb-2">Who is asking, and how Facilities can reach you.</p>
                     <div class="row g-2 mb-3">
                         <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Linked Member <span class="text-muted">(optional)</span></label>
+                            <label class="form-label small mb-1" for="fr_member">Linked Member <span class="text-muted">(optional)</span></label>
                             <select name="requestor_member_id" id="fr_member" class="form-select modal-select2">
                                 <option value="">Not a member record</option>
                                 <?php foreach ($allMembers as $m): ?>
@@ -60,41 +65,52 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                                 <?php endforeach; ?>
                             </select>
                             <div class="form-text" style="font-size:.7rem">
-                                Staff and volunteers are not always member records, so this is never required.
+                                Picking a member fills in the details below. Staff and volunteers are not always member records, so this is never required.
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Name <span class="text-danger">*</span></label>
-                            <input type="text" name="requestor_name" id="fr_name" class="form-control" required maxlength="255">
+                            <label class="form-label small mb-1" for="fr_name">Name <span class="text-danger">*</span></label>
+                            <input type="text" name="requestor_name" id="fr_name" class="form-control" required maxlength="255"
+                                   value="<?php echo htmlspecialchars($currentAccount['username']); ?>">
+                            <div class="form-text" style="font-size:.7rem">Pre-filled from your account. Change it if you are filing for someone else.</div>
                         </div>
                         <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Ministry / Department</label>
-                            <input type="text" name="ministry" id="fr_ministry" class="form-control"
-                                   list="fbMinistryList" maxlength="100">
+                            <label class="form-label small mb-1" for="fr_ministry">Ministry / Department</label>
+                            <select name="ministry" id="fr_ministry" class="form-select modal-select2" data-tags="true"
+                                    data-placeholder="Choose or type a ministry">
+                                <option value=""></option>
+                                <?php foreach ($ministries as $m): ?>
+                                <option value="<?php echo htmlspecialchars($m['name']); ?>"><?php echo htmlspecialchars($m['name']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div class="form-text" style="font-size:.7rem">From the church's ministries list. Type to add one that is not listed.</div>
                         </div>
                         <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Ministry Leader</label>
-                            <input type="text" name="ministry_leader" class="form-control" maxlength="255">
+                            <label class="form-label small mb-1" for="fr_leader">Ministry Leader</label>
+                            <input type="text" name="ministry_leader" id="fr_leader" class="form-control" maxlength="255">
                         </div>
                         <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Contact Number</label>
+                            <label class="form-label small mb-1" for="fr_contact">Contact Number</label>
                             <input type="text" name="contact_number" id="fr_contact" class="form-control" maxlength="100">
                         </div>
                         <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Email</label>
-                            <input type="email" name="email" id="fr_email" class="form-control" maxlength="255">
+                            <label class="form-label small mb-1" for="fr_email">Email</label>
+                            <input type="email" name="email" id="fr_email" class="form-control" maxlength="255"
+                                   value="<?php echo htmlspecialchars($currentAccount['email']); ?>">
                         </div>
                     </div>
 
                     <!-- B. Request details -->
                     <h6 class="fw-bold text-purple border-bottom pb-1">B. Request Details</h6>
+                    <p class="form-text mt-0 mb-2">What you need, for which event, and when.</p>
                     <div class="row g-2 mb-3">
                         <div class="col-12">
-                            <label class="form-label small mb-1">Type of Request</label>
+                            <fieldset>
+                            <legend class="form-label small mb-1" style="font-size:.875rem">Type of Request <span class="text-danger">*</span></legend>
                             <div class="d-flex flex-wrap gap-3">
                                 <?php foreach ($requestTypes as $key => $label): ?>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="request_type[]"
+                                    <input class="form-check-input fr-type" type="checkbox" name="request_type[]"
                                            value="<?php echo htmlspecialchars($key); ?>"
                                            id="fr_type_<?php echo htmlspecialchars($key); ?>"
                                            <?php echo $key === 'facility_room' ? 'checked' : ''; ?>>
@@ -104,42 +120,47 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                                 </div>
                                 <?php endforeach; ?>
                             </div>
+                            </fieldset>
                             <div class="form-text" style="font-size:.7rem">
-                                A request may fall under more than one category (policy section 4).
+                                Tick every category that applies (policy section 4). <strong>Facility / Room</strong> needs a room and a start and end time;
+                                an equipment-only request does not need a room.
                             </div>
                         </div>
                         <div class="col-12">
-                            <label class="form-label small mb-1">Event / Activity <span class="text-danger">*</span></label>
-                            <input type="text" name="event_activity" class="form-control" required maxlength="255">
+                            <label class="form-label small mb-1" for="fr_event">Event / Activity <span class="text-danger">*</span></label>
+                            <input type="text" name="event_activity" id="fr_event" class="form-control" required maxlength="255"
+                                   placeholder="e.g. Memorial Service">
                         </div>
                         <div class="col-12">
-                            <label class="form-label small mb-1">Purpose of Request</label>
-                            <textarea name="purpose" class="form-control" rows="2"
+                            <label class="form-label small mb-1" for="fr_purpose">Purpose of Request</label>
+                            <textarea name="purpose" id="fr_purpose" class="form-control" rows="2"
                                       placeholder="Identify the primary purpose in relation to the 4Es of Discipleship — e.g. Establish — ..."></textarea>
                         </div>
                         <div class="col-12 col-md-3">
-                            <label class="form-label small mb-1">Date Needed</label>
-                            <input type="date" name="date_needed" id="fr_date" class="form-control">
+                            <label class="form-label small mb-1" for="fr_date">Date Needed <span class="text-danger">*</span></label>
+                            <input type="date" name="date_needed" id="fr_date" class="form-control" required>
                         </div>
                         <div class="col-6 col-md-3">
-                            <label class="form-label small mb-1">Start Time</label>
+                            <label class="form-label small mb-1" for="fr_start">Start Time <span class="text-danger fr-room-req">*</span></label>
                             <input type="time" name="start_time" id="fr_start" class="form-control">
                         </div>
                         <div class="col-6 col-md-3">
-                            <label class="form-label small mb-1">End Time</label>
+                            <label class="form-label small mb-1" for="fr_end">End Time <span class="text-danger fr-room-req">*</span></label>
                             <input type="time" name="end_time" id="fr_end" class="form-control">
                         </div>
                         <div class="col-12 col-md-3">
-                            <label class="form-label small mb-1">Expected Attendance</label>
-                            <input type="number" name="expected_attendance" class="form-control" min="0">
+                            <label class="form-label small mb-1" for="fr_attendance">Expected Attendance</label>
+                            <input type="number" name="expected_attendance" id="fr_attendance" class="form-control" min="0">
                         </div>
+                        <div class="col-12"><div id="fr_time_msg" class="fb-field-msg" aria-live="polite"></div></div>
                     </div>
 
                     <!-- C. Facility / room -->
                     <h6 class="fw-bold text-purple border-bottom pb-1">C. Facility / Room</h6>
+                    <p class="form-text mt-0 mb-2">The room and how it should be set up. Availability is checked as you fill this in.</p>
                     <div class="row g-2 mb-3">
                         <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Requested Facility / Room</label>
+                            <label class="form-label small mb-1" for="fr_facility">Requested Facility / Room <span class="text-danger fr-room-req">*</span></label>
                             <select name="facility_id" id="fr_facility" class="form-select">
                                 <option value="">No specific room (equipment / resource only)</option>
                                 <?php foreach ($facilities as $f): ?>
@@ -150,64 +171,68 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                                 </option>
                                 <?php endforeach; ?>
                             </select>
+                            <div id="fr_room_msg" class="fb-field-msg" aria-live="polite"></div>
                             <div class="form-text" style="font-size:.7rem">
-                                Leave blank for an equipment-only request — nothing is occupied, so no room conflict applies.
+                                The number in brackets is the recommended notice in days (policy section 10). Short notice is a warning, not a block.
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Preferred Setup</label>
-                            <input type="text" name="preferred_setup" class="form-control" maxlength="255"
+                            <!-- Live availability / lead-time advisory, beside the room it is about. Never blocks submit. -->
+                            <div id="fr_advisory" aria-live="polite"></div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small mb-1" for="fr_setup">Preferred Setup</label>
+                            <input type="text" name="preferred_setup" id="fr_setup" class="form-control" maxlength="255"
                                    placeholder="e.g. Classroom arrangement">
                         </div>
                         <div class="col-6 col-md-3">
-                            <label class="form-label small mb-1">Number of Chairs</label>
-                            <input type="number" name="num_chairs" class="form-control" min="0">
+                            <label class="form-label small mb-1" for="fr_tables">Number of Tables</label>
+                            <input type="number" name="num_tables" id="fr_tables" class="form-control" min="0">
                         </div>
                         <div class="col-6 col-md-3">
-                            <label class="form-label small mb-1">Number of Tables</label>
-                            <input type="number" name="num_tables" class="form-control" min="0">
+                            <label class="form-label small mb-1" for="fr_chairs">Number of Chairs</label>
+                            <input type="number" name="num_chairs" id="fr_chairs" class="form-control" min="0">
                         </div>
-                        <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Other Requirements</label>
-                            <input type="text" name="other_requirements" class="form-control">
+                        <div class="col-12">
+                            <label class="form-label small mb-1" for="fr_otherreq">Other Requirements</label>
+                            <input type="text" name="other_requirements" id="fr_otherreq" class="form-control">
                         </div>
                     </div>
 
-                    <!-- Live availability / lead-time advisory. Never blocks submit. -->
-                    <div id="fr_advisory" class="mb-3"></div>
-
                     <!-- D. Equipment -->
                     <h6 class="fw-bold text-purple border-bottom pb-1">D. Equipment</h6>
+                    <p class="form-text mt-0 mb-2">Microphones, speakers, projectors and similar, and who will be responsible for them.</p>
                     <div class="row g-2 mb-3">
                         <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Equipment Requested</label>
-                            <textarea name="equipment_requested" class="form-control" rows="2"
+                            <label class="form-label small mb-1" for="fr_equipment">Equipment Requested</label>
+                            <textarea name="equipment_requested" id="fr_equipment" class="form-control" rows="2"
                                       placeholder="e.g. Microphone and speaker"></textarea>
                         </div>
                         <div class="col-6 col-md-3">
-                            <label class="form-label small mb-1">Quantity</label>
-                            <input type="text" name="equipment_quantity" class="form-control" maxlength="100"
+                            <label class="form-label small mb-1" for="fr_qty">Quantity</label>
+                            <input type="text" name="equipment_quantity" id="fr_qty" class="form-control" maxlength="100"
                                    placeholder="e.g. 1 pc. each">
                         </div>
                         <div class="col-6 col-md-3">
-                            <label class="form-label small mb-1">Person Responsible</label>
-                            <input type="text" name="person_responsible" class="form-control" maxlength="255">
+                            <label class="form-label small mb-1" for="fr_responsible">Person Responsible</label>
+                            <input type="text" name="person_responsible" id="fr_responsible" class="form-control" maxlength="255">
                         </div>
                         <div class="col-12 col-md-4">
-                            <label class="form-label small mb-1">Technical Assistance Required?</label>
-                            <select name="technical_assistance" class="form-select">
+                            <label class="form-label small mb-1" for="fr_tech">Technical Assistance Required?</label>
+                            <select name="technical_assistance" id="fr_tech" class="form-select">
                                 <option value="no">No</option>
                                 <option value="yes">Yes</option>
                             </select>
                         </div>
                         <div class="col-12 col-md-8">
-                            <label class="form-label small mb-1">Details</label>
-                            <input type="text" name="technical_assistance_details" class="form-control">
+                            <label class="form-label small mb-1" for="fr_techdetails">Details</label>
+                            <input type="text" name="technical_assistance_details" id="fr_techdetails" class="form-control">
                         </div>
                     </div>
 
                     <!-- E. Additional requirements -->
                     <h6 class="fw-bold text-purple border-bottom pb-1">E. Additional Requirements</h6>
+                    <p class="form-text mt-0 mb-2">Anything else Facilities should prepare.</p>
                     <div class="mb-3">
                         <div class="d-flex flex-wrap gap-3 mb-2">
                             <?php
@@ -228,8 +253,8 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                             </div>
                             <?php endforeach; ?>
                         </div>
-                        <label class="form-label small mb-1">Details</label>
-                        <textarea name="additional_details" class="form-control" rows="2"></textarea>
+                        <label class="form-label small mb-1" for="fr_addl">Details</label>
+                        <textarea name="additional_details" id="fr_addl" class="form-control" rows="2"></textarea>
                     </div>
 
                     <!-- F. Requestor's acknowledgment -->
@@ -247,15 +272,16 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                             </label>
                         </div>
                         <div class="mt-2" style="max-width:360px">
-                            <label class="form-label small mb-1">Requestor (signature name)</label>
-                            <input type="text" name="acknowledged_name" id="fr_ack_name" class="form-control" maxlength="255">
+                            <label class="form-label small mb-1" for="fr_ack_name">Requestor (signature name)</label>
+                            <input type="text" name="acknowledged_name" id="fr_ack_name" class="form-control" maxlength="255"
+                                   value="<?php echo htmlspecialchars($currentAccount['username']); ?>">
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close without submitting</button>
                     <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-send me-1"></i>Submit Request
+                        <i class="bi bi-send me-1" aria-hidden="true"></i>Submit for Facilities review
                     </button>
                 </div>
             </form>
@@ -359,9 +385,17 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
 
                     <div id="fm_conflicts"></div>
 
+                    <?php if (ministerActsAsOverride($currentUserType)): ?>
+                    <div class="alert alert-info small py-2">
+                        <i class="bi bi-shield-lock me-1" aria-hidden="true"></i>
+                        You are recording this as an <strong>Admin override</strong> of the Minister's step.
+                        The history will say "by Admin (override)".
+                    </div>
+                    <?php endif; ?>
+
                     <div class="mb-3">
                         <label class="form-label small fw-semibold mb-1">Decision <span class="text-danger">*</span></label>
-                        <select name="decision" class="form-select" required>
+                        <select name="decision" id="fm_decision" class="form-select" required>
                             <option value="approved">APPROVED — proceeds to Facilities confirmation</option>
                             <option value="declined">DECLINED — the request is not approved</option>
                             <option value="for_clarification">FOR CLARIFICATION — more information needed</option>
@@ -383,8 +417,8 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-purple">
-                        <i class="bi bi-check2-circle me-1"></i>Record Decision
+                    <button type="submit" class="btn btn-purple" id="fm_submit">
+                        <i class="bi bi-check2-circle me-1" aria-hidden="true"></i><span id="fm_submit_label">Approve &amp; send to Facilities for confirmation</span>
                     </button>
                 </div>
             </form>
@@ -399,8 +433,9 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
 <div class="modal fade" id="confirmRequestModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" id="fcfForm"
-                  onsubmit="return confirm('Confirm this reservation? It will become an official calendar entry and will block the room.');">
+            <!-- No browser confirm(): this modal IS the confirmation, and its
+                 primary button states the consequence. -->
+            <form method="POST" id="fcfForm">
                 <div class="modal-header bg-success text-white">
                     <h5 class="modal-title"><i class="bi bi-calendar2-check me-2"></i>Facilities Confirmation — Step 4 of 4</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -437,8 +472,8 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-success">
-                        <i class="bi bi-calendar2-check me-1"></i>Confirm Reservation
+                    <button type="submit" class="btn btn-success" id="fcf_submit">
+                        <i class="bi bi-calendar2-check me-1" aria-hidden="true"></i>Confirm &amp; reserve the room
                     </button>
                 </div>
             </form>
@@ -453,8 +488,8 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
 <div class="modal fade" id="cancelRequestModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" id="fxForm"
-                  onsubmit="return confirm('Cancel this request? The record and its history are kept.');">
+            <!-- No browser confirm(): this modal IS the confirmation. -->
+            <form method="POST" id="fxForm">
                 <div class="modal-header bg-danger text-white">
                     <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>Cancel Request?</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -471,8 +506,8 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                            placeholder="Why is this being cancelled?">
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep Request</button>
-                    <button type="submit" class="btn btn-danger"><i class="bi bi-x-circle me-1"></i>Cancel Request</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep request</button>
+                    <button type="submit" class="btn btn-danger"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>Cancel request &amp; free the slot</button>
                 </div>
             </form>
         </div>
@@ -495,9 +530,14 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                 <div id="fd_body" class="d-none"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" id="fd_history_btn">
-                    <i class="bi bi-clock-history me-1"></i>Approval History
+                <span id="fd_waiting" class="small text-muted me-auto"></span>
+                <button type="button" class="btn btn-outline-danger d-none" id="fd_cancel_btn">
+                    <i class="bi bi-x-circle me-1" aria-hidden="true"></i>Cancel request
                 </button>
+                <button type="button" class="btn btn-outline-secondary" id="fd_history_btn">
+                    <i class="bi bi-clock-history me-1" aria-hidden="true"></i>History
+                </button>
+                <button type="button" class="btn btn-primary d-none" id="fd_action_btn"></button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
@@ -527,10 +567,5 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
     </div>
 </div>
 
-<datalist id="fbMinistryList">
-    <?php foreach ($ministries as $m): ?>
-    <option value="<?php echo htmlspecialchars($m['name']); ?>">
-    <?php endforeach; ?>
-</datalist>
 
 <?php include 'facility_modals_js.php'; ?>

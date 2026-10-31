@@ -126,15 +126,18 @@
         var official = (e.status === CONFIRMED);
         var style = official
             ? 'background:' + color + ';color:#fff;border-left:4px solid ' + color + ';'
-            : 'background:' + color + '1f;color:#212529;border-left:4px dashed ' + color + ';';
+            : 'background:' + color + '1f;color:#212529;border-left:4px dashed ' + color + ';opacity:.85;';
         var icon = official ? 'bi-calendar2-check-fill' : 'bi-clock-history';
-        var title = (LABELS[e.status] || e.status) + ' — ' + (e.event || '')
+        // Hover / screen-reader text: status, what and when, and — for anything
+        // not yet reserved — whose turn it is.
+        var title = (LABELS[e.status] || e.status) + ': ' + (e.event || '(untitled)')
                   + (e.facility ? ' @ ' + e.facility : '')
-                  + (e.start ? ' (' + fmtTime(e.start) + (e.end ? '–' + fmtTime(e.end) : '') + ')' : '')
-                  + (official ? '' : ' — not an official reservation');
+                  + (e.when ? ' · ' + e.when : (e.start ? ' (' + fmtTime(e.start) + (e.end ? '–' + fmtTime(e.end) : '') + ')' : ''))
+                  + (official ? ' · Reserved (official)'
+                              : ' · Not reserved yet' + (e.waiting_for ? ' · Waiting for ' + e.waiting_for : ''));
 
         return '<button type="button" class="fc-chip' + (official ? ' fc-chip-official' : '') + '"'
-             + ' style="' + style + '" data-id="' + e.id + '" title="' + esc(title) + '">'
+             + ' style="' + style + '" data-id="' + e.id + '" title="' + esc(title) + '" aria-label="' + esc(title) + '">'
              + '<i class="bi ' + icon + ' me-1"></i>'
              + (withTime && e.start ? '<span class="fc-chip-time">' + esc(fmtTime(e.start)) + '</span> ' : '')
              + '<span class="fc-chip-text">' + esc(e.event || '(untitled)') + '</span>'

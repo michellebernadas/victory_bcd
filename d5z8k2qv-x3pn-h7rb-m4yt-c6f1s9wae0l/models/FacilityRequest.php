@@ -88,6 +88,9 @@ class FacilityRequest {
     const SOFT_STATUSES = ['submitted', 'facilities_review', 'pending_minister',
                            'for_clarification', 'approved'];
 
+    /** Statuses waiting on an approver (stages 2, 3 and 4) — the "Awaiting Action" stat. */
+    const APPROVER_DESK_STATUSES = ['submitted', 'facilities_review', 'pending_minister', 'approved'];
+
     const REQUEST_TYPES = [
         'facility_room'   => 'Facility / Room',
         'furniture'       => 'Furniture',
@@ -212,7 +215,7 @@ class FacilityRequest {
 
     /** Dashboard-style counts. Always returns every key, so a view never hits an undefined index. */
     public function getStats() {
-        $out = ['total' => 0, 'confirmed' => 0, 'pending' => 0, 'upcoming' => 0, 'needs_action' => 0];
+        $out = ['total' => 0, 'confirmed' => 0, 'pending' => 0, 'upcoming' => 0, 'needs_action' => 0, 'waiting_requestor' => 0];
         foreach (array_keys(self::STATUSES) as $s) $out[$s] = 0;
         try {
             foreach ($this->db->query("SELECT status, COUNT(*) c FROM facility_requests GROUP BY status") as $row) {
@@ -222,8 +225,13 @@ class FacilityRequest {
             $out['confirmed'] = $out['confirmed'] ?? 0;
             // "Pending" = anything still moving through the workflow.
             foreach (self::SOFT_STATUSES as $s) $out['pending'] += $out[$s];
-            // "Needs action" = sitting on a desk right now (Facilities or Minister).
-            $out['needs_action'] = $out['submitted'] + $out['facilities_review'] + $out['pending_minister'];
+            // "Needs action" = sitting on an approver's desk right now: Facilities
+            // review (submitted / facilities_review), the Minister
+            // (pending_minister), or Facilities confirmation (approved). 'approved'
+            // was missing here, so a request waiting on step 4 showed as 0.
+            foreach (self::APPROVER_DESK_STATUSES as $s) $out['needs_action'] += $out[$s];
+            // for_clarification is the requestor's turn — counted, not hidden.
+            $out['waiting_requestor'] = $out['for_clarification'];
 
             $stmt = $this->db->prepare(
                 "SELECT COUNT(*) FROM facility_requests
@@ -248,6 +256,181 @@ class FacilityRequest {
             error_log("Facility request ministries error: " . $e->getMessage());
             return [];
         }
+    }
+
+    /**
+     * One COUNT over the given statuses — the menu's "waiting on me" badge.
+     * Cheap: a single indexed aggregate, 0 for an empty list or any error.
+     */
+    public function countByStatuses(array $statuses) {
+        $statuses = array_values(array_intersect($statuses, array_keys(self::STATUSES)));
+        if (!$statuses) return 0;
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT COUNT(*) FROM facility_requests WHERE status IN ("
+                . implode(',', array_fill(0, count($statuses), '?')) . ")"
+            );
+            $stmt->execute($statuses);
+            return (int)$stmt->fetchColumn();
+        } catch (PDOException $e) {
+            error_log("Facility request count error: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Active accounts that hold a workflow stage, for the Approvers panel.
+     * Keyed by account type; takes the role values from the caller so the
+     * role list itself stays in config/permissions.php.
+     */
+    public function getApprovers(array $accountTypes) {
+        $out = array_fill_keys($accountTypes, []);
+        if (!$accountTypes) return $out;
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT id, username, email, accounttype FROM accounts
+                  WHERE accountstatus = 'active' AND accounttype IN ("
+                . implode(',', array_fill(0, count($accountTypes), '?')) . ")
+                  ORDER BY username ASC"
+            );
+            $stmt->execute(array_values($accountTypes));
+            foreach ($stmt->fetchAll() ?: [] as $row) $out[$row['accounttype']][] = $row;
+        } catch (PDOException $e) {
+            error_log("Facility approvers error: " . $e->getMessage());
+        }
+        return $out;
+    }
+
+    // ── Stage progress (4-step stepper) ──────────────────────────────────────
+
+    /** The four policy stages, in order, with the history actions that complete each. */
+    const STAGES = [
+        'request'  => ['label' => 'Request',           'actions' => ['submitted']],
+        'review'   => ['label' => 'Facilities Review', 'actions' => ['facilities_reviewed']],
+        'minister' => ['label' => 'Minister',          'actions' => ['approved', 'declined', 'clarification_requested']],
+        'confirm'  => ['label' => 'Confirmed',         'actions' => ['confirmed']],
+    ];
+
+    /**
+     * Who acted / when, per request, from the append-only history — one query
+     * for a whole list of ids. Returns [request_id => [action => latest row]],
+     * plus '_cancel_from' => from_status of the latest cancellation.
+     */
+    public function stageEventsFor(array $ids) {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        $out = [];
+        if (!$ids) return $out;
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT frh.request_id, frh.action, frh.from_status, frh.notes, frh.performed_at,
+                        a.username AS performed_by_name
+                   FROM facility_request_history frh
+                   LEFT JOIN accounts a ON a.id = frh.performed_by
+                  WHERE frh.request_id IN (" . implode(',', array_fill(0, count($ids), '?')) . ")
+                  ORDER BY frh.performed_at ASC, frh.id ASC"
+            );
+            $stmt->execute($ids);
+            foreach ($stmt->fetchAll() ?: [] as $row) {
+                $rid = (int)$row['request_id'];
+                // Ascending order, so the latest row for each action wins.
+                $out[$rid][$row['action']] = $row;
+                if ($row['action'] === 'cancelled') $out[$rid]['_cancel_from'] = $row['from_status'];
+            }
+        } catch (PDOException $e) {
+            error_log("Facility stage events error: " . $e->getMessage());
+        }
+        return $out;
+    }
+
+    /**
+     * Build the four stepper steps for one request.
+     *
+     * Each step: key, label, state (done|current|upcoming|declined|clarify|
+     * cancelled|skipped), who, when, note. Derived from status (where the
+     * request is) plus history (who did each completed step). A cancelled
+     * request is drawn as it stood when cancelled, with that step marked.
+     */
+    public static function stepper($status, array $events = []) {
+        $position = [
+            'draft' => 0, 'submitted' => 1, 'facilities_review' => 1,
+            'pending_minister' => 2, 'for_clarification' => 2, 'approved' => 3,
+            'declined' => 2, 'confirmed' => 4,
+        ];
+        $effective = $status;
+        if ($status === 'cancelled') {
+            $effective = $events['_cancel_from'] ?? 'submitted';
+            if ($effective === 'cancelled' || !isset($position[$effective])) $effective = 'submitted';
+        }
+        $cur = $position[$effective] ?? 1;
+
+        $steps = [];
+        $i = 0;
+        foreach (self::STAGES as $key => $stage) {
+            $ev = null;
+            foreach ($stage['actions'] as $a) {
+                if (isset($events[$a]) && (!$ev || $events[$a]['performed_at'] >= $ev['performed_at'])) $ev = $events[$a];
+            }
+            if ($i < $cur)       $state = 'done';
+            elseif ($i === $cur) $state = 'current';
+            else                 $state = 'upcoming';
+
+            if ($key === 'minister' && $effective === 'declined')          $state = 'declined';
+            if ($key === 'minister' && $effective === 'for_clarification') $state = 'clarify';
+            if ($effective === 'declined' && $key === 'confirm')           $state = 'skipped';
+            if ($status === 'cancelled') {
+                if ($i === $cur || ($cur === 4 && $i === 3)) $state = ($cur === 4) ? 'done' : 'cancelled';
+                elseif ($i > $cur) $state = 'skipped';
+            }
+
+            $showWho = in_array($state, ['done', 'declined', 'clarify'], true) && $ev;
+            $steps[] = [
+                'key'   => $key,
+                'label' => $stage['label'],
+                'state' => $state,
+                'who'   => $showWho ? ($ev['performed_by_name'] ?: 'Unknown') : null,
+                'when'  => $showWho ? $ev['performed_at'] : null,
+                'note'  => $showWho ? $ev['notes'] : null,
+            ];
+            $i++;
+        }
+        return $steps;
+    }
+
+    // ── Portal form validation ───────────────────────────────────────────────
+
+    /**
+     * Rules for a request typed into the portal form (the importer of paper
+     * forms does not go through here — historical forms are taken as written).
+     * Returns '' when valid, else the message to show. Lead time is NOT checked
+     * here: it warns, never blocks (policy section 11).
+     *
+     *   - at least one type of request
+     *   - a date is required
+     *   - Facility / Room => a room AND start + end times are required
+     *   - when both times are given, end must be after start
+     */
+    public static function validatePortalForm(array $d) {
+        $types = $d['request_type'] ?? [];
+        if (!is_array($types)) $types = array_filter(array_map('trim', explode(',', (string)$types)));
+        $types = array_values(array_intersect($types, array_keys(self::REQUEST_TYPES)));
+        if (!$types) return 'Choose at least one type of request (Facility / Room, Furniture, Equipment or Office Resource).';
+
+        $date  = trim((string)($d['date_needed'] ?? ''));
+        $start = trim((string)($d['start_time'] ?? ''));
+        $end   = trim((string)($d['end_time'] ?? ''));
+        if ($date === '' || strtotime($date) === false) return 'Date needed is required.';
+
+        if (in_array('facility_room', $types, true)) {
+            if ((int)($d['facility_id'] ?? 0) <= 0) return 'A Facility / Room request needs a room. Choose the room, or untick "Facility / Room" for an equipment-only request.';
+            if ($start === '' || $end === '')      return 'A Facility / Room request needs a start time and an end time.';
+        }
+        if ($start !== '' && $end !== '') {
+            $s = strtotime('2000-01-01 ' . $start);
+            $e = strtotime('2000-01-01 ' . $end);
+            if ($s === false || $e === false) return 'Enter valid start and end times.';
+            if ($e <= $s) return 'End time must be after the start time.';
+        }
+        return '';
     }
 
     // ── Conflict detection ───────────────────────────────────────────────────
@@ -682,7 +865,14 @@ class FacilityRequest {
      * not an official reservation and still does not block the room. That only
      * happens at step 4 (policy 3.6 / 20).
      */
-    public function ministerDecision($id, $decision, $comments = null, $performedBy = null) {
+    /**
+     * @param bool $override  True when an Admin (not the Minister) records the
+     *                        decision. The history row then says so, e.g.
+     *                        "Approved by Admin (override)", so the audit trail
+     *                        shows in which capacity the step was taken. The
+     *                        minister_comments column keeps the comments as typed.
+     */
+    public function ministerDecision($id, $decision, $comments = null, $performedBy = null, $override = false) {
         $id      = (int)$id;
         $current = $this->getRequestById($id);
         if (!$current) return ['ok' => false, 'error' => 'Request not found.'];
@@ -711,7 +901,11 @@ class FacilityRequest {
 
             $action = ['approved' => 'approved', 'declined' => 'declined',
                        'for_clarification' => 'clarification_requested'][$decision];
-            $this->logHistory($id, $action, $current['status'], $decision, $comments, $performedBy);
+            $verb = ['approved' => 'Approved', 'declined' => 'Declined',
+                     'for_clarification' => 'Returned for clarification'][$decision];
+            $capacity = $verb . ($override ? ' by Admin (override)' : ' by Minister') . '.';
+            $this->logHistory($id, $action, $current['status'], $decision,
+                $capacity . ($comments !== null ? ' ' . $comments : ''), $performedBy);
 
             $this->db->commit();
             return ['ok' => true, 'error' => ''];
