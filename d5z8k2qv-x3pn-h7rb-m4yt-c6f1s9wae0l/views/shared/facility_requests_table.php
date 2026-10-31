@@ -17,6 +17,7 @@ $tableId     = $tableId     ?? 'facilityRequestsTable';
 $tableEmpty  = $tableEmpty  ?? ['icon' => 'bi-calendar-x', 'text' => 'No facility requests yet.', 'cta' => true];
 $advisories  = $advisories  ?? [];
 $stageEvents = $stageEvents ?? [];
+$tableDeleted = $tableDeleted ?? false;   // Deleted list: who / when / why instead of flags
 ?>
 <?php if (empty($tableRows)): ?>
     <div class="text-center text-muted py-5">
@@ -37,7 +38,7 @@ $stageEvents = $stageEvents ?? [];
                 <th>Request</th>
                 <th>Facility</th>
                 <th>When</th>
-                <th>Flags</th>
+                <th><?php echo $tableDeleted ? 'Deleted' : 'Flags'; ?></th>
                 <th class="text-end">Action</th>
             </tr>
         </thead>
@@ -48,9 +49,10 @@ $stageEvents = $stageEvents ?? [];
             $steps = FacilityRequest::stepper($r['status'], $stageEvents[$rid] ?? []);
             $when  = fb_when_range($r['date_needed'], $r['start_time'], $r['end_time']);
         ?>
-            <tr>
+            <tr class="<?php echo !empty($r['is_expired']) ? 'fb-row-expired' : ''; ?>">
                 <td data-order="<?php echo htmlspecialchars($r['status']); ?>">
                     <?php echo fb_badge($r['status']); ?>
+                    <?php echo fb_expired_badge($r); ?>
                     <div class="mt-1"><?php echo fb_stepper_html($steps, true); ?></div>
                 </td>
                 <td>
@@ -79,6 +81,13 @@ $stageEvents = $stageEvents ?? [];
                     <?php echo $when !== '' ? htmlspecialchars($when) : '<span class="text-muted">No date</span>'; ?>
                 </td>
                 <td>
+                    <?php if ($tableDeleted): ?>
+                    <div class="small">
+                        <div><i class="bi bi-person me-1" aria-hidden="true"></i><?php echo htmlspecialchars($r['deleted_by_name'] ?: 'Unknown'); ?></div>
+                        <div class="text-muted"><?php echo $r['deleted_at'] ? htmlspecialchars(date('M j, Y g:i A', strtotime($r['deleted_at']))) : ''; ?></div>
+                        <div class="fst-italic">&ldquo;<?php echo htmlspecialchars((string)$r['delete_reason']); ?>&rdquo;</div>
+                    </div>
+                    <?php else: ?>
                     <div class="d-flex flex-wrap gap-1">
                     <?php if (!empty($adv['hard'])): ?>
                         <span class="fb-chip fb-chip-danger" title="Overlaps <?php echo count($adv['hard']); ?> CONFIRMED reservation(s) in the same room.">
@@ -96,10 +105,16 @@ $stageEvents = $stageEvents ?? [];
                             <i class="bi bi-stopwatch" aria-hidden="true"></i>Short notice
                         </span>
                     <?php endif; ?>
-                    <?php if (empty($adv['hard']) && empty($adv['soft']) && empty($adv['lead_warn'])): ?>
+                    <?php if (empty($adv['hard']) && empty($adv['soft']) && empty($adv['lead_warn']) && empty($r['series_id'])): ?>
                         <span class="text-muted small">None</span>
                     <?php endif; ?>
+                    <?php if (!empty($r['series_id'])): ?>
+                        <span class="fb-chip fb-chip-muted" title="One of a weekly series of separate requests.">
+                            <i class="bi bi-arrow-repeat" aria-hidden="true"></i>Weekly
+                        </span>
+                    <?php endif; ?>
                     </div>
+                    <?php endif; ?>
                 </td>
                 <td class="text-end">
                     <?php include __DIR__ . '/facility_row_actions.php'; ?>

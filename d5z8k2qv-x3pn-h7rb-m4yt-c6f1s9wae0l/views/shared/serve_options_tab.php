@@ -115,7 +115,7 @@ $soUsage = $optionUsage ?? [];
                                 <?php if ($soActive): ?>
                                 <a class="btn btn-sm btn-outline-warning me-1" title="Deactivate (hides it from new teams)"
                                    href="index.php?action=deactivateServeOption&id=<?php echo (int)$so['id']; ?>"
-                                   onclick="return confirm('Deactivate this value? Existing teams keep it, but it disappears from the dropdown for new teams.')">
+                                   data-confirm="Deactivate this value? Existing teams keep it, but it disappears from the dropdown for new teams.">
                                     <i class="bi bi-pause-circle"></i>
                                 </a>
                                 <?php else: ?>
@@ -128,13 +128,13 @@ $soUsage = $optionUsage ?? [];
                             <?php if ($soUsed > 0): ?>
                             <a class="btn btn-sm btn-outline-secondary" title="Archive — teams still use this value"
                                href="index.php?action=deleteServeOption&id=<?php echo (int)$so['id']; ?>"
-                               onclick="return confirm('<?php echo $soUsed; ?> team(s) use this value, so it will be ARCHIVED rather than deleted. Those teams keep it. Continue?')">
+                               data-confirm="<?php echo $soUsed; ?> team(s) use this value, so it will be ARCHIVED rather than deleted. Those teams keep it. Continue?">
                                 <i class="bi bi-archive"></i>
                             </a>
                             <?php else: ?>
                             <a class="btn btn-sm btn-outline-danger" title="Delete (unused)"
                                href="index.php?action=deleteServeOption&id=<?php echo (int)$so['id']; ?>"
-                               onclick="return confirm('Delete this value permanently? No team uses it.')">
+                               data-confirm="Delete this value permanently? No team uses it.">
                                 <i class="bi bi-trash"></i>
                             </a>
                             <?php endif; ?>

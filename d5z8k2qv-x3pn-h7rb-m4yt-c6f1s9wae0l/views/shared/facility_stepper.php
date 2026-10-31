@@ -94,6 +94,19 @@ if (!function_exists('fb_stepper_html')) {
             'end'      => $r['end_time'],
             'hard'     => (int)$hard,
             'soft'     => (int)$soft,
+            'status'   => $r['status'],
+            'expired'  => !empty($r['is_expired']),
         ];
+    }
+
+    /**
+     * The read-time "Expired" badge (icon + text, never colour alone), shown
+     * beside the request's real status. '' when the request is not expired.
+     */
+    function fb_expired_badge(array $r) {
+        if (empty($r['is_expired'])) return '';
+        $m = FacilityRequest::EXPIRED_META;
+        return '<span class="badge bg-' . $m['badge'] . ' fb-expired" title="The date has passed while this request was still pending. Nothing was changed automatically.">'
+             . '<i class="bi ' . $m['icon'] . ' me-1" aria-hidden="true"></i>' . htmlspecialchars($m['label']) . '</span>';
     }
 }

@@ -13,7 +13,9 @@ class FacilityImportController {
     private $model;
 
     private const MAX_BYTES = 5 * 1024 * 1024;   // matches .htaccess upload_max_filesize
-    private const ALLOWED   = ['xlsx', 'xls'];   // each request is a worksheet; CSV has only one
+    // xlsx / xls: either format. csv: only the one-row-per-request template
+    // (a CSV has one sheet, so it cannot hold the one-sheet-per-request form).
+    private const ALLOWED   = ['xlsx', 'xls', 'csv'];
 
     public function __construct($db) {
         $this->db    = $db;
@@ -48,8 +50,8 @@ class FacilityImportController {
         }
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if (!in_array($ext, self::ALLOWED, true)) {
-            $this->fail('Please upload the request forms as an Excel file (.xlsx or .xls). '
-                      . 'Each request is its own worksheet, which a CSV cannot hold.');
+            $this->fail('Please upload an Excel file (.xlsx or .xls) — either the church\'s request-form workbook '
+                      . 'or the downloadable one-row-per-request template (which may also be saved as .csv).');
         }
         // A browser-supplied path must never be trusted as a readable location.
         if (!is_uploaded_file($file['tmp_name'])) {
@@ -93,11 +95,30 @@ class FacilityImportController {
             $msg .= ' ' . $result['reviewed'] . ' then moved on by the Facilities review recorded on the sheet.';
         }
         $msg .= ' None were approved or confirmed.';
-        if ($result['skipped'] > 0)    $msg .= ' ' . $result['skipped'] . ' sheet(s) skipped.';
-        if (!empty($result['errors'])) $msg .= ' ' . count($result['errors']) . ' sheet(s) had a problem.';
+        if ($result['skipped'] > 0)    $msg .= ' ' . $result['skipped'] . ' sheet(s) or row(s) skipped.';
+        if (!empty($result['errors'])) $msg .= ' ' . count($result['errors']) . ' sheet(s) or row(s) had a problem.';
 
         header('Location: index.php?action=facilityImport&batch=' . urlencode($batchId)
              . '&done=' . urlencode($msg));
+        exit();
+    }
+
+    /**
+     * The one-row-per-request template, generated now so its dropdowns carry
+     * the live room and ministry lists. Writes nothing.
+     */
+    public function downloadTemplate(): void {
+        require_once 'models/FacilityImportTemplate.php';
+        try {
+            $book = (new FacilityImportTemplate($this->db))->build();
+        } catch (\Throwable $e) {
+            error_log('FacilityImportController::downloadTemplate: ' . $e->getMessage());
+            $this->fail('The template could not be generated. Please try again.');
+        }
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="facility-requests-import-template.xlsx"');
+        header('Cache-Control: max-age=0');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save('php://output');
         exit();
     }
 

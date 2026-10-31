@@ -25,6 +25,16 @@ if (is_file($__vbAutoload)) {
 unset($__vbAutoload);
 
 /**
+ * The church is in the Philippines, so "today", "this Sunday" and every
+ * printed date must be Manila time. Production's php.ini can't be edited and
+ * its PHP default is UTC, where Sunday morning in Bacolod is still Saturday.
+ * getDB() sets the database session to the same offset so PHP's date() and
+ * SQL's NOW()/CURDATE() always agree on the day.
+ * APP_TIMEZONE in .env can override it; an invalid value falls back to Manila.
+ */
+const APP_DEFAULT_TIMEZONE = 'Asia/Manila';
+
+/**
  * Load environment variables from .env file
  */
 function loadEnv($path)
@@ -77,6 +87,13 @@ if (!isset($_ENV['DB_PASSWORD'])) {
     $_ENV['DB_PASSWORD'] = '';
 }
 
+$__vbTz = trim((string)($_ENV['APP_TIMEZONE'] ?? ''));
+if ($__vbTz === '' || !in_array($__vbTz, timezone_identifiers_list(), true)) {
+    $__vbTz = APP_DEFAULT_TIMEZONE;
+}
+date_default_timezone_set($__vbTz);
+unset($__vbTz);
+
 /**
  * Cache-busted URL for a local asset.
  *
@@ -108,6 +125,11 @@ function getDB()
         // Pdo\Mysql::ATTR_INIT_COMMAND, which doesn't exist on 8.2/8.3).
         // Running the same statement right after connecting works on both.
         $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
+        // Same clock as PHP (see APP_DEFAULT_TIMEZONE). A numeric offset such
+        // as +08:00, because named zones need MySQL's time-zone tables, which
+        // shared hosts often don't load. Manila has no daylight saving, so the
+        // offset never changes.
+        $pdo->exec("SET time_zone = " . $pdo->quote((new DateTime('now'))->format('P')));
         return $pdo;
     } catch (PDOException $e) {
         error_log("Database connection failed: " . $e->getMessage());

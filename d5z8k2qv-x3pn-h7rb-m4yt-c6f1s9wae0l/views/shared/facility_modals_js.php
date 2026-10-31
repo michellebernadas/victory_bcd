@@ -70,9 +70,119 @@
 
     // ── Step 1: request form ────────────────────────────────────────────────
 
-    window.openFacilityRequestForm = function (date, hour) {
+    /**
+     * The one request form serves three purposes:
+     *   new        — submitFacilityRequest (optionally Repeat weekly)
+     *   edit       — updateFacilityRequest&id=N; from for_clarification the
+     *                save is a RESUBMISSION (back to Facilities review)
+     *   book again — a new submission prefilled from an earlier request, date cleared
+     * The server decides who may edit (canEditFacilityRequest); this only
+     * arranges the form.
+     */
+    var formMode = { mode: 'new', id: null };
+    var DEFAULT_TITLE = 'Facilities, Equipment & Resource Request';
+    function setFormMode(mode, r) {
+        formMode = { mode: mode, id: r ? r.id : null };
+        var form = el('frForm'), note = el('fr_mode_note'), title = el('frTitleText');
+        var label = el('fr_submit_label'), rep = el('fr_repeat_wrap');
+        if (!form) return;
+        form.action = (mode === 'edit')
+            ? 'index.php?action=updateFacilityRequest&id=' + encodeURIComponent(r.id)
+            : 'index.php?action=submitFacilityRequest';
+        var resubmit = (mode === 'edit' && r.status === 'for_clarification');
+        if (title) title.textContent = mode === 'edit' ? (resubmit ? 'Edit & Resubmit Request' : 'Edit Request')
+                                     : (mode === 'again' ? 'Book Again — New Request' : DEFAULT_TITLE);
+        if (label) label.textContent = mode === 'edit' ? (resubmit ? 'Save & resubmit to Facilities' : 'Save changes')
+                                     : 'Submit for Facilities review';
+        if (rep) rep.classList.toggle('d-none', mode === 'edit');
+        if (note) {
+            var html = '';
+            if (resubmit) {
+                html = '<i class="bi bi-question-circle me-1" aria-hidden="true"></i><strong>Returned for clarification.</strong> '
+                     + (r.minister_comments ? 'The Minister asked: &ldquo;' + esc(r.minister_comments) + '&rdquo; ' : '')
+                     + 'Update the details below; saving sends it back to Facilities Personnel for review.';
+            } else if (mode === 'edit') {
+                html = '<i class="bi bi-pencil-square me-1" aria-hidden="true"></i>Editing your request. You can change it until Facilities Personnel pick it up for review.';
+            } else if (mode === 'again') {
+                html = '<i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>Booking again from &ldquo;' + esc(r.event_activity || '')
+                     + '&rdquo;. Choose the new date — this is a brand-new request and goes through the full approval again.';
+            }
+            note.innerHTML = html;
+            note.classList.toggle('d-none', !html);
+            note.className = 'alert small py-2 ' + (resubmit ? 'alert-warning' : 'alert-info') + (html ? '' : ' d-none');
+        }
+        hideSeriesPreview();
+    }
+
+    /** Fill the form from a stored request row (ajaxFacilityRequestDetail.request). */
+    function fillForm(r, keepDate) {
+        var set = function (id, v) { var n = el(id); if (n) n.value = (v === null || v === undefined) ? '' : String(v); };
+        var hm  = function (t) { return t ? String(t).slice(0, 5) : ''; };
+        set('fr_name', r.requestor_name); set('fr_leader', r.ministry_leader);
+        set('fr_contact', r.contact_number); set('fr_email', r.email);
+        set('fr_event', r.event_activity); set('fr_purpose', r.purpose);
+        set('fr_date', keepDate ? r.date_needed : '');
+        set('fr_start', hm(r.start_time)); set('fr_end', hm(r.end_time));
+        set('fr_attendance', r.expected_attendance); set('fr_facility', r.facility_id);
+        set('fr_setup', r.preferred_setup); set('fr_tables', r.num_tables); set('fr_chairs', r.num_chairs);
+        set('fr_otherreq', r.other_requirements); set('fr_equipment', r.equipment_requested);
+        set('fr_qty', r.equipment_quantity); set('fr_responsible', r.person_responsible);
+        set('fr_tech', r.technical_assistance === 'yes' ? 'yes' : 'no');
+        set('fr_techdetails', r.technical_assistance_details); set('fr_addl', r.additional_details);
+        set('fr_ack_name', r.acknowledged_name || r.requestor_name);
+        var types = String(r.request_type || '').split(',');
+        document.querySelectorAll('.fr-type').forEach(function (b) { b.checked = types.indexOf(b.value) !== -1; });
+        ['needs_setup', 'needs_technical', 'needs_security', 'needs_cleaning', 'needs_other'].forEach(function (k) {
+            var b = el('fr_' + k); if (b) b.checked = Number(r[k]) === 1;
+        });
+        var ack = el('fr_ack'); if (ack) ack.checked = Number(r.acknowledged) === 1;
+        var sel = function (id, v) {
+            var n = el(id); if (!n) return;
+            v = v === null || v === undefined ? '' : String(v);
+            if (v && !Array.prototype.some.call(n.options, function (o) { return o.value === v; })) n.add(new Option(v, v));
+            n.value = v;
+            if (window.jQuery && jQuery(n).data('select2')) jQuery(n).trigger('change.select2');
+        };
+        sel('fr_member', r.requestor_member_id); sel('fr_ministry', r.ministry);
+        syncRoomRequired(); checkTimes(); checkAvailability();
+    }
+
+    /** Fetch one request, then hand it to cb (shared by Edit and Book again). */
+    function withRequest(id, cb) {
+        fetch('index.php?action=ajaxFacilityRequestDetail&id=' + encodeURIComponent(id))
+            .then(function (r) { return r.json(); })
+            .then(function (d) { if (d && d.request) cb(d); })
+            .catch(function () {});
+    }
+
+    window.openEditRequest = function (id) {
+        withRequest(id, function (d) {
+            if (!d.can_edit) return;          // the server refuses it anyway
+            hideDetail();
+            window.openFacilityRequestForm(null, null, true);
+            setFormMode('edit', d.request);
+            fillForm(d.request, true);
+            show('facilityRequestModal').show();
+        });
+    };
+
+    window.openBookAgain = function (id) {
+        withRequest(id, function (d) {
+            if (!d.can_book_again) return;
+            hideDetail();
+            window.openFacilityRequestForm(null, null, true);
+            setFormMode('again', d.request);
+            fillForm(d.request, false);
+            show('facilityRequestModal').show();
+            var dt = el('fr_date'); if (dt) setTimeout(function () { dt.focus(); }, 400);
+        });
+    };
+
+    window.openFacilityRequestForm = function (date, hour, noShow) {
         var form = el('frForm');
         if (form) form.reset();
+        setFormMode('new', null);
+        syncRepeat();
         var adv = el('fr_advisory');
         if (adv) adv.innerHTML = '';
 
@@ -93,8 +203,99 @@
         syncRoomRequired();
         checkTimes();
         checkAvailability();
-        show('facilityRequestModal').show();
+        if (!noShow) show('facilityRequestModal').show();
     };
+
+    // ── Repeat weekly ───────────────────────────────────────────────────────
+
+    function syncRepeat() {
+        var on = el('fr_repeat') && el('fr_repeat').checked;
+        var opts = el('fr_repeat_opts'); if (opts) opts.classList.toggle('d-none', !on);
+        var label = el('fr_submit_label');
+        if (label && formMode.mode !== 'edit') label.textContent = on ? 'Check the weekly dates' : 'Submit for Facilities review';
+    }
+    document.addEventListener('change', function (e) {
+        if (e.target.id === 'fr_repeat') { hideSeriesPreview(); syncRepeat(); }
+        if (e.target.id === 'fr_repeat_until' && e.target.value && el('fr_repeat_mode_until')) el('fr_repeat_mode_until').checked = true;
+        if (e.target.id === 'fr_repeat_weeks' && el('fr_repeat_mode_weeks')) el('fr_repeat_mode_weeks').checked = true;
+        if (e.target.classList && e.target.classList.contains('fr-series-pick')) syncSeriesCount();
+    });
+
+    var previewShown = false;
+    function hideSeriesPreview() {
+        previewShown = false;
+        var p = el('fr_series_preview'), s = el('fr_sections'), back = el('fr_back'), close = el('fr_close');
+        if (p) { p.classList.add('d-none'); p.innerHTML = ''; }
+        if (s) s.classList.remove('d-none');
+        if (back) back.classList.add('d-none');
+        if (close) close.classList.remove('d-none');
+        syncRepeat();
+    }
+    function syncSeriesCount() {
+        var n = document.querySelectorAll('.fr-series-pick:checked').length;
+        var label = el('fr_submit_label');
+        if (label) label.textContent = 'Submit ' + n + ' request' + (n === 1 ? '' : 's');
+        var btn = el('fr_submit'); if (btn) btn.disabled = n === 0;
+        var c = el('fr_series_count'); if (c) c.textContent = n;
+    }
+    var backBtn = el('fr_back');
+    if (backBtn) backBtn.addEventListener('click', hideSeriesPreview);
+
+    /** Ask the server for every date's clash + lead-time check, then show the picker. */
+    function showSeriesPreview() {
+        var form = el('frForm'), box = el('fr_series_preview');
+        var fd = new FormData(form);
+        fd.delete('series_dates[]');
+        box.innerHTML = '<div class="text-muted small"><i class="bi bi-hourglass-split me-1"></i>Checking every date…</div>';
+        fetch('index.php?action=ajaxFacilitySeriesPreview', { method: 'POST', body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d || d.error) {
+                    var errs = el('fr_errors');
+                    errs.innerHTML = esc((d && d.error) || 'Could not check the weekly dates.');
+                    errs.classList.remove('d-none'); errs.focus();
+                    box.innerHTML = '';
+                    return;
+                }
+                var html = '<h6 class="fw-bold text-purple border-bottom pb-1"><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>'
+                         + 'Weekly series — ' + esc(el('fr_event').value) + '</h6>'
+                         + '<p class="small mb-2">Untick any date you do not need. <strong><span id="fr_series_count">' + d.dates.length
+                         + '</span></strong> separate request(s) will be submitted, each going through Facilities review, the Minister and '
+                         + 'confirmation on its own. Nothing is reserved yet.</p>'
+                         + '<div class="table-responsive"><table class="table table-sm align-middle mb-2" id="fr_series_table">'
+                         + '<thead><tr><th scope="col" class="text-center">Keep</th><th scope="col">#</th><th scope="col">Date</th><th scope="col">Clash check</th><th scope="col">Lead time</th></tr></thead><tbody>';
+                d.dates.forEach(function (x) {
+                    var id = 'fr_sd_' + x.n, clash;
+                    if (!x.checked) clash = '<span class="text-muted small">No room / time — not checked</span>';
+                    else if (x.hard.length) clash = '<span class="fb-chip fb-chip-danger"><i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i>Clash</span> '
+                         + '<span class="small">with confirmed: ' + esc(x.hard.join('; ')) + '</span>';
+                    else if (x.soft.length) clash = '<span class="fb-chip fb-chip-warning"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i>Possible clash</span> '
+                         + '<span class="small">pending: ' + esc(x.soft.join('; ')) + '</span>';
+                    else clash = '<span class="small text-success"><i class="bi bi-check-circle me-1" aria-hidden="true"></i>Free</span>';
+                    var lead = x.lead_warn
+                        ? '<span class="fb-chip fb-chip-muted" title="' + esc(x.lead_message) + '"><i class="bi bi-stopwatch" aria-hidden="true"></i>Short notice</span>'
+                        : '<span class="small text-muted">OK</span>';
+                    html += '<tr class="' + (x.hard.length ? 'table-danger' : '') + '">'
+                          + '<td class="text-center"><input class="form-check-input fr-series-pick" type="checkbox" name="series_dates[]" value="'
+                          + esc(x.date) + '" id="' + id + '" checked aria-label="Keep ' + esc(x.label) + '"></td>'
+                          + '<td class="small text-muted">' + x.n + '</td>'
+                          + '<td><label class="small fw-semibold mb-0" for="' + id + '">' + esc(x.label) + '</label></td>'
+                          + '<td>' + clash + '</td><td>' + lead + '</td></tr>';
+                });
+                html += '</tbody></table></div>'
+                     +  '<p class="form-text mb-0" style="font-size:.72rem">A clash with a <strong>confirmed</strong> booking does not stop you submitting — '
+                     +  'the Minister decides on conflicting requests (policy section 13) — but a confirmed reservation is never overridden automatically.</p>';
+                box.innerHTML = html;
+                box.classList.remove('d-none');
+                el('fr_sections').classList.add('d-none');
+                el('fr_back').classList.remove('d-none');
+                el('fr_close').classList.add('d-none');
+                previewShown = true;
+                syncSeriesCount();
+                box.scrollIntoView({ block: 'start' });
+            })
+            .catch(function () { box.innerHTML = '<div class="text-danger small">Could not check the weekly dates.</div>'; });
+    }
 
     // Picking a member fills the contact block rather than making it retyped.
     // Name / email may already hold the account prefill, so a member pick
@@ -202,7 +403,29 @@
     }
 
     document.addEventListener('submit', function (e) {
-        if (e.target.id === 'frForm' && !validateRequestForm()) e.preventDefault();
+        if (e.target.id === 'frForm') {
+            if (previewShown) {
+                // Submitting the kept dates of a weekly series.
+                if (!document.querySelectorAll('.fr-series-pick:checked').length) e.preventDefault();
+                return;
+            }
+            if (!validateRequestForm()) { e.preventDefault(); return; }
+            if (formMode.mode !== 'edit' && el('fr_repeat') && el('fr_repeat').checked) {
+                // Repeat weekly: show every date with its checks first.
+                e.preventDefault();
+                showSeriesPreview();
+            }
+            return;
+        }
+        if (e.target.id === 'fdelForm') {
+            var r = el('fdel_reason'), msg = el('fdel_reason_msg');
+            if (r && !r.value.trim()) {
+                e.preventDefault();
+                r.classList.add('is-invalid');
+                if (msg) msg.textContent = 'A reason is required — say why this request was a mistake.';
+                r.focus();
+            }
+        }
     });
     document.addEventListener('change', function (e) {
         if (e.target.classList && e.target.classList.contains('fr-type')) syncRoomRequired();
@@ -244,7 +467,9 @@
         var qs = 'facility_id=' + encodeURIComponent(facility)
                + '&date_needed=' + encodeURIComponent(date)
                + '&start_time=' + encodeURIComponent(start)
-               + '&end_time=' + encodeURIComponent(end);
+               + '&end_time=' + encodeURIComponent(end)
+               // An edited request must not clash with itself.
+               + (formMode.mode === 'edit' && formMode.id ? '&exclude_id=' + encodeURIComponent(formMode.id) : '');
 
         fetch('index.php?action=ajaxFacilityAvailability&' + qs)
             .then(function (r) { return r.json(); })
@@ -352,13 +577,45 @@
         show('confirmRequestModal').show();
     };
 
-    window.openCancelRequest = function (d) {
+    window.openCancelRequest = function (d, note, title) {
         if (missing('cancelRequestModal')) return;
         hideDetail();
         el('fxForm').action ='index.php?action=cancelFacilityRequest&id=' + d.id;
         el('fx_event').textContent = d.event || '(untitled)';
         el('fx_meta').innerHTML    = metaLine(d);
+        var n = el('fx_notes'); if (n) n.value = note || '';
+        var t = el('fx_title');
+        if (t) t.innerHTML = '<i class="bi bi-x-circle me-2" aria-hidden="true"></i>' + esc(title || 'Cancel Request?');
         show('cancelRequestModal').show();
+    };
+
+    /** "Close as expired" is an ordinary cancel with the reason filled in. */
+    window.openCloseExpired = function (d) {
+        window.openCancelRequest(d,
+            'Closed as expired: the date passed before this request was confirmed.',
+            'Close as Expired?');
+    };
+
+    window.openDeleteRequest = function (d) {
+        if (missing('deleteRequestModal')) return;
+        hideDetail();
+        el('fdelForm').action = 'index.php?action=deleteFacilityRequest&id=' + d.id;
+        el('fdel_event').textContent = d.event || '(untitled)';
+        el('fdel_meta').innerHTML    = metaLine(d);
+        var r = el('fdel_reason'); r.value = ''; r.classList.remove('is-invalid');
+        el('fdel_reason_msg').textContent = '';
+        el('fdel_confirmed').classList.toggle('d-none', d.status !== CONFIRMED);
+        show('deleteRequestModal').show();
+        setTimeout(function () { r.focus(); }, 400);
+    };
+
+    window.openRestoreRequest = function (d) {
+        if (missing('restoreRequestModal')) return;
+        hideDetail();
+        el('frsForm').action = 'index.php?action=restoreFacilityRequest&id=' + d.id;
+        el('frs_event').textContent = d.event || '(untitled)';
+        el('frs_meta').innerHTML    = metaLine(d);
+        show('restoreRequestModal').show();
     };
 
     // ── Read-only detail ────────────────────────────────────────────────────
@@ -370,9 +627,10 @@
         body.innerHTML = '';
         // History loads in parallel into its own column beside the details.
         loadHistory(id, el('fdh_loading'), el('fdh_list'), el('fdh_empty'));
-        var act = el('fd_action_btn'), cxl = el('fd_cancel_btn'), wait = el('fd_waiting');
-        act.classList.add('d-none'); act.onclick = null;
-        cxl.classList.add('d-none'); cxl.onclick = null;
+        var wait = el('fd_waiting');
+        ['fd_action_btn', 'fd_cancel_btn', 'fd_edit_btn', 'fd_book_btn', 'fd_delete_btn'].forEach(function (b) {
+            var n = el(b); if (n) { n.classList.add('d-none'); n.onclick = null; }
+        });
         wait.innerHTML = '';
         show('facilityDetailModal').show();
 
@@ -406,18 +664,37 @@
     function wireDetailActions(d) {
         var act = el('fd_action_btn'), cxl = el('fd_cancel_btn'), wait = el('fd_waiting');
         var n = d.next_action;
-        if (n && NEXT_OPENER[n.key] && typeof window[NEXT_OPENER[n.key]] === 'function') {
-            act.className = 'btn ' + NEXT_CLASS[n.key];
-            act.innerHTML = '<i class="bi ' + NEXT_ICON[n.key] + ' me-1" aria-hidden="true"></i>' + esc(n.label);
-            act.title = n.hint || '';
-            act.onclick = function () { window[NEXT_OPENER[n.key]](d.payload); };
+        var primary = function (cls, icon, label, fn, hint) {
+            act.className = 'btn ' + cls;
+            act.innerHTML = '<i class="bi ' + icon + ' me-1" aria-hidden="true"></i>' + esc(label);
+            act.title = hint || '';
+            act.onclick = fn;
+        };
+        if (d.can_restore && !missing('restoreRequestModal')) {
+            primary('btn-success', 'bi-arrow-counterclockwise', 'Restore', function () { window.openRestoreRequest(d.payload); });
+        } else if (d.can_close_expired && !missing('cancelRequestModal')) {
+            primary('btn-outline-secondary', 'bi-archive', 'Close as expired', function () { window.openCloseExpired(d.payload); },
+                    'Cancel it with a note that the date passed before it was confirmed');
+        } else if (n && NEXT_OPENER[n.key] && typeof window[NEXT_OPENER[n.key]] === 'function') {
+            primary(NEXT_CLASS[n.key], NEXT_ICON[n.key], n.label, function () { window[NEXT_OPENER[n.key]](d.payload); }, n.hint);
+        } else if (d.can_edit && d.request.status === 'for_clarification') {
+            primary('btn-warning', 'bi-pencil-square', 'Edit & resubmit', function () { window.openEditRequest(d.request.id); });
+        } else if (d.is_expired) {
+            wait.innerHTML = '<i class="bi bi-hourglass-bottom me-1" aria-hidden="true"></i>Expired — the date has passed';
         } else if (d.waiting_for) {
             wait.innerHTML = '<i class="bi bi-hourglass-split me-1" aria-hidden="true"></i>Waiting for ' + esc(d.waiting_for);
         }
-        if (d.can_cancel && typeof window.openCancelRequest === 'function' && !missing('cancelRequestModal')) {
-            cxl.classList.remove('d-none');
-            cxl.onclick = function () { window.openCancelRequest(d.payload); };
-        }
+        var reveal = function (id, ok, fn) {
+            var b = el(id); if (!b || !ok) return;
+            b.classList.remove('d-none'); b.onclick = fn;
+        };
+        reveal('fd_cancel_btn', d.can_cancel && !d.can_close_expired && !missing('cancelRequestModal'),
+               function () { window.openCancelRequest(d.payload); });
+        reveal('fd_edit_btn', d.can_edit && d.request.status !== 'for_clarification',
+               function () { window.openEditRequest(d.request.id); });
+        reveal('fd_book_btn', d.can_book_again, function () { window.openBookAgain(d.request.id); });
+        reveal('fd_delete_btn', d.can_delete && !missing('deleteRequestModal'),
+               function () { window.openDeleteRequest(d.payload); });
     }
 
     function row(label, value) {
@@ -433,12 +710,50 @@
         var html = '<div class="d-flex align-items-center gap-2 mb-2">'
                  + '<span class="badge bg-' + (d.status_badge || 'secondary')
                  + (d.is_official ? ' fb-official' : '') + '">' + esc(d.status_label) + '</span>';
-        html += d.is_official
-            ? '<span class="small text-success fw-semibold">Official reservation — this blocks the room.</span>'
-            : '<span class="small text-muted">Not an official reservation — this reserves nothing.</span>';
+        if (d.is_expired) {
+            html += '<span class="badge bg-secondary fb-expired"><i class="bi bi-hourglass-bottom me-1" aria-hidden="true"></i>Expired</span>';
+        }
+        if (d.is_deleted) {
+            html += '<span class="badge bg-danger"><i class="bi bi-trash3 me-1" aria-hidden="true"></i>Deleted</span>';
+        } else {
+            html += d.is_official
+                ? '<span class="small text-success fw-semibold">Official reservation — this blocks the room.</span>'
+                : '<span class="small text-muted">Not an official reservation — this reserves nothing.</span>';
+        }
         html += '</div>';
 
+        if (d.is_deleted) {
+            html += '<div class="alert alert-danger small py-2"><i class="bi bi-trash3 me-1" aria-hidden="true"></i>'
+                 +  '<strong>Deleted</strong> by ' + esc(r.deleted_by_name || 'Unknown') + ' on ' + esc(r.deleted_at || '')
+                 +  '. Reason: &ldquo;' + esc(r.delete_reason || '') + '&rdquo;. It is hidden everywhere and reserves nothing until restored.</div>';
+        }
+        if (d.is_expired) {
+            html += '<div class="alert alert-secondary small py-2"><i class="bi bi-hourglass-bottom me-1" aria-hidden="true"></i>'
+                 +  '<strong>Expired.</strong> The date passed while this request was still ' + esc(d.status_label)
+                 +  '. Nothing was changed automatically; Facilities can close it out.</div>';
+        }
+
         html += '<h6 class="fw-bold mb-2">' + esc(r.event_activity || '(untitled)') + '</h6>';
+        if (d.series && d.series.length > 1) {
+            var cur = d.series.filter(function (s) { return s.current; })[0];
+            html += '<div class="alert alert-light border small py-2 fd-series"><i class="bi bi-arrow-repeat me-1 text-purple" aria-hidden="true"></i>'
+                 +  '<strong>Part of a weekly series' + (cur ? ' (' + cur.n + ' of ' + d.series.length + ')' : '') + '.</strong> '
+                 +  'Each week is its own request with its own approvals.<div class="d-flex flex-wrap gap-1 mt-1">';
+            d.series.forEach(function (s) {
+                html += s.current
+                    ? '<span class="badge bg-purple">' + s.n + '. ' + esc(s.date) + '</span>'
+                    : '<a href="#" class="badge bg-light text-dark border text-decoration-none" onclick="openFacilityDetail(' + s.id + '); return false;" title="'
+                      + esc(s.status_label) + '">' + s.n + '. ' + esc(s.date) + '</a>';
+            });
+            html += '</div></div>';
+        }
+        if (r.submitted_by_name) {
+            html += '<p class="small text-muted mb-2"><i class="bi bi-person me-1" aria-hidden="true"></i>Submitted in the portal by '
+                 +  esc(r.submitted_by_name) + (d.is_owner ? ' (you)' : '') + '.</p>';
+        } else if (r.source === 'excel_import') {
+            html += '<p class="small text-muted mb-2"><i class="bi bi-file-earmark-excel me-1" aria-hidden="true"></i>Imported from a spreadsheet'
+                 +  (r.source_label ? ' (' + esc(r.source_label) + ')' : '') + '.</p>';
+        }
         // Server-rendered 4-step stepper (views/shared/facility_stepper.php).
         if (d.stepper_html) html += d.stepper_html;
         if (r.status === 'for_clarification') {
@@ -532,14 +847,17 @@
         approved: 'Approved (Minister step)', declined: 'Declined (Minister step)',
         clarification_requested: 'Returned for Clarification',
         confirmed: 'CONFIRMED — official reservation',
-        cancelled: 'Cancelled', edited: 'Edited'
+        cancelled: 'Cancelled', edited: 'Edited', resubmitted: 'Resubmitted after clarification',
+        deleted: 'Deleted (mistake / duplicate)', restored: 'Restored'
     };
     var ACTION_ICON = {
         submitted: 'bi-send text-info', facilities_reviewed: 'bi-clipboard-check text-primary',
         approved: 'bi-hand-thumbs-up text-purple', declined: 'bi-x-circle text-danger',
         clarification_requested: 'bi-question-circle text-warning',
         confirmed: 'bi-calendar2-check text-success',
-        cancelled: 'bi-slash-circle text-secondary', edited: 'bi-pencil text-secondary'
+        cancelled: 'bi-slash-circle text-secondary', edited: 'bi-pencil text-secondary',
+        resubmitted: 'bi-arrow-return-right text-info', deleted: 'bi-trash3 text-danger',
+        restored: 'bi-arrow-counterclockwise text-success'
     };
 
     /**

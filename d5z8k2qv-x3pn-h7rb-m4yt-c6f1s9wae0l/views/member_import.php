@@ -162,7 +162,7 @@ $miStatus = [
                         <?php endif; ?>
                         <a href="index.php?action=memberImportDiscard&batch=<?php echo urlencode($batchId); ?>"
                            class="btn btn-sm btn-outline-danger"
-                           onclick="return confirm('Discard this import? Nothing has been added yet.');">
+                           data-confirm="Discard this import? Nothing has been added yet.">
                             <i class="bi bi-x-circle me-1"></i>Discard
                         </a>
                     </div>
@@ -247,7 +247,7 @@ $miStatus = [
                         </p>
                         <button type="submit" class="btn btn-primary btn-lg px-5"
                                 <?php echo $summary['will_create'] === 0 ? 'id="miConfirmBtn"' : ''; ?>
-                                onclick="return confirm('Add these members now?');">
+                                data-confirm="Add these members now?" data-confirm-ok="Add members" data-confirm-variant="success">
                             <i class="bi bi-check-circle me-1"></i>Confirm Import
                         </button>
                         <div class="form-text mt-2">

@@ -1169,7 +1169,7 @@ if (!$isL113View) {
                                         <?php if (($rec['status'] ?? 'active') === 'active'): ?>
                                         <a class="btn btn-sm btn-outline-warning me-1" title="Deactivate"
                                            href="index.php?action=deactivateAttendance&id=<?php echo $rec['id']; ?><?php echo $activePt ? '&program_type='.$activePt : ''; ?>"
-                                           onclick="return confirm('Deactivate this record?')">
+                                           data-confirm="Deactivate this record?">
                                             <i class="bi bi-pause-circle"></i>
                                         </a>
                                         <?php else: ?>
@@ -1180,7 +1180,7 @@ if (!$isL113View) {
                                         <?php endif; ?>
                                         <a class="btn btn-sm btn-outline-danger" title="Delete"
                                            href="index.php?action=deleteAttendance&id=<?php echo $rec['id']; ?><?php echo $activePt ? '&program_type='.$activePt : ''; ?>"
-                                           onclick="return confirm('Permanently delete this record? This cannot be undone.');">
+                                           data-confirm="Permanently delete this record? This cannot be undone.">
                                             <i class="bi bi-trash"></i>
                                         </a>
                                     </td>

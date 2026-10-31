@@ -108,12 +108,12 @@ $editUser = $editUser ?? null;
                                         </button>
                                         <?php if ($u['accountstatus'] === 'active'): ?>
                                         <a href="index.php?action=deactivateUser&uuid=<?php echo $u['uuid']; ?>" class="btn btn-sm btn-outline-warning me-1" title="Deactivate"
-                                           onclick="return confirm('Deactivate this user?')">
+                                           data-confirm="Deactivate this user?">
                                             <i class="bi bi-person-x"></i>
                                         </a>
                                         <?php else: ?>
                                         <a href="index.php?action=activateUser&uuid=<?php echo $u['uuid']; ?>" class="btn btn-sm btn-outline-success me-1" title="Activate"
-                                           onclick="return confirm('Activate this user?')">
+                                           data-confirm="Activate this user?">
                                             <i class="bi bi-person-check"></i>
                                         </a>
                                         <?php endif; ?>

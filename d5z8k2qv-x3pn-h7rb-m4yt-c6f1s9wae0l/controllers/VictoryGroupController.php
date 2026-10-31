@@ -56,6 +56,7 @@ class VictoryGroupController {
         $allMembers        = $this->groupModel->getAllMembersList();
         $distinctLocations = $this->groupModel->getDistinctLocations();
         $groupStats        = $this->groupModel->getStats();
+        $needsLinkCount    = canAdminister() ? $this->groupModel->countUnresolvedSlots() : 0;
         include 'views/victory_groups.php';
     }
 
@@ -114,6 +115,7 @@ class VictoryGroupController {
         $allMembers        = $this->groupModel->getAllMembersList();
         $distinctLocations = $this->groupModel->getDistinctLocations();
         $groupStats        = $this->groupModel->getStats();
+        $needsLinkCount    = canAdminister() ? $this->groupModel->countUnresolvedSlots() : 0;
         include 'views/victory_groups.php';
     }
 
@@ -182,6 +184,76 @@ class VictoryGroupController {
         if ($vgmId <= 0) $this->redirectLink($tab, false, 'That name could not be found.');
         $res = $this->groupModel->unlinkVgMember($vgmId, $slot);
         $this->redirectLink($tab, $res['ok'], $res['msg']);
+    }
+
+    // ── Needs Link: one page for every unresolved imported name ──────────────
+
+    public function needsLink() {
+        require_once 'models/LinkSuggester.php';
+        $nlRows      = $this->groupModel->getUnresolvedRows();
+        $nlProgress  = $this->groupModel->getLinkProgress();
+        $suggester   = new LinkSuggester($this->groupModel->getMembersForMatching());
+        $nlSuggest   = [];
+        foreach ($nlRows as $r) {
+            $nlSuggest[(int)$r['vg_member_id']] = $suggester->suggestForRow($r);
+        }
+        include 'views/needs_link.php';
+    }
+
+    /**
+     * One action on one slot: link | unlink | not_member | restore.
+     * AJAX (ajax=1) answers JSON with the redrawn row and fresh progress, so the
+     * admin's place in a long list never moves. Without JS the same form posts
+     * normally and is redirected back to the same filtered URL and row anchor.
+     */
+    public function needsLinkSave() {
+        $vgmId    = (int)($_POST['vg_member_id'] ?? 0);
+        $slot     = (int)($_POST['slot'] ?? 1);
+        $op       = (string)($_POST['op'] ?? '');
+        $memberId = (int)($_POST['member_id'] ?? 0);
+
+        if ($vgmId <= 0) {
+            $res = ['ok' => false, 'msg' => 'That name could not be found.'];
+        } elseif ($op === 'link') {
+            $res = $memberId > 0
+                ? $this->groupModel->linkVgMember($vgmId, $slot, $memberId)
+                : ['ok' => false, 'msg' => 'Choose a member to link this name to.'];
+        } elseif ($op === 'not_member') {
+            $res = $this->groupModel->markVgMemberNotAMember($vgmId, $slot);
+        } elseif ($op === 'unlink' || $op === 'restore') {
+            $res = $this->groupModel->unlinkVgMember($vgmId, $slot);
+            if ($res['ok'] && $op === 'restore') $res['msg'] = 'Back on Needs Link.';
+        } else {
+            $res = ['ok' => false, 'msg' => 'Unknown action.'];
+        }
+
+        if (!empty($_POST['ajax'])) {
+            require_once 'models/LinkSuggester.php';
+            require_once 'views/shared/needs_link_row.php';
+            $row  = $vgmId > 0 ? $this->groupModel->getNeedsLinkRow($vgmId) : false;
+            $html = '';
+            if ($row) {
+                $sugg = (new LinkSuggester($this->groupModel->getMembersForMatching()))->suggestForRow($row);
+                $html = nl_render_row($row, $sugg);
+            }
+            header('Content-Type: application/json');
+            echo json_encode([
+                'ok'       => (bool)$res['ok'],
+                'msg'      => $res['msg'],
+                'html'     => $html,
+                'progress' => $this->groupModel->getLinkProgress(),
+            ]);
+            exit();
+        }
+
+        // No-JS fallback: back to the same filtered list, at the same row.
+        $back = (string)($_POST['return'] ?? '');
+        parse_str(ltrim($back, '?'), $q);
+        $keep = array_intersect_key($q, array_flip(['kind', 'role', 'couples', 'q']));
+        header('Location: index.php?action=needsLink' . ($keep ? '&' . http_build_query($keep) : '')
+             . ($res['ok'] ? '&notif=1' : '&error=1') . '&msg=' . urlencode($res['msg'])
+             . '#nl-row-' . $vgmId);
+        exit();
     }
 
     private function redirectLink($tab, $ok, $msg) {

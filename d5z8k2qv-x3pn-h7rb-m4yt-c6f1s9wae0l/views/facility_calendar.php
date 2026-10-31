@@ -30,6 +30,13 @@ $stageEvents      = $stageEvents      ?? [];
 $approvers        = $approvers        ?? [];
 $currentAccount   = $currentAccount   ?? ['username' => '', 'email' => ''];
 $currentUserType  = $_SESSION['user']['accounttype'] ?? null;
+$listTabs         = $listTabs         ?? FacilityRequest::LIST_TABS;
+$activeList       = $activeList       ?? 'active';
+$tabCounts        = $tabCounts        ?? [];
+$setupRows        = $setupRows        ?? [];
+$setupFrom        = $setupFrom        ?? date('Y-m-d');
+$setupTo          = $setupTo          ?? date('Y-m-d');
+$fbReturn         = $fbReturn         ?? 'tab=requests';
 require_once __DIR__ . '/shared/facility_stepper.php';
 
 /** Status badge — one consistent rendering everywhere on the page. */
@@ -74,8 +81,10 @@ foreach ($calendarRequests as $r) {
         'facility'    => $r['facility_name'],
         'facility_id' => $r['facility_id'] !== null ? (int)$r['facility_id'] : null,
         'status'      => $r['status'],
+        // Past and still pending: drawn faded and labelled Expired.
+        'expired'     => !empty($r['is_expired']),
         // Shown on hover / in the chip's accessible name: whose turn it is.
-        'waiting_for' => facilityStageOwner($r['status']),
+        'waiting_for' => !empty($r['is_expired']) ? null : facilityStageOwner($r['status']),
         'when'        => fb_when_range($r['date_needed'], $r['start_time'], $r['end_time']),
     ];
 }
@@ -94,7 +103,7 @@ foreach ($calendarRequests as $r) {
                 </div>
                 <?php if (canSubmitFacilityRequest($currentUserType)): ?>
                 <div class="d-flex gap-2">
-                    <?php if ($currentUserType === 'admin'): ?>
+                    <?php if (canImportFacilityRequests($currentUserType)): ?>
                     <a href="index.php?action=facilityImport" class="btn btn-outline-primary">
                         <i class="bi bi-upload me-1"></i> Import Request Forms
                     </a>
@@ -131,6 +140,10 @@ foreach ($calendarRequests as $r) {
                     'clarification'          => 'Returned for clarification. The requestor and Facilities can discuss before a decision is made.',
                     'confirmed'              => 'Request CONFIRMED. This is now an official reservation and it blocks the room on the calendar.',
                     'cancelled'              => 'Request cancelled. The slot is free for other ministries.',
+                    'resubmitted'            => 'Request resubmitted. It is back with Facilities Personnel for review.',
+                    'deleted'                => 'Request deleted. It is hidden everywhere and no longer reserves anything; admins can restore it from the Deleted list.',
+                    'restored'               => 'Request restored, exactly as it was before it was deleted.',
+                    'series_submitted'       => (int)($_GET['n'] ?? 0) . ' weekly requests submitted. Each one goes through Facilities review, the Minister and confirmation on its own — none is reserved yet.',
                 ];
                 $notifKey   = $_GET['notif'];
                 $notifClass = in_array($notifKey, ['submitted_short_notice', 'clarification'], true) ? 'warning'
@@ -159,13 +172,16 @@ foreach ($calendarRequests as $r) {
                 ['label' => 'Awaiting Action',    'value' => $stats['needs_action'] ?? 0, 'color' => 'warning',
                  'hint'  => 'Waiting on Facilities review, the Minister, or Facilities confirmation'],
                 ['label' => 'Waiting on Requestor', 'value' => $stats['waiting_requestor'] ?? 0, 'color' => 'purple',
-                 'hint'  => 'Returned for clarification', 'href' => 'index.php?action=facilityCalendar&tab=requests&status=for_clarification'],
+                 'hint'  => 'Returned for clarification', 'href' => 'index.php?action=facilityCalendar&tab=requests&list=active&status=for_clarification'],
+                ['label' => 'Expired',            'value' => $stats['expired']      ?? 0, 'color' => 'secondary',
+                 'hint'  => 'Still pending after the date passed. Shown under Past; nothing was changed automatically.',
+                 'href'  => 'index.php?action=facilityCalendar&tab=requests&list=past'],
                 ['label' => 'Declined',           'value' => $stats['declined']     ?? 0, 'color' => 'danger'],
             ];
             ?>
             <div class="row mb-3 g-2">
                 <?php foreach ($statCards as $i => $sc): ?>
-                <div class="col-6 col-md-4 col-xl">
+                <div class="col-6 col-md-3 col-xl">
                     <div class="card text-center h-100<?php echo $i === 0 ? ' border-primary border-2' : ''; ?>"
                          <?php if (!empty($sc['hint'])): ?>title="<?php echo htmlspecialchars($sc['hint']); ?>"<?php endif; ?>>
                         <div class="card-body py-2 px-1">
@@ -197,24 +213,24 @@ foreach ($calendarRequests as $r) {
                     <a class="nav-link <?php echo $activeTab === 'requests' ? 'active' : ''; ?>"
                        href="index.php?action=facilityCalendar&tab=requests">
                         <i class="bi bi-list-check me-1"></i>Requests
-                        <?php if (!empty($stats['total'])): ?>
-                        <span class="badge bg-secondary ms-1"><?php echo (int)$stats['total']; ?></span>
+                        <?php if (!empty($waitingRequests)): ?>
+                        <span class="badge bg-danger ms-1" title="<?php echo count($waitingRequests); ?> waiting on you"><?php echo count($waitingRequests); ?><span class="visually-hidden"> waiting on you</span></span>
                         <?php endif; ?>
                     </a>
                 </li>
+                <?php if (canViewFacilitySetupSheet($currentUserType)): ?>
                 <li class="nav-item">
-                    <a class="nav-link <?php echo $activeTab === 'waiting' ? 'active' : ''; ?>"
-                       href="index.php?action=facilityCalendar&tab=waiting">
-                        <i class="bi bi-person-check me-1" aria-hidden="true"></i>Waiting on me
-                        <span class="badge <?php echo $waitingRequests ? 'bg-danger' : 'bg-secondary'; ?> ms-1"
-                              aria-label="<?php echo count($waitingRequests); ?> waiting"><?php echo count($waitingRequests); ?></span>
+                    <a class="nav-link <?php echo $activeTab === 'setup' ? 'active' : ''; ?>"
+                       href="index.php?action=facilityCalendar&tab=setup">
+                        <i class="bi bi-clipboard2-data me-1" aria-hidden="true"></i>Setup sheet
                     </a>
                 </li>
+                <?php endif; ?>
             </ul>
 
 <?php include 'shared/facility_calendar_tab.php'; ?>
 <?php include 'shared/facility_requests_tab.php'; ?>
-<?php include 'shared/facility_waiting_tab.php'; ?>
+<?php if ($activeTab === 'setup' && canViewFacilitySetupSheet($currentUserType)) include 'shared/facility_setup_tab.php'; ?>
 
         </div>
     </div>

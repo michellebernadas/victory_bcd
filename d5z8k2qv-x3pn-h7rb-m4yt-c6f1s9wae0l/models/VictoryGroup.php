@@ -370,7 +370,9 @@ class VictoryGroup {
             // The same member in both slots of one couple would double-count them.
             $other = $slot === 1 ? $row['member_id_2'] : $row['member_id'];
             if ($other !== null && (int)$other === $memberId) {
-                return ['ok' => false, 'msg' => htmlspecialchars($fullName) . ' is already linked to the other half of this name.'];
+                // Plain text: every display site escapes msg itself (escaping here too
+                // showed "O&amp;apos;Brien" on screen).
+                return ['ok' => false, 'msg' => $fullName . ' is already linked to the other half of this name.'];
             }
 
             $col  = $slot === 1 ? 'member_id'   : 'member_id_2';
@@ -418,6 +420,185 @@ class VictoryGroup {
             return (string)($stmt->fetchColumn() ?: '');
         } catch (PDOException $e) {
             return '';
+        }
+    }
+
+    // ── Needs Link work list ──────────────────────────────────────────────────
+
+    /**
+     * SQL test for "this slot still needs an admin decision".
+     *
+     * A slot is RESOLVED when it is linked to a member that still exists, or when
+     * an admin marked it not_a_member. Everything else is unresolved — including a
+     * row still flagged 'linked' whose member_id was emptied by the
+     * ON DELETE SET NULL foreign key when that member was hard-deleted.
+     * Slot 2 only exists on couple rows: link_status_2 defaults to 'needs_link' on
+     * EVERY row, so without the is_couple guard each single name would count twice.
+     */
+    private const SLOT1_OPEN = "(vm.link_status <> 'not_a_member' AND NOT (vm.link_status = 'linked' AND vm.member_id IS NOT NULL))";
+    private const SLOT2_OPEN = "(vm.is_couple = 1 AND vm.link_status_2 <> 'not_a_member' AND NOT (vm.link_status_2 = 'linked' AND vm.member_id_2 IS NOT NULL))";
+
+    /**
+     * Unresolved person slots across all non-deleted groups — one COUNT query,
+     * cheap enough for the sidebar badge on every page.
+     */
+    public function countUnresolvedSlots(): int {
+        try {
+            return (int)$this->db->query(
+                "SELECT COALESCE(SUM(" . self::SLOT1_OPEN . ") + SUM(" . self::SLOT2_OPEN . "), 0)
+                   FROM vg_members vm
+                   JOIN victory_groups vg ON vg.id = vm.group_id
+                  WHERE vg.is_deleted = 0"
+            )->fetchColumn();
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::countUnresolvedSlots error: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Progress over every person slot (a single name = 1 slot, a couple = 2):
+     * linked + not_a_member + to_go always equals total.
+     *
+     * @return array{total:int,linked:int,not_a_member:int,to_go:int}
+     */
+    public function getLinkProgress(): array {
+        $out = ['total' => 0, 'linked' => 0, 'not_a_member' => 0, 'to_go' => 0];
+        try {
+            $r = $this->db->query(
+                "SELECT COUNT(*) + SUM(vm.is_couple = 1) AS total,
+                        SUM(vm.link_status = 'linked' AND vm.member_id IS NOT NULL)
+                          + SUM(vm.is_couple = 1 AND vm.link_status_2 = 'linked' AND vm.member_id_2 IS NOT NULL) AS linked,
+                        SUM(vm.link_status = 'not_a_member')
+                          + SUM(vm.is_couple = 1 AND vm.link_status_2 = 'not_a_member') AS nam,
+                        SUM(" . self::SLOT1_OPEN . ") + SUM(" . self::SLOT2_OPEN . ") AS to_go
+                   FROM vg_members vm
+                   JOIN victory_groups vg ON vg.id = vm.group_id
+                  WHERE vg.is_deleted = 0"
+            )->fetch();
+            if ($r) {
+                $out = ['total' => (int)$r['total'], 'linked' => (int)$r['linked'],
+                        'not_a_member' => (int)$r['nam'], 'to_go' => (int)$r['to_go']];
+            }
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::getLinkProgress error: " . $e->getMessage());
+        }
+        return $out;
+    }
+
+    private function needsLinkSelect(): string {
+        return "SELECT vm.id AS vg_member_id, vm.group_id, vm.role, vm.is_couple,
+                       COALESCE(NULLIF(vm.display_name, ''), vm.name) AS written_name,
+                       vm.member_id, vm.link_status, vm.member_id_2, vm.link_status_2,
+                       m.full_name AS member_name, m2.full_name AS member2_name,
+                       vg.group_kind, vg.name AS group_name, vg.group_type, vg.day_of_week,
+                       vg.meeting_time, vg.location, vg.group_status
+                  FROM vg_members vm
+                  JOIN victory_groups vg ON vg.id = vm.group_id AND vg.is_deleted = 0
+                  LEFT JOIN members m  ON m.id  = vm.member_id
+                  LEFT JOIN members m2 ON m2.id = vm.member_id_2";
+    }
+
+    /** Every vg_members row with at least one unresolved slot, in schedule order. */
+    public function getUnresolvedRows(): array {
+        try {
+            $rows = $this->db->query(
+                $this->needsLinkSelect() . "
+                 WHERE " . self::SLOT1_OPEN . " OR " . self::SLOT2_OPEN . "
+                 ORDER BY FIELD(vg.group_kind, 'victory_group', 'leadership_group', 'campus'),
+                          CASE SUBSTRING_INDEX(vg.day_of_week, ',', 1)
+                              WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2 WHEN 'Wednesday' THEN 3
+                              WHEN 'Thursday' THEN 4 WHEN 'Friday' THEN 5 WHEN 'Saturday' THEN 6
+                              WHEN 'Sunday' THEN 7 ELSE 8 END,
+                          vg.meeting_time, vg.id, vm.sort_order, vm.id"
+            )->fetchAll();
+            return $this->attachGroupLeaders($rows);
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::getUnresolvedRows error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /** One row in the same shape, resolved or not — used to redraw a row after an action. */
+    public function getNeedsLinkRow(int $vgMemberId) {
+        try {
+            $stmt = $this->db->prepare($this->needsLinkSelect() . " WHERE vm.id = ?");
+            $stmt->execute([$vgMemberId]);
+            $row = $stmt->fetch();
+            return $row ? $this->attachGroupLeaders([$row])[0] : false;
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::getNeedsLinkRow error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /** Adds group_leaders (verbatim names, comma-joined) and a normalised role_key. */
+    private function attachGroupLeaders(array $rows): array {
+        if (!$rows) return $rows;
+        $gids = array_values(array_unique(array_map('intval', array_column($rows, 'group_id'))));
+        $leaders = [];
+        try {
+            $ph = implode(',', array_fill(0, count($gids), '?'));
+            $stmt = $this->db->prepare(
+                "SELECT group_id,
+                        GROUP_CONCAT(COALESCE(NULLIF(display_name, ''), name) ORDER BY sort_order, id SEPARATOR ', ') AS names
+                   FROM vg_members
+                  WHERE role IN ('leader', 'lg_leader') AND group_id IN ($ph)
+                  GROUP BY group_id"
+            );
+            $stmt->execute($gids);
+            foreach ($stmt->fetchAll() as $l) $leaders[(int)$l['group_id']] = $l['names'];
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::attachGroupLeaders error: " . $e->getMessage());
+        }
+        foreach ($rows as &$r) {
+            $r['group_leaders'] = $leaders[(int)$r['group_id']] ?? '';
+            // Same legacy rule as attachMembers(): a plain 'leader' in a Leadership
+            // Group is that group's LG Leader.
+            $r['role_key'] = ($r['group_kind'] === 'leadership_group' && $r['role'] === 'leader')
+                ? 'lg_leader' : $r['role'];
+        }
+        unset($r);
+        return $rows;
+    }
+
+    /**
+     * Mark one slot "Not a church member" — a person on the schedule who will
+     * never have a member record (a guest, a visiting pastor). Resolved without a
+     * link: excluded from every people count (those require 'linked') and off the
+     * Needs Link list. Reversible: unlinkVgMember() puts it back on Needs Link.
+     */
+    public function markVgMemberNotAMember(int $vgMemberId, int $slot): array {
+        if ($slot !== 1 && $slot !== 2) return ['ok' => false, 'msg' => 'Unknown link slot.'];
+        try {
+            $stmt = $this->db->prepare("SELECT is_couple FROM vg_members WHERE id = ?");
+            $stmt->execute([$vgMemberId]);
+            $isCouple = $stmt->fetchColumn();
+            if ($isCouple === false) return ['ok' => false, 'msg' => 'That name is no longer on this group.'];
+            if ($slot === 2 && !(int)$isCouple) {
+                return ['ok' => false, 'msg' => 'This name is only one person, so it has a single link.'];
+            }
+            $col  = $slot === 1 ? 'member_id'   : 'member_id_2';
+            $stat = $slot === 1 ? 'link_status' : 'link_status_2';
+            $this->db->prepare("UPDATE vg_members SET `$col` = NULL, `$stat` = 'not_a_member' WHERE id = ?")
+                     ->execute([$vgMemberId]);
+            return ['ok' => true, 'msg' => 'Marked as not a church member.'];
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::markVgMemberNotAMember error: " . $e->getMessage());
+            return ['ok' => false, 'msg' => 'The change could not be saved.'];
+        }
+    }
+
+    /** Active, non-deleted members for the suggestion matcher. */
+    public function getMembersForMatching(): array {
+        try {
+            return $this->db->query(
+                "SELECT id, full_name, first_name, last_name FROM members
+                  WHERE is_deleted = 0 AND member_status = 'active'"
+            )->fetchAll();
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::getMembersForMatching error: " . $e->getMessage());
+            return [];
         }
     }
 

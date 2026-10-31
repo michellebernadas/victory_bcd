@@ -332,14 +332,14 @@
                             <?php if ($recStatus === 'active'): ?>
                             <a class="btn btn-sm btn-outline-warning me-1" title="Deactivate"
                                href="index.php?action=deactivateSfRecord&id=<?php echo (int)$rec['id']; ?>"
-                               onclick="return confirm('Deactivate this record?')"><i class="bi bi-pause-circle"></i></a>
+                               data-confirm="Deactivate this record?"><i class="bi bi-pause-circle"></i></a>
                             <?php else: ?>
                             <a class="btn btn-sm btn-outline-success me-1" title="Activate"
                                href="index.php?action=activateSfRecord&id=<?php echo (int)$rec['id']; ?>"><i class="bi bi-play-circle"></i></a>
                             <?php endif; ?>
                             <a class="btn btn-sm btn-outline-danger" title="Delete"
                                href="index.php?action=deleteSfRecord&id=<?php echo (int)$rec['id']; ?>"
-                               onclick="return confirm('Delete this record? This cannot be undone.');"><i class="bi bi-trash"></i></a>
+                               data-confirm="Delete this record? This cannot be undone."><i class="bi bi-trash"></i></a>
                         </td>
                     </tr>
                     <?php endforeach; ?>

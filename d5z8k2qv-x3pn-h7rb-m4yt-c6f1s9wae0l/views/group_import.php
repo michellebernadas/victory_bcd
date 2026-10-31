@@ -213,7 +213,7 @@ Venue:                Quinos Lacson</pre>
                         <?php endif; ?>
                         <a href="index.php?action=groupImportDiscard&batch=<?php echo urlencode($batchId); ?>"
                            class="btn btn-sm btn-outline-danger"
-                           onclick="return confirm('Discard this import? Nothing has been created yet.');">
+                           data-confirm="Discard this import? Nothing has been created yet.">
                             <i class="bi bi-x-circle me-1"></i>Discard
                         </a>
                     </div>
@@ -361,7 +361,7 @@ Venue:                Quinos Lacson</pre>
                             </span>
                         </p>
                         <button type="submit" class="btn btn-primary btn-lg px-5"
-                                onclick="return confirm('Create these groups now?');">
+                                data-confirm="Create these groups now?" data-confirm-ok="Create groups" data-confirm-variant="success">
                             <i class="bi bi-check-circle me-1"></i>Confirm Import
                         </button>
                         <div class="form-text mt-2">

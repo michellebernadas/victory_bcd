@@ -22,6 +22,8 @@
     <script src="<?php echo asset('js/column-toggle.js'); ?>"></script>
     <!-- Linked Member → First/Last Name auto-fill (Attendance, L113, SF forms) -->
     <script src="<?php echo asset('js/linked-member.js'); ?>"></script>
+    <!-- Shared in-page confirmation for every data-confirm="…" link/button. -->
+    <script src="<?php echo asset('js/confirm-dialog.js'); ?>"></script>
 
     <script>
     $(document).ready(function() {

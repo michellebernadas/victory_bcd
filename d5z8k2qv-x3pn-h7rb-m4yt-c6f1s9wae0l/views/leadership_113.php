@@ -662,7 +662,7 @@ foreach ($records as $rec) {
                                         <?php if ($recStatus === 'active'): ?>
                                         <a class="btn btn-sm btn-outline-warning me-1" title="Deactivate"
                                            href="index.php?action=deactivateL113Record&id=<?php echo $rec['id']; ?>"
-                                           onclick="return confirm('Deactivate this record?')">
+                                           data-confirm="Deactivate this record?">
                                             <i class="bi bi-pause-circle"></i>
                                         </a>
                                         <?php else: ?>
@@ -673,7 +673,7 @@ foreach ($records as $rec) {
                                         <?php endif; ?>
                                         <a class="btn btn-sm btn-outline-danger" title="Delete"
                                            href="index.php?action=deleteL113Record&id=<?php echo $rec['id']; ?>"
-                                           onclick="return confirm('Permanently delete this record? This cannot be undone.');">
+                                           data-confirm="Permanently delete this record? This cannot be undone.">
                                             <i class="bi bi-trash"></i>
                                         </a>
                                     </td>

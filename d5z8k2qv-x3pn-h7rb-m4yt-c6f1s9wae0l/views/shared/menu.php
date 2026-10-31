@@ -36,6 +36,19 @@
                 <i class="bi bi-diagram-3 me-2"></i>Victory Groups / LG
             </a>
         </li>
+        <?php if (canAdminister()) {
+            // Unresolved imported names: one COUNT (VictoryGroup::countUnresolvedSlots). 0 hides the badge.
+            $nlOpen = (class_exists('VictoryGroup') && isset($GLOBALS['db']) && $GLOBALS['db'] instanceof PDO)
+                ? (new VictoryGroup($GLOBALS['db']))->countUnresolvedSlots() : 0;
+        ?>
+        <li class="nav-item">
+            <a href="index.php?action=needsLink" class="nav-link d-flex align-items-center <?php echo (($_GET['action'] ?? '') === 'needsLink') ? 'active' : ''; ?>">
+                <i class="bi bi-link-45deg me-2"></i>Needs Link
+                <span id="nlMenuBadge" class="badge rounded-pill bg-warning text-dark ms-auto<?php echo $nlOpen > 0 ? '' : ' d-none'; ?>"
+                      title="Imported names still waiting to be linked"><?php echo (int)$nlOpen; ?></span>
+            </a>
+        </li>
+        <?php } ?>
         <li class="nav-item">
             <a href="index.php?action=serveTeams" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'serveTeams') ? 'active' : ''; ?>">
                 <i class="bi bi-hand-thumbs-up me-2"></i>Serve Teams
@@ -100,14 +113,14 @@
             // the same list the "Waiting on me" tab uses). 0 hides the badge.
             $fbWaiting = 0;
             if (class_exists('FacilityRequest') && isset($GLOBALS['db']) && $GLOBALS['db'] instanceof PDO) {
-                $fbWaiting = (new FacilityRequest($GLOBALS['db']))->countByStatuses(facilityWaitingStatuses());
+                $fbWaiting = (new FacilityRequest($GLOBALS['db']))->countByStatuses(facilityWaitingStatuses(), facilityWaitingOwnerScope());
             }
         ?>
         <li class="mt-2 mb-1">
             <small class="text-muted px-3 fw-bold" style="font-size: 11px; letter-spacing: 1px;">FACILITIES</small>
         </li>
         <li class="nav-item">
-            <a href="index.php?action=facilityCalendar<?php echo $fbWaiting ? '&amp;tab=waiting' : ''; ?>" class="nav-link d-flex align-items-center <?php echo (isset($_GET['action']) && $_GET['action'] == 'facilityCalendar') ? 'active' : ''; ?>">
+            <a href="index.php?action=facilityCalendar<?php echo $fbWaiting ? '&amp;tab=requests&amp;list=waiting' : ''; ?>" class="nav-link d-flex align-items-center <?php echo (isset($_GET['action']) && $_GET['action'] == 'facilityCalendar') ? 'active' : ''; ?>">
                 <i class="bi bi-calendar3 me-2"></i>Facility Booking
                 <?php if ($fbWaiting > 0): ?>
                 <span class="badge rounded-pill bg-danger ms-auto" title="<?php echo (int)$fbWaiting; ?> request(s) waiting on you">

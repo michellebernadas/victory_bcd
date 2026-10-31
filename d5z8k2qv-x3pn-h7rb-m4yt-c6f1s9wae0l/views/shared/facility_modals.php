@@ -22,6 +22,9 @@ $ministries  = $ministries  ?? [];
 $allMembers  = $allMembers  ?? [];
 $requestTypes = $requestTypes ?? FacilityRequest::REQUEST_TYPES;
 $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null);
+// Every form posts back where the user was (tab, list tab, filters), so the
+// redirect after an action lands on the same view. Whitelisted again server-side.
+$fbReturnInput = '<input type="hidden" name="_return" value="' . htmlspecialchars($fbReturn ?? 'tab=requests') . '">';
 ?>
 
 <!-- ── Step 1: Request form (policy section 7 A–F) ────────────────────────── -->
@@ -31,8 +34,9 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <form method="POST" action="index.php?action=submitFacilityRequest" id="frForm" novalidate>
+                <?php echo $fbReturnInput; ?>
                 <div class="modal-header bg-purple text-white">
-                    <h5 class="modal-title" id="frTitle"><i class="bi bi-calendar-plus me-2" aria-hidden="true"></i>Facilities, Equipment &amp; Resource Request</h5>
+                    <h5 class="modal-title" id="frTitle"><i class="bi bi-calendar-plus me-2" aria-hidden="true"></i><span id="frTitleText">Facilities, Equipment &amp; Resource Request</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -45,6 +49,14 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                         Fields marked <span class="text-danger">*</span> are required.
                     </div>
                     <div id="fr_errors" class="alert alert-danger small py-2 d-none" role="alert" tabindex="-1"></div>
+                    <!-- Edit / resubmit / book-again context, filled in by JS. -->
+                    <div id="fr_mode_note" class="alert alert-warning small py-2 d-none" role="status"></div>
+
+                    <!-- Repeat weekly: the per-date preview replaces the form sections
+                         until the user goes back or submits the dates they kept. -->
+                    <div id="fr_series_preview" class="d-none" aria-live="polite"></div>
+
+                    <div id="fr_sections">
 
                     <!-- A. Requestor information -->
                     <h6 class="fw-bold text-purple border-bottom pb-1">A. Requestor Information</h6>
@@ -153,6 +165,44 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                             <input type="number" name="expected_attendance" id="fr_attendance" class="form-control" min="0">
                         </div>
                         <div class="col-12"><div id="fr_time_msg" class="fb-field-msg" aria-live="polite"></div></div>
+                        <?php if (canRepeatFacilityRequest($currentUserType)): ?>
+                        <!-- Repeat weekly (new requests only — hidden when editing). -->
+                        <div class="col-12" id="fr_repeat_wrap">
+                            <div class="border rounded p-2 bg-light">
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input" type="checkbox" name="repeat_weekly" value="1" id="fr_repeat">
+                                    <label class="form-check-label small fw-semibold" for="fr_repeat">
+                                        <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>Repeat weekly
+                                    </label>
+                                    <span class="form-text ms-1" style="font-size:.7rem">Creates a separate request for each week, same day and time. Each one is reviewed, approved and confirmed on its own.</span>
+                                </div>
+                                <div id="fr_repeat_opts" class="row g-2 mt-1 d-none">
+                                    <div class="col-12 col-md-6">
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="repeat_mode" id="fr_repeat_mode_weeks" value="weeks" checked>
+                                            <label class="form-check-label small" for="fr_repeat_mode_weeks">For</label>
+                                        </div>
+                                        <select name="repeat_weeks" id="fr_repeat_weeks" class="form-select form-select-sm d-inline-block w-auto" aria-label="Number of weeks">
+                                            <?php for ($w = 2; $w <= FacilityRequest::SERIES_MAX; $w++): ?>
+                                            <option value="<?php echo $w; ?>"<?php echo $w === 4 ? ' selected' : ''; ?>><?php echo $w; ?></option>
+                                            <?php endfor; ?>
+                                        </select>
+                                        <span class="small">weeks</span>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="repeat_mode" id="fr_repeat_mode_until" value="until">
+                                            <label class="form-check-label small" for="fr_repeat_mode_until">Until</label>
+                                        </div>
+                                        <input type="date" name="repeat_until" id="fr_repeat_until" class="form-control form-control-sm d-inline-block w-auto" aria-label="Repeat until">
+                                    </div>
+                                    <div class="col-12 form-text mt-0" style="font-size:.7rem">
+                                        At most <?php echo (int)FacilityRequest::SERIES_MAX; ?> weeks. You will see every date with its clash check before anything is submitted, and can untick dates you do not need.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
 
                     <!-- C. Facility / room -->
@@ -277,11 +327,15 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                                    value="<?php echo htmlspecialchars($currentAccount['username']); ?>">
                         </div>
                     </div>
+                    </div><!-- /#fr_sections -->
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close without submitting</button>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-send me-1" aria-hidden="true"></i>Submit for Facilities review
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="fr_close">Close without submitting</button>
+                    <button type="button" class="btn btn-outline-secondary d-none" id="fr_back">
+                        <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Back to the form
+                    </button>
+                    <button type="submit" class="btn btn-primary" id="fr_submit">
+                        <i class="bi bi-send me-1" aria-hidden="true"></i><span id="fr_submit_label">Submit for Facilities review</span>
                     </button>
                 </div>
             </form>
@@ -295,6 +349,7 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <form method="POST" id="fvForm">
+                <?php echo $fbReturnInput; ?>
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title"><i class="bi bi-clipboard-check me-2"></i>Facilities Review — Step 2 of 4</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -375,6 +430,7 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" id="fmForm">
+                <?php echo $fbReturnInput; ?>
                 <div class="modal-header bg-purple text-white">
                     <h5 class="modal-title"><i class="bi bi-person-check me-2"></i>Minister Approval — Step 3 of 4</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -436,6 +492,7 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
             <!-- No browser confirm(): this modal IS the confirmation, and its
                  primary button states the consequence. -->
             <form method="POST" id="fcfForm">
+                <?php echo $fbReturnInput; ?>
                 <div class="modal-header bg-success text-white">
                     <h5 class="modal-title"><i class="bi bi-calendar2-check me-2"></i>Facilities Confirmation — Step 4 of 4</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -484,14 +541,18 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
 <?php endif; ?>
 
 <!-- ── Cancel (policy section 18) ─────────────────────────────────────────── -->
-<?php if (canCancelFacilityRequest($currentUserType)): ?>
+<!-- Rendered for everyone who can submit: an owner may cancel their own. Each
+     Cancel button is shown per request by canCancelThisFacilityRequest(), and
+     the route + controller re-check it. -->
+<?php if (canSubmitFacilityRequest($currentUserType)): ?>
 <div class="modal fade" id="cancelRequestModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <!-- No browser confirm(): this modal IS the confirmation. -->
             <form method="POST" id="fxForm">
+                <?php echo $fbReturnInput; ?>
                 <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>Cancel Request?</h5>
+                    <h5 class="modal-title" id="fx_title"><i class="bi bi-x-circle me-2"></i>Cancel Request?</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
@@ -502,7 +563,7 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                         history are kept — nothing is deleted.
                     </p>
                     <label class="form-label small fw-semibold mb-1">Reason</label>
-                    <input type="text" name="notes" class="form-control" maxlength="500"
+                    <input type="text" name="notes" id="fx_notes" class="form-control" maxlength="500"
                            placeholder="Why is this being cancelled?">
                 </div>
                 <div class="modal-footer">
@@ -514,6 +575,79 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
     </div>
 </div>
 
+<?php endif; ?>
+
+<!-- ── Soft delete / restore (admin; mistakes only) ───────────────────────── -->
+<?php if (canDeleteFacilityRequest($currentUserType)): ?>
+<div class="modal fade" id="deleteRequestModal" tabindex="-1" aria-labelledby="fdelTitle">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <!-- No browser confirm(): this modal IS the confirmation. -->
+            <form method="POST" id="fdelForm">
+                <?php echo $fbReturnInput; ?>
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="fdelTitle"><i class="bi bi-trash3 me-2" aria-hidden="true"></i>Delete Request?</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1"><strong>Request:</strong> <span id="fdel_event"></span></p>
+                    <p class="small text-muted" id="fdel_meta"></p>
+                    <div class="alert alert-warning small py-2">
+                        <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
+                        <strong>Delete is for mistakes only</strong> — a test entry or a duplicate. If the event is
+                        simply not happening, use <strong>Cancel request</strong> instead so it stays on record.
+                    </div>
+                    <div id="fdel_confirmed" class="alert alert-danger small py-2 d-none">
+                        <i class="bi bi-calendar-x me-1" aria-hidden="true"></i>
+                        This is a <strong>confirmed</strong> booking. Deleting it <strong>frees the room</strong> — the slot
+                        becomes available to other requests straight away.
+                    </div>
+                    <p class="small mb-2">
+                        The request disappears from every list, the calendar, the counts and the setup sheet. Nothing is
+                        erased: its history is kept, this deletion is added to it, and an admin can restore it from the
+                        <strong>Deleted</strong> list.
+                    </p>
+                    <label class="form-label small fw-semibold mb-1" for="fdel_reason">Reason <span class="text-danger">*</span></label>
+                    <input type="text" name="reason" id="fdel_reason" class="form-control" maxlength="255" required
+                           placeholder="e.g. Duplicate of the request submitted on Nov 2">
+                    <div id="fdel_reason_msg" class="fb-field-msg text-danger mt-1" aria-live="polite"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep request</button>
+                    <button type="submit" class="btn btn-danger"><i class="bi bi-trash3 me-1" aria-hidden="true"></i>Delete request</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if (canRestoreFacilityRequest($currentUserType)): ?>
+<div class="modal fade" id="restoreRequestModal" tabindex="-1" aria-labelledby="frsTitle">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="frsForm">
+                <?php echo $fbReturnInput; ?>
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="frsTitle"><i class="bi bi-arrow-counterclockwise me-2" aria-hidden="true"></i>Restore Request?</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1"><strong>Request:</strong> <span id="frs_event"></span></p>
+                    <p class="small text-muted" id="frs_meta"></p>
+                    <p class="small mb-0">
+                        It comes back exactly as it was — same status, same history — and the restore is recorded.
+                        A confirmed booking whose room has since been confirmed for someone else cannot be restored.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Leave deleted</button>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>Restore request</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 <?php endif; ?>
 
 <!-- ── Read-only detail (opened from a calendar entry) ────────────────────── -->
@@ -552,6 +686,17 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                 <button type="button" class="btn btn-outline-secondary d-lg-none"
                         onclick="document.getElementById('fdHistoryTitle').scrollIntoView({behavior: 'smooth', block: 'start'});">
                     <i class="bi bi-clock-history me-1" aria-hidden="true"></i>History
+                </button>
+                <!-- Secondary actions, each shown only when the server says this
+                     viewer may take it for THIS request (ajaxRequestDetail). -->
+                <button type="button" class="btn btn-outline-danger d-none" id="fd_delete_btn">
+                    <i class="bi bi-trash3 me-1" aria-hidden="true"></i>Delete
+                </button>
+                <button type="button" class="btn btn-outline-secondary d-none" id="fd_book_btn">
+                    <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>Book again
+                </button>
+                <button type="button" class="btn btn-outline-primary d-none" id="fd_edit_btn">
+                    <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>Edit
                 </button>
                 <button type="button" class="btn btn-outline-danger d-none" id="fd_cancel_btn">
                     <i class="bi bi-x-circle me-1" aria-hidden="true"></i>Cancel request

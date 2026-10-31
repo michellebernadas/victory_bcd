@@ -55,6 +55,9 @@ if (!function_exists('fi_landing')) {
                     <h1 class="h3 mb-0"><i class="bi bi-upload me-2 text-primary"></i>Import Facilities Request Forms</h1>
                     <p class="text-muted mb-0">Review every request before anything is added to the calendar.</p>
                 </div>
+                <a href="index.php?action=facilityImportTemplate" class="btn btn-outline-success ms-auto">
+                    <i class="bi bi-file-earmark-arrow-down me-1" aria-hidden="true"></i>Download template
+                </a>
             </div>
 
             <?php if ($error): ?>
@@ -102,9 +105,13 @@ if (!function_exists('fi_landing')) {
                         <div class="card-body">
                             <form method="POST" action="index.php?action=facilityImportUpload" enctype="multipart/form-data">
                                 <div class="mb-3">
-                                    <label class="form-label fw-semibold">Facilities Request Form workbook (Excel)</label>
-                                    <input type="file" name="import_file" class="form-control" accept=".xlsx,.xls" required>
-                                    <div class="form-text">Excel (.xlsx, .xls) — up to 5 MB. One request per worksheet.</div>
+                                    <label class="form-label fw-semibold" for="fiFile">Request forms (Excel)</label>
+                                    <input type="file" name="import_file" id="fiFile" class="form-control" accept=".xlsx,.xls,.csv" required>
+                                    <div class="form-text">
+                                        Up to 5 MB. Either the church&rsquo;s workbook with <strong>one request per worksheet</strong>, or the
+                                        <a href="index.php?action=facilityImportTemplate">downloadable template</a> with
+                                        <strong>one request per row</strong> (.xlsx, or saved as .csv).
+                                    </div>
                                 </div>
                                 <button type="submit" class="btn btn-primary">
                                     <i class="bi bi-upload me-1"></i>Upload and Check
@@ -124,6 +131,14 @@ if (!function_exists('fi_landing')) {
                             <p class="mb-2">Every worksheet that carries the request labels
                                (<strong>NAME</strong>, <strong>EVENT/ACTIVITY</strong>, <strong>DATE NEEDED</strong>)
                                and has been filled in. Blank templates and unrelated sheets are skipped and listed.</p>
+                            <p class="mb-2">
+                                <i class="bi bi-table me-1 text-success" aria-hidden="true"></i>
+                                <strong>Many requests at once?</strong>
+                                <a href="index.php?action=facilityImportTemplate">Download the template</a> — one row per request,
+                                with dropdowns for today&rsquo;s rooms and ministries. Its sample row is skipped, and rows with a problem
+                                (e.g. an end time before the start time, or a Facility / Room request with no room) are shown with their
+                                row number and not imported until fixed.
+                            </p>
                             <div class="alert alert-warning border mb-2 py-2">
                                 <i class="bi bi-shield-exclamation me-1"></i>
                                 <strong>Being in a spreadsheet is not an approval.</strong>
@@ -203,11 +218,10 @@ if (!function_exists('fi_landing')) {
                         <strong><?php echo (int)$summary['already_imported']; ?></strong> already imported and will be skipped.
                         <?php endif; ?>
                     </div>
-                    <a href="index.php?action=facilityImportDiscard&batch=<?php echo urlencode($batchId); ?>"
-                       class="btn btn-sm btn-outline-danger"
-                       onclick="return confirm('Discard this import? Nothing has been created yet.');">
+                    <!-- No browser confirm(): the modal below is the confirmation. -->
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#fiDiscardModal">
                         <i class="bi bi-x-circle me-1"></i>Discard
-                    </a>
+                    </button>
                 </div>
 
                 <?php foreach ($rows as $r):
@@ -324,8 +338,7 @@ if (!function_exists('fi_landing')) {
                                 Nothing is approved and nothing is confirmed by this import, so no room is reserved.
                             </span>
                         </p>
-                        <button type="submit" class="btn btn-primary btn-lg px-5"
-                                onclick="return confirm('Add these requests now? They will all be Submitted.');">
+                        <button type="button" class="btn btn-primary btn-lg px-5" data-bs-toggle="modal" data-bs-target="#fiCommitModal">
                             <i class="bi bi-check-circle me-1"></i>Confirm Import
                         </button>
                         <div class="form-text mt-2">
@@ -333,7 +346,48 @@ if (!function_exists('fi_landing')) {
                         </div>
                     </div>
                 </div>
+
+                <!-- Confirm-import modal (replaces the browser confirm()). Inside
+                     the form, so its button submits the ticked rows. -->
+                <div class="modal fade" id="fiCommitModal" tabindex="-1" aria-labelledby="fiCommitTitle">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title" id="fiCommitTitle"><i class="bi bi-check-circle me-2" aria-hidden="true"></i>Add these requests now?</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body small">
+                                <p class="mb-2"><strong id="fiModalCount"><?php echo (int)$summary['will_create']; ?></strong> request(s) will be created, all as
+                                    <strong>Submitted</strong>. None is approved or confirmed and no room is reserved &mdash; each goes through
+                                    Facilities Review, the Minister and Confirmation in the portal.</p>
+                                <p class="mb-0 text-muted">Imported requests have no owner account, so they are not in anyone&rsquo;s My Requests.</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Back to the preview</button>
+                                <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle me-1" aria-hidden="true"></i>Confirm Import</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </form>
+
+            <div class="modal fade" id="fiDiscardModal" tabindex="-1" aria-labelledby="fiDiscardTitle">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header bg-danger text-white">
+                            <h5 class="modal-title" id="fiDiscardTitle"><i class="bi bi-x-circle me-2" aria-hidden="true"></i>Discard this import?</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body small">Nothing has been created from this upload yet. Discarding throws the preview away; already-imported rows stay on record.</div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep the preview</button>
+                            <a href="index.php?action=facilityImportDiscard&amp;batch=<?php echo urlencode($batchId); ?>" class="btn btn-danger">
+                                <i class="bi bi-x-circle me-1" aria-hidden="true"></i>Discard
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <script>
             // Keep the headline count honest as rows are ticked and unticked.
@@ -345,6 +399,7 @@ if (!function_exists('fi_landing')) {
                     var n = document.querySelectorAll('.fi-pick:checked').length;
                     out.textContent  = n;
                     plur.textContent = n === 1 ? '' : 's';
+                    var m = document.getElementById('fiModalCount'); if (m) m.textContent = n;
                 }
                 document.querySelectorAll('.fi-pick').forEach(function (cb) {
                     cb.addEventListener('change', sync);

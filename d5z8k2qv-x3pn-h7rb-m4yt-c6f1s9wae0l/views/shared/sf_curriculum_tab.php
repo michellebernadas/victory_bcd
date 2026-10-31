@@ -134,7 +134,7 @@ $sfRequiredCount = count(array_filter($sfActiveClass, fn($r) => (int)$r['is_requ
                                 <?php if ($isActive): ?>
                                 <a class="btn btn-sm btn-outline-warning me-1" title="Deactivate (keeps history)"
                                    href="index.php?action=deactivateSfTopic&id=<?php echo (int)$row['id']; ?>"
-                                   onclick="return confirm('Deactivate this topic? It stays on historical records but is dropped from new attendance forms and from the required-topic count.')">
+                                   data-confirm="Deactivate this topic? It stays on historical records but is dropped from new attendance forms and from the required-topic count.">
                                     <i class="bi bi-pause-circle"></i>
                                 </a>
                                 <?php else: ?>
@@ -147,13 +147,13 @@ $sfRequiredCount = count(array_filter($sfActiveClass, fn($r) => (int)$r['is_requ
                             <?php if ($usage > 0): ?>
                             <a class="btn btn-sm btn-outline-secondary" title="Archive — this topic has attendance history and cannot be deleted"
                                href="index.php?action=deleteSfTopic&id=<?php echo (int)$row['id']; ?>"
-                               onclick="return confirm('This topic is referenced by <?php echo $usage; ?> attendance record(s), so it will be ARCHIVED, not deleted. History is preserved. Continue?')">
+                               data-confirm="This topic is referenced by <?php echo $usage; ?> attendance record(s), so it will be ARCHIVED, not deleted. History is preserved. Continue?">
                                 <i class="bi bi-archive"></i>
                             </a>
                             <?php else: ?>
                             <a class="btn btn-sm btn-outline-danger" title="Delete (never used)"
                                href="index.php?action=deleteSfTopic&id=<?php echo (int)$row['id']; ?>"
-                               onclick="return confirm('Delete this topic? It has no attendance history, so it will be removed permanently.')">
+                               data-confirm="Delete this topic? It has no attendance history, so it will be removed permanently.">
                                 <i class="bi bi-trash"></i>
                             </a>
                             <?php endif; ?>

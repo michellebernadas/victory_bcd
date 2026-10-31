@@ -56,7 +56,7 @@ const ACCOUNT_TYPE_LABELS = [
  * which facility workflow stages it acts on. Display only.
  */
 const ACCOUNT_TYPE_HELP = [
-    ROLE_EDITOR     => 'Discipleship records. May submit facility requests and view the calendar; cannot review, approve, confirm or cancel.',
+    ROLE_EDITOR     => 'Discipleship records. May submit facility requests and view the calendar; may edit, resubmit or cancel their own requests; cannot review, approve, confirm or cancel anyone else\'s.',
     ROLE_FACILITIES => 'Facility stage 2 (Facilities Review) and stage 4 (Confirmation), plus cancel. Cannot give the Minister\'s approval or open admin settings.',
     ROLE_MINISTER   => 'Facility stage 3 only (Approve / Decline / For Clarification). Cannot review or confirm, and has no admin access.',
     ROLE_ADMIN      => 'Everything, including users and settings. May act on any stage; a Minister decision by an Admin is recorded as an override.',
@@ -159,19 +159,120 @@ function canFacilitiesConfirm($role = null) {
 }
 
 /**
- * Cancel a request (policy section 18).
+ * Cancel ANY request (policy section 18) — the staff capacity.
  *
- * Restricted to Facilities Personnel and admins. The app has no column tying a
- * request to the account that submitted it (requestor_member_id is a MEMBER
- * id, not an accounts.id), so there is no way to say "the requestor may cancel
- * their own" without inventing an ownership model. Until that exists, letting
- * every logged-in account cancel would mean any account could cancel any other
- * ministry's confirmed reservation. Withholding it is the recoverable mistake:
- * a requestor asks Facilities to cancel. See docs/ follow-ups.
+ * Facilities Personnel and admins. A requestor may additionally cancel their
+ * OWN request, which needs the request itself, so that rule lives in
+ * canCancelThisFacilityRequest() below. Everyone else still cannot cancel.
  */
 function canCancelFacilityRequest($role = null) {
     $r = currentRole($role);
     return $r === ROLE_FACILITIES || $r === ROLE_ADMIN;
+}
+
+/** The acting account's id, or null when nobody is logged in. */
+function currentUserId($userId = null) {
+    if ($userId !== null) return (int)$userId ?: null;
+    return isset($_SESSION['user']['id']) ? ((int)$_SESSION['user']['id'] ?: null) : null;
+}
+
+/**
+ * True when $userId filed this request in the portal (facility_requests.
+ * submitted_by, migrations/2026_10_20_13). Imported and pre-existing requests
+ * have submitted_by NULL and therefore no owner.
+ */
+function isFacilityRequestOwner(array $request, $userId = null) {
+    $uid   = currentUserId($userId);
+    $owner = isset($request['submitted_by']) ? (int)$request['submitted_by'] : 0;
+    return $uid !== null && $owner > 0 && $owner === $uid;
+}
+
+/**
+ * The date a request is for has already passed. Prefers the date_passed flag
+ * computed by the database (FacilityRequest SELECT_BASE), so it agrees with
+ * the SQL expiry rule even though PHP and MariaDB may run in different time
+ * zones; falls back to PHP's date for a row built elsewhere.
+ */
+function facilityRequestDatePassed(array $request) {
+    if (array_key_exists('date_passed', $request)) return (int)$request['date_passed'] === 1;
+    $d = trim((string)($request['date_needed'] ?? ''));
+    return $d !== '' && $d < date('Y-m-d');
+}
+
+/**
+ * Cancel THIS request.
+ *   Facilities / admin — any request not already cancelled or declined.
+ *   The owner          — their own, before it is cancelled/declined and
+ *                        before its date has passed.
+ * A soft-deleted request cannot be cancelled by anyone (restore it first).
+ */
+function canCancelThisFacilityRequest(array $request, $role = null, $userId = null) {
+    if (!empty($request['is_deleted'])) return false;
+    if (in_array($request['status'] ?? '', ['cancelled', 'declined'], true)) return false;
+    if (canCancelFacilityRequest($role)) return true;
+    return isFacilityRequestOwner($request, $userId) && !facilityRequestDatePassed($request);
+}
+
+/**
+ * Edit THIS request (and, when it was returned for clarification, resubmit
+ * it). Owner only, and only while it is still with the requestor:
+ *   submitted          — before Facilities has picked it up
+ *   for_clarification  — saving moves it back to submitted ("resubmitted")
+ * No editing after Facilities review; a confirmed booking is never edited
+ * (policy section 18: cancel and request again). Admins and Facilities do not
+ * get an edit-anyone capacity: the request is the requestor's own words.
+ */
+function canEditFacilityRequest(array $request, $role = null, $userId = null) {
+    if (!empty($request['is_deleted'])) return false;
+    if (!in_array($request['status'] ?? '', ['submitted', 'for_clarification'], true)) return false;
+    return currentRole($role) !== null && isFacilityRequestOwner($request, $userId);
+}
+
+/**
+ * Soft delete — for MISTAKES ONLY (test rows, duplicates). Admin only, reason
+ * required. Cancel remains the normal workflow outcome. Restoring is the same
+ * capacity, as is seeing the Deleted list.
+ */
+function canDeleteFacilityRequest($role = null) {
+    return isAdmin($role);
+}
+
+function canRestoreFacilityRequest($role = null) {
+    return isAdmin($role);
+}
+
+function canViewDeletedFacilityRequests($role = null) {
+    return isAdmin($role);
+}
+
+/**
+ * Book again / Repeat weekly — both just create NEW requests through the
+ * normal step 1, so they are exactly the submit capacity.
+ */
+function canBookFacilityAgain($role = null) {
+    return canSubmitFacilityRequest($role);
+}
+
+function canRepeatFacilityRequest($role = null) {
+    return canSubmitFacilityRequest($role);
+}
+
+/** Weekly setup sheet (confirmed bookings only): anyone who can see Facility Booking. */
+function canViewFacilitySetupSheet($role = null) {
+    return canViewFacilityBooking($role);
+}
+
+/** The import page and its template are admin surfaces, like the import itself. */
+function canImportFacilityRequests($role = null) {
+    return canAdminister($role);
+}
+
+/**
+ * "Close as expired" — a cancel with a prefilled note, so it is the staff
+ * cancel capacity on a request that is still pending after its date.
+ */
+function canCloseExpiredFacilityRequest(array $request, $role = null) {
+    return empty($request['is_deleted']) && !empty($request['is_expired']) && canCancelFacilityRequest($role);
 }
 
 /**
@@ -201,6 +302,18 @@ function facilityWaitingStatuses($role = null) {
     if (canFacilitiesConfirm($r))      $statuses[] = 'approved';
     if (!canActOnFacilityWorkflow($r)) $statuses[] = 'for_clarification';
     return array_values(array_unique($statuses));
+}
+
+/**
+ * Whose requests count as "waiting on me". An approver's desk is every request
+ * at their stage; a requestor's turn (for_clarification) is only THEIR OWN
+ * requests, now that ownership exists (submitted_by). Returns the account id
+ * to restrict to, or null for "everyone's".
+ */
+function facilityWaitingOwnerScope($role = null, $userId = null) {
+    $r = currentRole($role);
+    if ($r === null) return null;
+    return canActOnFacilityWorkflow($r) ? null : (currentUserId($userId) ?? -1);
 }
 
 /**

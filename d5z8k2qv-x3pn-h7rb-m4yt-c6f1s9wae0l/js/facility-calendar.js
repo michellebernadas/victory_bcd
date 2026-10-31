@@ -127,19 +127,25 @@
         var style = official
             ? 'background:' + color + ';color:#fff;border-left:4px solid ' + color + ';'
             : 'background:' + color + '1f;color:#212529;border-left:4px dashed ' + color + ';opacity:.85;';
-        var icon = official ? 'bi-calendar2-check-fill' : 'bi-clock-history';
+        // EXPIRED (read-time, never stored): the date passed while the request
+        // was still pending. Kept visible, but faded further and labelled, so
+        // nobody mistakes it for something still in play.
+        var expired = !!e.expired && !official;
+        var icon = official ? 'bi-calendar2-check-fill' : (expired ? 'bi-hourglass-bottom' : 'bi-clock-history');
         // Hover / screen-reader text: status, what and when, and — for anything
         // not yet reserved — whose turn it is.
-        var title = (LABELS[e.status] || e.status) + ': ' + (e.event || '(untitled)')
+        var title = (expired ? 'Expired · ' : '') + (LABELS[e.status] || e.status) + ': ' + (e.event || '(untitled)')
                   + (e.facility ? ' @ ' + e.facility : '')
                   + (e.when ? ' · ' + e.when : (e.start ? ' (' + fmtTime(e.start) + (e.end ? '–' + fmtTime(e.end) : '') + ')' : ''))
                   + (official ? ' · Reserved (official)'
+                              : expired ? ' · Date passed before it was confirmed; reserves nothing'
                               : ' · Not reserved yet' + (e.waiting_for ? ' · Waiting for ' + e.waiting_for : ''));
 
-        return '<button type="button" class="fc-chip' + (official ? ' fc-chip-official' : '') + '"'
+        return '<button type="button" class="fc-chip' + (official ? ' fc-chip-official' : '') + (expired ? ' fc-chip-expired' : '') + '"'
              + ' style="' + style + '" data-id="' + e.id + '" title="' + esc(title) + '" aria-label="' + esc(title) + '">'
              + '<i class="bi ' + icon + ' me-1"></i>'
-             + (withTime && e.start ? '<span class="fc-chip-time">' + esc(fmtTime(e.start)) + '</span> ' : '')
+             + (expired ? '<span class="fc-chip-tag">Expired</span> ' : '')
+             + (withTime && e.start && !expired ? '<span class="fc-chip-time">' + esc(fmtTime(e.start)) + '</span> ' : '')
              + '<span class="fc-chip-text">' + esc(e.event || '(untitled)') + '</span>'
              + '</button>';
     }

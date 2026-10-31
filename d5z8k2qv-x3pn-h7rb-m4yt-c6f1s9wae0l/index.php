@@ -275,6 +275,14 @@ switch ($action) {
         }
         break;
 
+    // One-row-per-request import template, generated live (rooms, ministries).
+    case 'facilityImportTemplate':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canImportFacilityRequests($currentUserType)) { header('Location: index.php?action=facilityCalendar'); exit(); }
+        require_once 'controllers/FacilityImportController.php';
+        (new FacilityImportController($db))->downloadTemplate();
+        break;
+
     case 'facilityImportDiscard':
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
         if ($currentUserType !== 'admin') { header('Location: index.php?action=facilityCalendar'); exit(); }
@@ -345,6 +353,28 @@ switch ($action) {
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
         if (!canAdminister()) { header('Location: index.php?action=victoryGroups'); exit(); }
         $groupController->unlinkVgMember();
+        break;
+
+    // ─── Needs Link: every unresolved imported name on one page ──────────
+    // Same admin gate as linkVgMember/unlinkVgMember above, and the same model
+    // methods underneath; needsLinkSave adds "Not a church member" (reversible).
+    case 'needsLink':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canAdminister()) { header('Location: index.php?action=victoryGroups'); exit(); }
+        $groupController->needsLink();
+        break;
+
+    case 'needsLinkSave':
+        if (!isset($_SESSION['user'])) {
+            if (!empty($_POST['ajax'])) { http_response_code(401); exit(); }
+            header('Location: index.php?action=login'); exit();
+        }
+        if (!canAdminister()) {
+            if (!empty($_POST['ajax'])) { http_response_code(403); exit(); }
+            header('Location: index.php?action=victoryGroups'); exit();
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: index.php?action=needsLink'); exit(); }
+        $groupController->needsLinkSave();
         break;
 
     // ─── VGL Stat Definitions ────────────────────────────────────────
@@ -508,6 +538,18 @@ switch ($action) {
         $saId = (int)($_GET['id'] ?? 0);
         if ($saId) (new ServiceAttendanceController($db))->deleteRecord($saId);
         else { header('Location: index.php?action=serviceAttendance'); exit(); }
+        break;
+    // "Enter a Sunday" — every service time of one date, saved in one transaction.
+    case 'saveServiceDay':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/ServiceAttendanceController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') (new ServiceAttendanceController($db))->saveDay($_POST);
+        else { header('Location: index.php?action=serviceAttendance'); exit(); }
+        break;
+    case 'ajaxServiceDay':
+        if (!isset($_SESSION['user'])) { http_response_code(401); exit(); }
+        require_once 'controllers/ServiceAttendanceController.php';
+        (new ServiceAttendanceController($db))->ajaxDay();
         break;
 
     // ─── AJAX: member search for Select2 ─────────────────────────────
@@ -1037,7 +1079,9 @@ switch ($action) {
 
     case 'updateFacilityRequest':
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
-        if (!canSubmitFacilityRequest($currentUserType)) { header('Location: index.php'); exit(); }
+        // Owner only, while submitted / for_clarification (canEditFacilityRequest).
+        $fbReq = (new FacilityRequest($db))->getRequestById((int)($_GET['id'] ?? 0));
+        if (!$fbReq || !canEditFacilityRequest($fbReq, $currentUserType)) { header('Location: index.php?action=facilityCalendar&tab=requests&error=1&msg=' . urlencode('Only the person who submitted this request can edit it, and only before Facilities has reviewed it.')); exit(); }
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $facilityController->updateRequest((int)($_GET['id'] ?? 0), $_POST);
         } else {
@@ -1082,14 +1126,43 @@ switch ($action) {
 
     case 'cancelFacilityRequest':
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
-        // No per-account ownership column exists on facility_requests, so this
-        // cannot be "cancel your own" — it is Facilities/admin only for now.
-        if (!canCancelFacilityRequest($currentUserType)) { header('Location: index.php?action=facilityCalendar&tab=requests&error=1&msg=' . urlencode('Ask Facilities Personnel to cancel this request.')); exit(); }
+        // Facilities / admin: any request. The owner (submitted_by): their own,
+        // before its date has passed (canCancelThisFacilityRequest).
+        $fbReq = (new FacilityRequest($db))->getRequestById((int)($_GET['id'] ?? 0));
+        if (!$fbReq || !canCancelThisFacilityRequest($fbReq, $currentUserType)) { header('Location: index.php?action=facilityCalendar&tab=requests&error=1&msg=' . urlencode('Ask Facilities Personnel to cancel this request.')); exit(); }
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $facilityController->cancelRequest((int)($_GET['id'] ?? 0), $_POST['notes'] ?? null);
         } else {
             header('Location: index.php?action=facilityCalendar');
         }
+        break;
+
+    // Soft delete / restore: admin only, for mistakes (test rows, duplicates).
+    case 'deleteFacilityRequest':
+    case 'restoreFacilityRequest':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        $fbDel = ($action === 'deleteFacilityRequest');
+        if (!($fbDel ? canDeleteFacilityRequest($currentUserType) : canRestoreFacilityRequest($currentUserType))) { header('Location: index.php?action=facilityCalendar&tab=requests&error=1&msg=' . urlencode('Only an admin may delete or restore a request.')); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $fbDel ? $facilityController->deleteRequest((int)($_GET['id'] ?? 0), $_POST['reason'] ?? '')
+                   : $facilityController->restoreRequest((int)($_GET['id'] ?? 0));
+        } else {
+            header('Location: index.php?action=facilityCalendar');
+        }
+        break;
+
+    // Weekly setup sheet export (CSV / Excel) — confirmed bookings only.
+    case 'facilitySetupSheetExport':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canViewFacilitySetupSheet($currentUserType)) { header('Location: index.php'); exit(); }
+        $facilityController->exportSetupSheet(($_GET['format'] ?? '') === 'xlsx' ? 'xlsx' : 'csv', (string)($_GET['week'] ?? ''));
+        break;
+
+    // Repeat weekly preview (POST of the request form, JSON back).
+    case 'ajaxFacilitySeriesPreview':
+        if (!isset($_SESSION['user'])) { http_response_code(401); exit(); }
+        if (!canRepeatFacilityRequest($currentUserType) || $_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(403); exit(); }
+        $facilityController->ajaxSeriesPreview($_POST);
         break;
 
     // Read-only AJAX. Any logged-in account, including one that cannot act on

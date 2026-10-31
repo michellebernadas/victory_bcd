@@ -95,10 +95,116 @@ class FacilityRequestImport {
         'resource' => 'office_resource',
     ];
 
+    /**
+     * THE ONE-ROW-PER-REQUEST TEMPLATE (index.php?action=facilityImportTemplate)
+     *
+     * Column header (the church's own form wording, sections A–F) => the same
+     * raw field readSheet() produces for the paper form, so both formats go
+     * through the one prepare(). Shared by FacilityImportTemplate (which writes
+     * the headers) and parseTabular() (which reads them), so the two cannot
+     * drift. 'req' marks the columns the Instructions sheet calls required;
+     * 'kind' drives formatting and dropdowns.
+     *
+     * There are deliberately NO Facilities-review or Minister columns: a row
+     * cannot arrive reviewed or approved. Every row lands as Submitted.
+     */
+    const TEMPLATE_NOTE_HEADER = 'NOTE (not imported)';
+    const TEMPLATE_COLUMNS = [
+        ['A. Requestor Information', 'NAME',                         'requestor_name',            true,  'text',     'Full name of the person making the request.'],
+        ['A. Requestor Information', 'MINISTRY/DEPARTMENT',          'ministry',                  false, 'ministry', 'Pick from the list, or type one that is not listed.'],
+        ['A. Requestor Information', 'MINISTRY LEADER',              'ministry_leader',           false, 'text',     ''],
+        ['A. Requestor Information', 'CONTACT NUMBER',               'contact_number',            false, 'text',     ''],
+        ['A. Requestor Information', 'EMAIL',                        'email',                     false, 'text',     'Left blank if it is not a valid address.'],
+        ['B. Request Details',       'TYPE OF REQUEST',              'request_type_raw',          true,  'type',     'Facility / Room, Furniture, Equipment or Office Resource. Several: separate with commas.'],
+        ['B. Request Details',       'EVENT/ACTIVITY',               'event_activity',            true,  'text',     'What the request is for.'],
+        ['B. Request Details',       'PURPOSE OF REQUEST',           'purpose',                   false, 'text',     'In relation to the 4Es of Discipleship.'],
+        ['B. Request Details',       'DATE NEEDED',                  'date_needed_raw',           true,  'date',     'An Excel date, or typed as 11/15/2026 or 2026-11-15.'],
+        ['B. Request Details',       'START TIME',                   'start_time_raw',            false, 'time',     'An Excel time, or typed as 6:00 PM or 18:00. Required for Facility / Room.'],
+        ['B. Request Details',       'END TIME',                     'end_time_raw',              false, 'time',     'Must be after the start time. Required for Facility / Room.'],
+        ['B. Request Details',       'EXPECTED ATTENDANCE',          'expected_attendance',       false, 'number',   'A number.'],
+        ['C. Facility / Room',       'REQUESTED FACILITY/ROOM',      'facility_raw',              false, 'room',     'Pick from the list. Required for Facility / Room.'],
+        ['C. Facility / Room',       'PREFERRED SETUP',              'preferred_setup',           false, 'text',     'e.g. Classroom arrangement.'],
+        ['C. Facility / Room',       'NUMBER OF TABLES',             'num_tables',                false, 'number',   ''],
+        ['C. Facility / Room',       'NUMBER OF CHAIRS',             'num_chairs',                false, 'number',   ''],
+        ['C. Facility / Room',       'OTHER REQUIREMENTS',           'other_requirements',        false, 'text',     ''],
+        ['D. Equipment',             'EQUIPMENT REQUESTED',          'equipment_requested',       false, 'text',     'e.g. Microphone and speaker.'],
+        ['D. Equipment',             'QUANTITY',                     'equipment_quantity',        false, 'text',     'Free text, e.g. 1 pc. each.'],
+        ['D. Equipment',             'PERSON RESPONSIBLE',           'person_responsible',        false, 'text',     ''],
+        ['D. Equipment',             'TECHNICAL ASSISTANCE',         'technical_assistance_raw',  false, 'yesno',    'Yes or No.'],
+        ['D. Equipment',             'TECHNICAL ASSISTANCE DETAILS', 'technical_assistance_details', false, 'text',  ''],
+        ['E. Additional Requirements', 'SETUP ASSISTANCE',           'needs_setup_raw',           false, 'yesno',    'Yes or No.'],
+        ['E. Additional Requirements', 'TECHNICAL SUPPORT',          'needs_technical_raw',       false, 'yesno',    'Yes or No.'],
+        ['E. Additional Requirements', 'SECURITY / ACCESS',          'needs_security_raw',        false, 'yesno',    'Yes or No.'],
+        ['E. Additional Requirements', 'CLEANING / SPECIAL PREPARATION', 'needs_cleaning_raw',    false, 'yesno',    'Yes or No.'],
+        ['E. Additional Requirements', 'OTHER',                      'needs_other_raw',           false, 'yesno',    'Yes or No.'],
+        ['E. Additional Requirements', 'DETAILS',                    'additional_details',        false, 'text',     ''],
+        ["F. Requestor's Acknowledgment", 'REQUESTOR (SIGNATURE NAME)', 'acknowledged_name',      false, 'text',     'Typing the name records the acknowledgment.'],
+        ["F. Requestor's Acknowledgment", 'ACKNOWLEDGED',             'acknowledged_raw',          false, 'yesno',    'Yes = the requestor accepts the acknowledgment in section F.'],
+    ];
+
     public function __construct($db) {
         $this->db            = $db;
         $this->requestModel  = new FacilityRequest($db);
         $this->facilityModel = new Facility($db);
+    }
+
+    /** labelKey(header) => raw field, for the tabular template. */
+    private static function tabularHeaderMap(): array {
+        $map = [];
+        foreach (self::TEMPLATE_COLUMNS as $c) $map[self::labelKey($c[1])] = $c[2];
+        return $map;
+    }
+
+    /**
+     * Find the header row of a one-row-per-request sheet: a single row naming
+     * NAME, EVENT/ACTIVITY and DATE NEEDED (plus at least one more template
+     * column). Returns [rowIndex, [colIndex => field]] or null.
+     */
+    private static function findTabularHeader(array $grid): ?array {
+        $map = self::tabularHeaderMap();
+        foreach (array_slice($grid, 0, 15, true) as $i => $row) {
+            if (!is_array($row)) continue;
+            $cols = [];
+            foreach ($row as $c => $cell) {
+                $k = self::labelKey($cell);
+                if ($k !== '' && isset($map[$k]) && !in_array($map[$k], $cols, true)) $cols[$c] = $map[$k];
+            }
+            if (count($cols) >= 4 && !array_diff(['requestor_name', 'event_activity', 'date_needed_raw'], $cols)) {
+                return [$i, $cols];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Read a one-row-per-request sheet into the same form arrays readSheet()
+     * returns, one per filled row. The marked sample row and blank rows are
+     * skipped (and counted). Row numbers are the spreadsheet's own, so the
+     * preview can say "Row 7: ...".
+     */
+    private function parseTabular(array $grid, array $header, string $sheetName): array {
+        [$headerIdx, $cols] = $header;
+        $noteCol = null;
+        foreach ($grid[$headerIdx] as $c => $cell) {
+            if (self::labelKey($cell) === self::labelKey(self::TEMPLATE_NOTE_HEADER)) $noteCol = $c;
+        }
+        $forms = []; $samples = 0;
+        foreach ($grid as $i => $row) {
+            if ($i <= $headerIdx || !is_array($row)) continue;
+            $form = ['_sheet' => $sheetName . ' row ' . ($i + 1), '_tabular' => true, '_row' => $i + 1];
+            $any = false;
+            foreach ($cols as $c => $field) {
+                $v = self::clean($row[$c] ?? '');
+                $form[$field] = $v;
+                if ($v !== '') $any = true;
+            }
+            if (!$any) continue;                                   // blank row
+            $note = $noteCol !== null ? mb_strtolower(self::clean($row[$noteCol] ?? '')) : '';
+            if (strpos($note, 'sample') === 0
+                || stripos((string)($form['event_activity'] ?? ''), 'SAMPLE') === 0) { $samples++; continue; }
+            $forms[] = $form;
+        }
+        return ['forms' => $forms, 'samples' => $samples];
     }
 
     public static function clean($v): string {
@@ -237,8 +343,22 @@ class FacilityRequestImport {
         }
 
         $forms = []; $skipped = [];
+        // TWO FORMATS. A sheet with a one-row-per-request header row (the
+        // downloadable template, see TEMPLATE_COLUMNS) is read as a table;
+        // anything else as the church's one-sheet-per-request paper form.
+        $tabularForms = []; $tabularSheets = 0;
         foreach ($book->getSheetNames() as $sheetName) {
             $grid = $book->getSheetByName($sheetName)->toArray(null, true, false, false);
+            if ($header = self::findTabularHeader($grid)) {
+                $tabularSheets++;
+                $t = $this->parseTabular($grid, $header, $sheetName);
+                $tabularForms = array_merge($tabularForms, $t['forms']);
+                if ($t['samples']) {
+                    $skipped[$sheetName . ' (sample row)'] = 'The marked SAMPLE row is an example and is never imported.';
+                }
+                if (!$t['forms']) $skipped[$sheetName] = 'No filled-in rows below the header (apart from the sample).';
+                continue;
+            }
             $form = $this->readSheet($grid, $sheetName);
 
             if ($form === null) {
@@ -253,6 +373,15 @@ class FacilityRequestImport {
                 continue;
             }
             $forms[] = $form;
+        }
+
+        // A template workbook: its Instructions sheet names the same labels
+        // the paper form does, so it must not be mistaken for a form.
+        if ($tabularSheets) {
+            foreach ($forms as $f) {
+                $skipped[$f['_sheet']] = 'Not a request sheet — this workbook uses the one-row-per-request template.';
+            }
+            $forms = $tabularForms;
         }
 
         if (!$forms && !$skipped) {
@@ -407,8 +536,13 @@ class FacilityRequestImport {
     private function prepare(array $form, array $facilities): array {
         $issues = [];
         $get = function ($k) use ($form) { return self::clean($form[$k] ?? ''); };
+        $tabular = !empty($form['_tabular']);
 
-        [$dateNeeded, $dateNote] = self::parseDate($form['date_needed_raw'] ?? '');
+        // A template date cell that also carries a time of day (46341.5) is
+        // still that date.
+        $dateRaw = $form['date_needed_raw'] ?? '';
+        if ($tabular && is_numeric($dateRaw) && (float)$dateRaw > 1) $dateRaw = (string)(int)floor((float)$dateRaw);
+        [$dateNeeded, $dateNote] = self::parseDate($dateRaw);
         if ($dateNote !== null) $issues[] = $dateNote;
         elseif ($dateNeeded === null) $issues[] = 'No date needed on this form.';
 
@@ -464,6 +598,29 @@ class FacilityRequestImport {
         $status = 'ready';
         if ($get('event_activity') === '')   { $issues[] = 'No event / activity on this form.';  $status = 'invalid'; }
         if ($get('requestor_name')  === '')  { $issues[] = 'No requestor name on this form.';    $status = 'invalid'; }
+
+        // The template rows are new requests typed for the portal, so the
+        // portal form's own rules apply where they can be checked
+        // (FacilityRequest::validatePortalForm). A row that breaks one is shown
+        // as a problem on the preview and cannot be imported — never dropped
+        // silently, never "fixed" by guessing.
+        if ($tabular) {
+            if ($dateNeeded === null) { $issues[] = 'Date needed is required.'; $status = 'invalid'; }
+            if ($startTime !== null && $endTime !== null && strcmp($endTime, $startTime) <= 0) {
+                $issues[] = 'End time is before (or the same as) the start time.';
+                $status = 'invalid';
+            }
+            if (in_array('facility_room', $types, true)) {
+                $missing = [];
+                if ($facilityId === null) $missing[] = 'a room';
+                if ($startTime === null || $endTime === null) $missing[] = 'a start and end time';
+                if ($missing) {
+                    $issues[] = 'A Facility / Room request needs ' . implode(' and ', $missing)
+                              . '. Fill it in, or change the type of request if no room is needed.';
+                    $status = 'invalid';
+                }
+            }
+        }
         if ($status !== 'invalid' && $issues) $status = 'needs_review';
 
         $email = $get('email');
@@ -472,6 +629,14 @@ class FacilityRequestImport {
             $email = '';
             if ($status === 'ready') $status = 'needs_review';
         }
+
+        // Every problem on a template row names the spreadsheet row it is on.
+        if ($tabular && !empty($form['_row'])) {
+            $issues = array_map(function ($m) use ($form) { return 'Row ' . (int)$form['_row'] . ': ' . $m; }, $issues);
+        }
+        $yes = function ($k) use ($form) { return self::parseYesNo($form[$k] ?? '') === 'yes' ? 1 : 0; };
+        $ackName = $get('acknowledged_name');
+        $acknowledged = ($ackName !== '' || $yes('acknowledged_raw')) ? 1 : 0;
 
         return [
             // Exactly the keys FacilityRequest::normalize() reads.
@@ -496,11 +661,20 @@ class FacilityRequestImport {
             'equipment_quantity'  => $get('equipment_quantity'),
             'person_responsible'  => $get('person_responsible'),
             'technical_assistance'=> self::parseYesNo($form['technical_assistance_raw'] ?? '') === 'yes' ? 'yes' : 'no',
+            'technical_assistance_details' => $get('technical_assistance_details'),
+            // Section E ticks — only the template has columns for them; the
+            // paper form leaves these absent, which reads as 0 exactly as before.
+            'needs_setup'         => $yes('needs_setup_raw'),
+            'needs_technical'     => $yes('needs_technical_raw'),
+            'needs_security'      => $yes('needs_security_raw'),
+            'needs_cleaning'      => $yes('needs_cleaning_raw'),
+            'needs_other'         => $yes('needs_other_raw'),
             'additional_details'  => $get('additional_details'),
             // The form's acknowledgement block is pre-printed text; the signature
-            // line being filled in is what shows the requestor accepted it.
-            'acknowledged'        => $get('acknowledged_name') !== '' ? 1 : 0,
-            'acknowledged_name'   => $get('acknowledged_name'),
+            // line being filled in (or ACKNOWLEDGED = Yes on the template) is
+            // what shows the requestor accepted it.
+            'acknowledged'        => $acknowledged,
+            'acknowledged_name'   => $ackName,
             'source'              => 'excel_import',
             'source_label'        => mb_substr((string)($form['_sheet'] ?? ''), 0, 255),
 

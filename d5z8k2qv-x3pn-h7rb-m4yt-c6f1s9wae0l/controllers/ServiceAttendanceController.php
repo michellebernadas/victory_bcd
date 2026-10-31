@@ -62,6 +62,36 @@ class ServiceAttendanceController
         $this->redirect($this->model->delete($id) ? 'delete' : 'error');
     }
 
+    /** "Enter a Sunday": all service times of one date, one transaction. */
+    public function saveDay(array $data): void
+    {
+        $date   = (string)($data['service_date'] ?? '');
+        $result = $this->model->saveDay($date, (array)($data['svc'] ?? []), (int)($_SESSION['user']['id'] ?? 0) ?: null);
+        if (empty($result['ok'])) {
+            header('Location: index.php?action=serviceAttendance' . $this->filterQuery()
+                 . '&error=1&msg=' . urlencode($result['error'] ?? 'Could not save.')
+                 . '&enterDay=' . urlencode($date));
+            exit();
+        }
+        $msg = sprintf('Saved %d service%s for %s · %s total',
+            $result['saved'], $result['saved'] === 1 ? '' : 's',
+            date('D, M j', strtotime($date)), number_format($result['day_total']));
+        if ($result['deleted'] > 0) $msg .= ' · deleted ' . $result['deleted'] . ' cleared entr' . ($result['deleted'] === 1 ? 'y' : 'ies');
+        if ($result['saved'] === 0) $msg = 'Deleted ' . $result['deleted'] . ' entr' . ($result['deleted'] === 1 ? 'y' : 'ies')
+            . ' for ' . date('D, M j', strtotime($date)) . ' · ' . number_format($result['day_total']) . ' total';
+        header('Location: index.php?action=serviceAttendance' . $this->filterQuery()
+             . '&notif=day&msg=' . urlencode($msg));
+        exit();
+    }
+
+    /** JSON: what is already saved for ?date=, so the form prefills and edits it. */
+    public function ajaxDay(): void
+    {
+        header('Content-Type: application/json');
+        echo json_encode(['entries' => (object)$this->model->getDay((string)($_GET['date'] ?? ''))]);
+        exit();
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     /** Keeps the current filter on the URL so a save doesn't reset the view. */

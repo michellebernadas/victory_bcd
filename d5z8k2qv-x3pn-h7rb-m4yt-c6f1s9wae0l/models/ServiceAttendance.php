@@ -448,6 +448,131 @@ class ServiceAttendance
         }
     }
 
+    // ── "Enter a Sunday": every service time of one date in one form ────────
+
+    /** Entries already saved for one date, keyed by service_name. */
+    public function getDay(string $date): array
+    {
+        $d = DateTime::createFromFormat('Y-m-d', $date);
+        if (!$d || $d->format('Y-m-d') !== $date) return [];
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT id, service_name, adults, kids, grand_total, notes
+                   FROM service_attendances WHERE service_date = ? ORDER BY service_name"
+            );
+            $stmt->execute([$date]);
+            $out = [];
+            foreach ($stmt->fetchAll() as $r) {
+                $out[$r['service_name']] = [
+                    'id' => (int)$r['id'], 'adults' => (int)$r['adults'], 'kids' => (int)$r['kids'],
+                    'total' => (int)$r['grand_total'], 'notes' => (string)($r['notes'] ?? ''),
+                ];
+            }
+            return $out;
+        } catch (PDOException $e) {
+            error_log("ServiceAttendance::getDay error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Save a whole service day in ONE transaction.
+     *
+     * $rows: [['name' => '8:30 AM', 'adults' => '310', 'kids' => '42', 'delete' => '0'], ...]
+     *   - both counts blank          -> skipped, never saved as zeros
+     *   - blank + a saved entry      -> deleted only when 'delete' is set (the form
+     *                                   asks first); otherwise the entry is kept
+     *   - one count blank            -> that count is 0
+     *   - filled + a saved entry     -> UPDATE adults/kids (notes left untouched)
+     *   - filled + no entry          -> INSERT
+     * grand_total is never named: it is a generated column. Every row is
+     * validated before the transaction opens, so a bad value saves nothing.
+     *
+     * @return array{ok:bool,error?:string,saved?:int,deleted?:int,kept?:int,day_total?:int,day_services?:int}
+     */
+    public function saveDay(string $date, array $rows, ?int $recordedBy = null): array
+    {
+        $date = trim($date);
+        $d = DateTime::createFromFormat('Y-m-d', $date);
+        if ($date === '' || !$d || $d->format('Y-m-d') !== $date) {
+            return ['ok' => false, 'error' => 'Choose a valid date.'];
+        }
+        $allowed = array_column($this->getServiceTimeOptions(), 'name');
+
+        $plan = [];
+        foreach ($rows as $r) {
+            if (!is_array($r)) continue;
+            $name = trim((string)($r['name'] ?? ''));
+            if ($name === '') continue;
+            if (!in_array($name, $allowed, true)) {
+                return ['ok' => false, 'error' => '"' . $name . '" is not one of the configured service times.'];
+            }
+            $a = trim((string)($r['adults'] ?? ''));
+            $k = trim((string)($r['kids'] ?? ''));
+            if ($a === '' && $k === '') {
+                $plan[$name] = ['blank' => true, 'delete' => !empty($r['delete'])];
+                continue;
+            }
+            $adults = $this->toCount($a);
+            $kids   = $this->toCount($k);
+            if ($adults === null || $kids === null) {
+                return ['ok' => false, 'error' => 'Adults and Kids for ' . $name . ' must be whole numbers of zero or more.'];
+            }
+            $plan[$name] = ['blank' => false, 'adults' => $adults, 'kids' => $kids];
+        }
+
+        $saved = 0; $deleted = 0; $kept = 0;
+        try {
+            $this->db->beginTransaction();
+            // Lock this date's rows, and decide insert vs update from what is in
+            // the table NOW rather than what the form saw when it was opened.
+            $stmt = $this->db->prepare(
+                "SELECT id, service_name FROM service_attendances WHERE service_date = ? FOR UPDATE"
+            );
+            $stmt->execute([$date]);
+            $existing = [];
+            foreach ($stmt->fetchAll() as $e) $existing[$e['service_name']] = (int)$e['id'];
+
+            $ins = $this->db->prepare(
+                "INSERT INTO service_attendances (service_date, service_name, adults, kids, recorded_by)
+                 VALUES (?, ?, ?, ?, ?)"
+            );
+            $upd = $this->db->prepare("UPDATE service_attendances SET adults = ?, kids = ? WHERE id = ?");
+            $del = $this->db->prepare("DELETE FROM service_attendances WHERE id = ?");
+
+            foreach ($plan as $name => $p) {
+                $id = $existing[$name] ?? 0;
+                if ($p['blank']) {
+                    if ($id && $p['delete']) { $del->execute([$id]); $deleted++; }
+                    elseif ($id)             { $kept++; }
+                    continue;
+                }
+                if ($id) $upd->execute([$p['adults'], $p['kids'], $id]);
+                else     $ins->execute([$date, $name, $p['adults'], $p['kids'], $recordedBy ?: null]);
+                $saved++;
+            }
+
+            if ($saved === 0 && $deleted === 0) {
+                $this->db->rollBack();
+                return ['ok' => false, 'error' => 'Nothing to save. Enter Adults or Kids for at least one service.'];
+            }
+            $this->db->commit();
+        } catch (PDOException $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            if ($this->isDuplicate($e)) {
+                return ['ok' => false, 'error' => 'Someone else saved this date at the same moment. Nothing was saved; open the date again to see their numbers.'];
+            }
+            error_log("ServiceAttendance::saveDay error: " . $e->getMessage());
+            return ['ok' => false, 'error' => 'Could not save this Sunday. Nothing was changed. Please try again.'];
+        }
+
+        $day = $this->getDay($date);
+        return [
+            'ok' => true, 'saved' => $saved, 'deleted' => $deleted, 'kept' => $kept,
+            'day_total' => array_sum(array_column($day, 'total')), 'day_services' => count($day),
+        ];
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     /** Validates + coerces POST data. Returns ['error' => ...] on a bad input. */

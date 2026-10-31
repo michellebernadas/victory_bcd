@@ -310,14 +310,14 @@ endif;
                                         <?php if ($t['team_status'] === 'active'): ?>
                                         <a class="btn btn-sm btn-outline-warning me-1" title="Deactivate"
                                            href="index.php?action=deactivateServeTeam&id=<?php echo (int)$t['id']; ?>"
-                                           onclick="return confirm('Deactivate this team?')"><i class="bi bi-pause-circle"></i></a>
+                                           data-confirm="Deactivate this team?"><i class="bi bi-pause-circle"></i></a>
                                         <?php else: ?>
                                         <a class="btn btn-sm btn-outline-success me-1" title="Activate"
                                            href="index.php?action=activateServeTeam&id=<?php echo (int)$t['id']; ?>"><i class="bi bi-play-circle"></i></a>
                                         <?php endif; ?>
                                         <a class="btn btn-sm btn-outline-danger" title="Delete"
                                            href="index.php?action=deleteServeTeam&id=<?php echo (int)$t['id']; ?>"
-                                           onclick="return confirm('Delete this serve team? Membership history is kept but the team is hidden.');"><i class="bi bi-trash"></i></a>
+                                           data-confirm="Delete this serve team? Membership history is kept but the team is hidden."><i class="bi bi-trash"></i></a>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>

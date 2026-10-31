@@ -70,9 +70,12 @@ function vg_link_slot(array $m, int $slot): string {
               . htmlspecialchars($memberNm !== '' ? $memberNm : 'Linked member') . '</a>'
               . ' <a href="index.php?action=unlinkVgMember&vgm=' . $vgmId . '&slot=' . $slot . '"'
               . ' class="text-danger text-decoration-none" title="Unlink this person. The name stays as written."'
-              . ' onclick="return confirm(\'Unlink this person? The name stays exactly as written and goes back to Needs Link.\');">'
+              . ' data-confirm="Unlink this person? The name stays exactly as written and goes back to Needs Link.">'
               . '<i class="bi bi-x-circle"></i></a>';
     } else {
+        if ((($slot === 1 ? $m['link_status'] : $m['link_status_2']) ?? '') === 'not_a_member') {
+            $out .= '<span class="badge bg-secondary" style="font-size:.6rem">Not a church member</span>';
+        }
         $out .= '<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none"'
               . ' style="font-size:.7rem"'
               . ' onclick="openLinkPersonModal(' . $vgmId . ',' . $slot . ','
@@ -121,6 +124,11 @@ function renderNameList($members, $showGender = true) {
             if ($canLink) {
                 $out .= '<div class="ms-3 mt-1">' . vg_link_slot($m, 1) . vg_link_slot($m, 2) . '</div>';
             }
+        } elseif (empty($m['member_id']) && ($m['link_status'] ?? '') === 'not_a_member') {
+            // Resolved on the Needs Link page: a person who will never have a member
+            // record. Not a prompt to link, and never counted as a linked person.
+            $out .= ' <span class="badge bg-secondary" style="font-size:.65rem" title="Marked on the Needs Link page. Undo it there.">'
+                  . '<i class="bi bi-person-dash me-1"></i>Not a church member</span>';
         } elseif (empty($m['member_id'])) {
             $out .= ' <span class="badge bg-warning text-dark" style="font-size:.65rem">'
                   . '<i class="bi bi-link-45deg me-1"></i>Needs Link</span>';
@@ -154,6 +162,12 @@ function renderNameList($members, $showGender = true) {
                 <?php if ($isGroupsTab): ?>
                 <div class="d-flex gap-2">
                     <?php if (($_SESSION['user']['accounttype'] ?? '') === 'admin'): ?>
+                    <a href="index.php?action=needsLink" class="btn btn-outline-warning text-dark" title="Link every imported name on one page">
+                        <i class="bi bi-link-45deg me-1"></i> Needs Link
+                        <?php if (($needsLinkCount ?? 0) > 0): ?>
+                        <span class="badge rounded-pill bg-warning text-dark ms-1"><?php echo (int)$needsLinkCount; ?></span>
+                        <?php endif; ?>
+                    </a>
                     <a href="index.php?action=groupImport" class="btn btn-outline-primary">
                         <i class="bi bi-upload me-1"></i> Import VG Schedule
                     </a>
@@ -649,7 +663,7 @@ function renderNameList($members, $showGender = true) {
                                         <?php endif; ?>
                                         <a class="btn btn-sm btn-outline-danger" title="Delete"
                                            href="index.php?action=hardDeleteGroup&id=<?php echo $g['id']; ?>"
-                                           onclick="return confirm('Permanently delete the group led by <?php echo $leaderAttr; ?>? This cannot be undone. Members must be removed first.');">
+                                           data-confirm="Permanently delete the group led by <?php echo htmlspecialchars($firstLeader); ?>? This cannot be undone. Members must be removed first.">
                                             <i class="bi bi-trash"></i>
                                         </a>
                                     </td>
@@ -1162,7 +1176,7 @@ function renderNameList($members, $showGender = true) {
                                         <?php if ($sd['is_active']): ?>
                                         <a class="btn btn-sm btn-outline-warning me-1" title="Deactivate"
                                            href="index.php?action=deactivateVglStat&id=<?php echo $sd['id']; ?>"
-                                           onclick="return confirm('Deactivate this stat definition? It will be hidden from the Statistics tab.');">
+                                           data-confirm="Deactivate this stat definition? It will be hidden from the Statistics tab.">
                                             <i class="bi bi-pause-circle"></i>
                                         </a>
                                         <?php else: ?>
@@ -2397,6 +2411,13 @@ function renderNameList($members, $showGender = true) {
         // Edit modal straight away on the tab matching that group's kind.
         <?php if (!empty($editGroup)): ?>
         openEditGroupModal(<?php echo json_encode($editGroup); ?>);
+        <?php endif; ?>
+        // Arriving via ?openAdd=1 (the dashboard's "Add VG / Leadership Group" quick
+        // link) opens Add Group straight away, set to this tab's kind — same as
+        // members.php's openAdd=1.
+        <?php if (!empty($_GET['openAdd']) && $isGroupsTab && empty($editGroup)): ?>
+        initAddModal('<?php echo $currentKind; ?>');
+        new bootstrap.Modal(document.getElementById('addGroupModal')).show();
         <?php endif; ?>
     });
 

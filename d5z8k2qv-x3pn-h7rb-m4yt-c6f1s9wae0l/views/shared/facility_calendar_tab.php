@@ -97,6 +97,7 @@ $activeTab    = $activeTab    ?? 'calendar';
                 <div class="d-flex flex-wrap align-items-center gap-3 small mb-2" aria-label="Calendar legend">
                     <span><span class="fc-legend-swatch fw-semibold" style="background:<?php echo htmlspecialchars($statusColors['confirmed'] ?? '#198754'); ?>;color:#fff;border-left:4px solid <?php echo htmlspecialchars($statusColors['confirmed'] ?? '#198754'); ?>;"><i class="bi bi-calendar2-check-fill me-1" aria-hidden="true"></i>Solid</span> = Confirmed (reserved)</span>
                     <span><span class="fc-legend-swatch" style="background:#ffc1071f;color:#212529;border-left:4px dashed #ffc107;opacity:.85;"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>Faded</span> = pending (not reserved)</span>
+                    <span><span class="fc-legend-swatch" style="background:#ffc1071f;color:#212529;border-left:4px dashed #ffc107;opacity:.5;filter:grayscale(.7);"><i class="bi bi-hourglass-bottom me-1" aria-hidden="true"></i><span class="fc-chip-tag">Expired</span></span> = date passed while still pending</span>
                 </div>
                 <div id="fcEmpty" class="alert alert-light border text-muted small d-none mb-2"></div>
                 <div id="facilityCalendar">
@@ -153,6 +154,10 @@ $activeTab    = $activeTab    ?? 'calendar';
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .fc-chip-official { font-weight: 600; }
+/* Expired (past + still pending): faded further, greyed, and labelled. */
+.fc-chip.fc-chip-expired { opacity: .5 !important; filter: grayscale(.7); }
+.fc-chip-tag { font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+               background: #6c757d; color: #fff; border-radius: 2px; padding: 0 3px; }
 .fc-legend-swatch { display: inline-block; border-radius: 3px; font-size: .7rem; padding: 1px 6px; }
 .fc-chip-time { font-weight: 600; opacity: .85; }
 .fc-chip:hover { filter: brightness(.93); }

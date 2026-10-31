@@ -64,21 +64,10 @@ $sundayUrl = function (string $range) use ($dashClass, $dashYear, $dashBucket) {
     return 'index.php?' . http_build_query($q) . '#churchHealth';
 };
 
+// Feeds the Worship Service Attendance panel (shared/dashboard_services.php).
+// The Serve Teams roll-up, the member-sign-up Sunday total and its anchor that
+// used to sit here fed cards the church asked to remove; nothing read them.
 $serviceStats       = $memberModel->getServiceAttendanceStats();
-// Headline Sunday figure for the stat card: active members across the AM/PM
-// services. Member dispositions (period '') are excluded — they aren't services.
-$sundayServiceTotal = 0;
-foreach ($serviceStats as $_svc) {
-    if (($_svc['period'] ?? '') !== '') $sundayServiceTotal += (int)$_svc['count'];
-}
-// Links into the Church Health section, or to the services panel when it renders.
-$sundayAnchor = !empty($serviceStats) ? '#sundayServices' : '#churchHealth';
-// Serve Teams roll-up (module is optional — tolerate a missing table).
-$serveTeamStats = ['total' => 0, 'active' => 0, 'leaders' => 0, 'servers' => 0];
-try {
-    require_once 'models/ServeTeam.php';
-    $serveTeamStats = (new ServeTeam($db))->getStats();
-} catch (Exception $e) { /* Serve Teams not migrated yet — cards stay at zero. */ }
 
 // The "Volunteers & Their Discipleship Journey" roll-up was removed with the
 // volunteer_status column. It was only ever as good as a field that was blank
@@ -119,6 +108,9 @@ include 'shared/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
             <?php endif; ?>
+
+            <!-- Getting started with 2026 (admin only; hides itself when every step is done) -->
+            <?php include 'shared/dashboard_checklist.php'; ?>
 
             <!-- Stats Cards Row 1: Members -->
             <div class="row mb-2">
@@ -270,7 +262,7 @@ include 'shared/header.php';
                         <div class="card-body">
                             <h6 class="text-muted small fw-bold mb-2">MEMBERS</h6>
                             <div class="d-grid gap-2 mb-3">
-                                <a href="index.php?action=members" class="btn btn-sm btn-outline-primary">
+                                <a href="index.php?action=members&amp;openAdd=1" class="btn btn-sm btn-outline-primary">
                                     <i class="bi bi-person-plus me-1"></i> Add Member
                                 </a>
                                 <a href="index.php?action=members" class="btn btn-sm btn-outline-secondary">
@@ -279,14 +271,11 @@ include 'shared/header.php';
                             </div>
                             <h6 class="text-muted small fw-bold mb-2 mt-3">GROUPS</h6>
                             <div class="d-grid gap-2 mb-3">
-                                <a href="index.php?action=victoryGroups" class="btn btn-sm btn-outline-info">
+                                <a href="index.php?action=victoryGroups&amp;tab=vg&amp;openAdd=1" class="btn btn-sm btn-outline-info">
                                     <i class="bi bi-diagram-3 me-1"></i> Add VG / Leadership Group
                                 </a>
                                 <a href="index.php?action=victoryGroups" class="btn btn-sm btn-outline-secondary">
                                     <i class="bi bi-list-ul me-1"></i> View All Groups
-                                </a>
-                                <a href="index.php?action=serveTeams" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-hand-thumbs-up me-1"></i> Serve Teams
                                 </a>
                             </div>
                             <h6 class="text-muted small fw-bold mb-2 mt-3">CLASSES</h6>
@@ -308,6 +297,16 @@ include 'shared/header.php';
                                     <i class="bi bi-person-gear me-1"></i> Manage Users
                                 </a>
                             </div>
+                            <?php if (!empty($gsShowChecklist)): ?>
+                            <!-- Shown only after "Hide checklist" on this browser. -->
+                            <a href="#" id="gsShowLink" class="d-none small d-block mt-2 text-decoration-none"
+                               onclick="if (window.gsShowChecklist) gsShowChecklist(); return false;">
+                                <i class="bi bi-flag me-1"></i>Show getting-started checklist
+                            </a>
+                            <script>
+                            try { if (localStorage.getItem('vb.gettingStarted.hidden') === '1') document.getElementById('gsShowLink').classList.remove('d-none'); } catch (e) {}
+                            </script>
+                            <?php endif; ?>
                             <?php endif; ?>
                         </div>
                     </div>

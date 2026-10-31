@@ -32,9 +32,13 @@ include 'shared/header.php';
                     <a href="index.php#churchHealth" class="btn btn-outline-secondary">
                         <i class="bi bi-graph-up me-1"></i>Church Health
                     </a>
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addSaModal"
+                    <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addSaModal"
                             <?php echo $saHasServices ? '' : 'disabled title="No service times are configured yet"'; ?>>
                         <i class="bi bi-plus-circle me-1"></i>Add Entry
+                    </button>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#daySaModal" id="saDayOpenBtn"
+                            <?php echo $saHasServices ? '' : 'disabled title="No service times are configured yet"'; ?>>
+                        <i class="bi bi-calendar-week me-1"></i>Enter a Sunday
                     </button>
                 </div>
             </div>
@@ -47,7 +51,11 @@ include 'shared/header.php';
                     'add'    => 'Attendance entry has been added successfully.',
                     'update' => 'Attendance entry has been updated successfully.',
                     'delete' => 'Attendance entry has been deleted successfully.',
-                ]; echo $saMsgs[$_GET['notif']] ?? 'Done.'; ?>
+                ];
+                // "Enter a Sunday" reports its own summary sentence.
+                echo ($_GET['notif'] === 'day')
+                    ? htmlspecialchars($_GET['msg'] ?? 'Saved.')
+                    : ($saMsgs[$_GET['notif']] ?? 'Done.'); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
             <?php endif; ?>
@@ -268,7 +276,7 @@ include 'shared/header.php';
                                         </button>
                                         <a class="btn btn-sm btn-outline-danger" title="Delete"
                                            href="index.php?action=deleteServiceAttendance&id=<?php echo (int)$r['id']; ?>"
-                                           onclick="return confirm('Delete the <?php echo htmlspecialchars(addslashes($r['service_name'])); ?> entry for <?php echo date('M j, Y', strtotime($r['service_date'])); ?>? This cannot be undone.');">
+                                           data-confirm="Delete the <?php echo htmlspecialchars($r['service_name']); ?> entry for <?php echo date('M j, Y', strtotime($r['service_date'])); ?>? This cannot be undone.">
                                             <i class="bi bi-trash"></i>
                                         </a>
                                     </td>
@@ -378,6 +386,85 @@ include 'shared/header.php';
             </div>
             <?php endforeach; ?>
 
+            <!-- Enter a Sunday: one row per configured service time, saved together.
+                 Picking a date that already has entries prefills them, so the same
+                 form edits them. Grand totals here are display-only, as above. -->
+            <?php $saDayQuery = http_build_query(array_filter($activeFilters)); ?>
+            <div class="modal fade" id="daySaModal" tabindex="-1" aria-labelledby="daySaTitle">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <form method="POST" id="daySaForm" novalidate
+                              action="index.php?action=saveServiceDay<?php echo $saDayQuery ? '&amp;' . htmlspecialchars($saDayQuery) : ''; ?>">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title" id="daySaTitle"><i class="bi bi-calendar-week me-2"></i>Enter a Sunday</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row g-2 align-items-end mb-2">
+                                    <div class="col-sm-5">
+                                        <label for="sa_day_date" class="form-label fw-semibold mb-1">Date <span class="text-danger">*</span></label>
+                                        <?php // Most recent Sunday (today, if today is Sunday) by the SERVER clock, so it always agrees with max. ?>
+                                        <input type="date" name="service_date" id="sa_day_date" class="form-control" required max="<?php echo date('Y-m-d'); ?>"
+                                               data-default="<?php echo date('Y-m-d', strtotime('-' . date('w') . ' days')); ?>">
+                                    </div>
+                                    <div class="col-sm-7">
+                                        <div id="sa_day_hint" class="small text-muted" aria-live="polite"></div>
+                                    </div>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-1" id="saDayTable">
+                                        <thead class="table-light">
+                                            <tr><th>Service</th><th style="width:22%">Adults</th><th style="width:22%">Kids</th><th class="text-end" style="width:16%">Total</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($serviceTimes as $i => $st): $sn = (string)$st['name']; ?>
+                                            <tr class="sa-day-row" data-name="<?php echo htmlspecialchars($sn); ?>" data-i="<?php echo (int)$i; ?>">
+                                                <td>
+                                                    <input type="hidden" name="svc[<?php echo (int)$i; ?>][name]" value="<?php echo htmlspecialchars($sn); ?>">
+                                                    <span class="fw-semibold"><?php echo htmlspecialchars($sn); ?></span>
+                                                    <span class="badge bg-success-subtle text-success border border-success-subtle ms-1 d-none sa-day-saved">saved</span>
+                                                </td>
+                                                <td><input type="number" class="form-control form-control-sm sa-day-in" name="svc[<?php echo (int)$i; ?>][adults]"
+                                                           min="0" step="1" inputmode="numeric" placeholder="—" aria-label="Adults at <?php echo htmlspecialchars($sn); ?>"></td>
+                                                <td><input type="number" class="form-control form-control-sm sa-day-in" name="svc[<?php echo (int)$i; ?>][kids]"
+                                                           min="0" step="1" inputmode="numeric" placeholder="—" aria-label="Kids at <?php echo htmlspecialchars($sn); ?>"></td>
+                                                <td class="text-end fw-bold text-primary sa-day-total">—</td>
+                                            </tr>
+                                            <tr class="sa-day-del d-none">
+                                                <td colspan="4" class="pt-0">
+                                                    <div class="alert alert-warning py-1 px-2 mb-1 small">
+                                                        <i class="bi bi-exclamation-triangle me-1"></i>
+                                                        <?php echo htmlspecialchars($sn); ?> already has a saved entry (<span class="sa-day-was"></span>). Clearing the boxes keeps it as it is unless you tick:
+                                                        <div class="form-check mt-1 mb-0">
+                                                            <input class="form-check-input" type="checkbox" value="1" name="svc[<?php echo (int)$i; ?>][delete]" id="sa_day_del_<?php echo (int)$i; ?>">
+                                                            <label class="form-check-label fw-semibold" for="sa_day_del_<?php echo (int)$i; ?>">Delete the saved <?php echo htmlspecialchars($sn); ?> entry</label>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                        <tfoot>
+                                            <tr class="table-light">
+                                                <td colspan="3" class="text-end fw-semibold">Day total</td>
+                                                <td class="text-end h5 fw-bold text-primary mb-0" id="sa_day_total">0</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                                <div id="sa_day_other" class="small text-muted d-none"></div>
+                                <div id="sa_day_error" class="alert alert-danger py-2 small d-none mb-0 mt-2" role="alert"></div>
+                                <div class="form-text">Leave a service blank to skip it &mdash; blanks are not saved as zeros. If only one box is filled, the other counts as 0.</div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-primary" id="sa_day_submit"><i class="bi bi-save me-1"></i>Save Sunday</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -454,6 +541,132 @@ document.querySelectorAll('form.sa-form').forEach(function (f) {
         if (b) { b.disabled = true; b.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Saving…'; }
     });
 });
+
+// ── Enter a Sunday ──────────────────────────────────────────────────────────
+(function () {
+    var modal = document.getElementById('daySaModal');
+    if (!modal) return;
+    var form = document.getElementById('daySaForm'), dateEl = document.getElementById('sa_day_date');
+    var hint = document.getElementById('sa_day_hint'), errBox = document.getElementById('sa_day_error');
+    var rows = Array.prototype.slice.call(form.querySelectorAll('tr.sa-day-row'));
+    var saved = {};   // service_name -> saved entry for the loaded date
+    var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    function ymd(t) {
+        return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    }
+    function lastSunday() {
+        if (dateEl.dataset.default) return dateEl.dataset.default;
+        var t = new Date(); t.setDate(t.getDate() - t.getDay()); return ymd(t);
+    }
+    function isWhole(v) { return v === '' || /^\d+$/.test(v); }
+    // A number input reports '' for text it cannot parse; badInput tells the two apart.
+    function val(i) { return (i.validity && i.validity.badInput) ? '?' : i.value.trim(); }
+
+    function recalc() {
+        var day = 0;
+        rows.forEach(function (tr) {
+            var ins = tr.querySelectorAll('input.sa-day-in'), a = val(ins[0]), k = val(ins[1]);
+            var ok = isWhole(a) && isWhole(k);
+            ins[0].classList.toggle('is-invalid', !isWhole(a));
+            ins[1].classList.toggle('is-invalid', !isWhole(k));
+            var blank = a === '' && k === '';
+            var tot = (parseInt(a, 10) || 0) + (parseInt(k, 10) || 0);
+            tr.querySelector('.sa-day-total').textContent = blank ? '—' : (ok ? tot : '?');
+            if (!blank && ok) day += tot;
+            // Cleared a row that has a saved entry: ask, in the form, what to do.
+            var del = tr.nextElementSibling, was = saved[tr.dataset.name];
+            var showDel = blank && !!was;
+            del.classList.toggle('d-none', !showDel);
+            if (!showDel) del.querySelector('input[type=checkbox]').checked = false;
+        });
+        document.getElementById('sa_day_total').textContent = day.toLocaleString();
+    }
+
+    function loadDay() {
+        var date = dateEl.value;
+        errBox.classList.add('d-none');
+        saved = {};
+        rows.forEach(function (tr) {
+            tr.querySelectorAll('input.sa-day-in').forEach(function (i) { i.value = ''; });
+            tr.querySelector('.sa-day-saved').classList.add('d-none');
+        });
+        recalc();
+        if (!date) { hint.textContent = ''; return; }
+        var dow = new Date(date + 'T00:00:00').getDay();
+        var dayNote = dow === 0 ? '' : 'Note: that date is a ' + DAYS[dow] + '. ';
+        hint.textContent = dayNote + 'Loading saved entries…';
+        fetch('index.php?action=ajaxServiceDay&date=' + encodeURIComponent(date), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (dateEl.value !== date) return;          // the date changed while loading
+                saved = d.entries || {};
+                var names = Object.keys(saved), configured = 0;
+                rows.forEach(function (tr) {
+                    var e = saved[tr.dataset.name];
+                    if (!e) return;
+                    configured++;
+                    var ins = tr.querySelectorAll('input.sa-day-in');
+                    ins[0].value = e.adults; ins[1].value = e.kids;
+                    tr.querySelector('.sa-day-saved').classList.remove('d-none');
+                    tr.nextElementSibling.querySelector('.sa-day-was').textContent =
+                        e.adults + ' adults + ' + e.kids + ' kids';
+                });
+                hint.innerHTML = '';
+                hint.appendChild(document.createTextNode(dayNote + (configured
+                    ? 'This date already has ' + configured + ' saved entr' + (configured === 1 ? 'y' : 'ies') + ' — saving updates them.'
+                    : 'Nothing saved for this date yet.')));
+                // Entries under a service time that is no longer configured stay
+                // untouched by this form; point at the table to edit them.
+                var other = names.filter(function (n) { return !rows.some(function (tr) { return tr.dataset.name === n; }); });
+                var otherEl = document.getElementById('sa_day_other');
+                otherEl.classList.toggle('d-none', !other.length);
+                otherEl.textContent = other.length
+                    ? 'Also recorded that day under a retired service time: ' + other.join(', ') + '. Edit it from the table.'
+                    : '';
+                recalc();
+            })
+            .catch(function () { hint.textContent = dayNote + 'Could not load saved entries for this date.'; });
+    }
+
+    modal.addEventListener('show.bs.modal', function () {
+        if (!dateEl.value) dateEl.value = lastSunday();
+        loadDay();
+    });
+    dateEl.addEventListener('change', loadDay);
+    form.addEventListener('input', function (e) { if (e.target.classList.contains('sa-day-in')) recalc(); });
+
+    form.addEventListener('submit', function (e) {
+        recalc();
+        var problems = [], filled = 0, deleting = 0;
+        if (!dateEl.value) problems.push('Choose a date.');
+        rows.forEach(function (tr) {
+            var ins = tr.querySelectorAll('input.sa-day-in'), a = val(ins[0]), k = val(ins[1]);
+            if (!isWhole(a) || !isWhole(k)) problems.push(tr.dataset.name + ': Adults and Kids must be whole numbers of zero or more.');
+            if (a !== '' || k !== '') filled++;
+            if (tr.nextElementSibling.querySelector('input[type=checkbox]').checked) deleting++;
+        });
+        if (!problems.length && !filled && !deleting) problems.push('Enter Adults or Kids for at least one service.');
+        if (problems.length) {
+            e.preventDefault();
+            errBox.textContent = problems.join(' ');
+            errBox.classList.remove('d-none');
+            return;
+        }
+        var b = document.getElementById('sa_day_submit');
+        b.disabled = true; b.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Saving…';
+    });
+
+    // ?enterDay=YYYY-MM-DD (a bounced save, or a link from the dashboard) opens
+    // the form straight away; any other non-empty value means "last Sunday".
+    <?php $saEnterDay = (string)($_GET['enterDay'] ?? ''); if ($saEnterDay !== '' && $saHasServices): ?>
+    window.addEventListener('DOMContentLoaded', function () {
+        var v = <?php echo json_encode($saEnterDay); ?>;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(v)) dateEl.value = v;
+        new bootstrap.Modal(modal).show();
+    });
+    <?php endif; ?>
+})();
 
 // ── Table: DataTable, per-page, search, exports ─────────────────────────────
 $(function () {

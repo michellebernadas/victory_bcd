@@ -161,7 +161,35 @@ can see nothing was quietly dropped:
 - the blank `REQUEST FORM` template — right labels, nothing filled in
 - unrelated sheets, such as the budget and collections sheets
 
-Accepted formats: `.xlsx`, `.xls`, up to 5 MB.
+Accepted formats: `.xlsx`, `.xls`, up to 5 MB (`.csv` for the template below).
+
+## Or: the one-row-per-request template
+
+For many requests at once, press **Download template** on the import page. The
+file is generated on the spot, so its dropdowns list **today's** rooms and
+ministries. It has:
+
+- an **Instructions** sheet — the steps, every column, which are required, and
+  the date / time formats accepted;
+- a **Requests** sheet — one request per row, columns in the form's own words
+  (sections A–F), header frozen, dropdowns for room, type of request, ministry
+  and the Yes/No columns. Row 3 is a **SAMPLE** row and is always skipped.
+
+There are **no Facilities-review or Minister columns**, so a template row can
+only ever import as **Submitted**. The importer recognises the template by its
+header row and keeps reading the one-sheet-per-request workbook as before.
+
+The portal form's rules are checked per row and shown on the preview with the
+row number — a row that breaks one is listed as *Cannot import* until fixed,
+never silently dropped:
+
+- `Row 7: End time is before (or the same as) the start time.`
+- `Row 9: A Facility / Room request needs a room and a start and end time.`
+- `Row 12: Date needed is required.`
+
+Imported requests have **no owner** (`submitted_by` is empty): the admin who
+imports them is not the requestor, so they do not appear in anyone's *My
+Requests*.
 
 ## Being in a spreadsheet is not an approval
 

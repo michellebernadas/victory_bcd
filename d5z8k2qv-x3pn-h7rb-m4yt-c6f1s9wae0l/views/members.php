@@ -442,7 +442,7 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                                         <?php if ($m['member_status'] === 'active'): ?>
                                         <a class="btn btn-sm btn-outline-warning me-1" title="Deactivate"
                                            href="index.php?action=deactivateMember&id=<?php echo $m['id']; ?>"
-                                           onclick="return confirm('Deactivate <?php echo htmlspecialchars(addslashes($m['full_name'])); ?>? They will be hidden from active lists but their record is preserved.');">
+                                           data-confirm="Deactivate <?php echo htmlspecialchars($m['full_name']); ?>? They will be hidden from active lists but their record is preserved.">
                                             <i class="bi bi-pause-circle"></i>
                                         </a>
                                         <?php else: ?>
