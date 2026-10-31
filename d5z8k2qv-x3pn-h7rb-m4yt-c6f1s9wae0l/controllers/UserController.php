@@ -1,5 +1,6 @@
 <?php
 require_once 'models/User.php';
+require_once __DIR__ . '/../config/permissions.php';
 
 class UserController {
     private $db;
@@ -26,9 +27,10 @@ class UserController {
             exit();
         }
 
-        // Validate accounttype
-        $validAccountTypes = ['admin', 'editor'];
-        if (!in_array($accounttype, $validAccountTypes)) {
+        // Validate accounttype against the one whitelist in config/permissions.php
+        // (VALID_ACCOUNT_TYPES), so adding a role never means remembering to
+        // widen a literal array here as well.
+        if (!isValidAccountType($accounttype)) {
             header('Location: index.php?action=users&error=add&msg=' . urlencode('Invalid account type'));
             exit();
         }
@@ -49,6 +51,16 @@ class UserController {
     }
 
     public function updateUser($username, $password, $email, $accounttype, $id) {
+        // The update paths previously passed $_POST['accounttype'] straight to
+        // the UPDATE with no check at all — only addUser validated. With a
+        // third role in the enum that gap matters more, so both update paths
+        // now use the same whitelist. An unrecognised value is refused, never
+        // coerced to a default: silently downgrading someone's role is worse
+        // than telling the admin the form was wrong.
+        if (!isValidAccountType($accounttype)) {
+            header('Location: index.php?action=users&error=update&msg=' . urlencode('Invalid account type'));
+            exit();
+        }
         $result = $this->userModel->updateUser($username, $password, $email, $accounttype, $id);
         if ($result) {
             // If the current user updated their own profile, refresh session data
@@ -158,6 +170,10 @@ class UserController {
     }
 
     public function updateUserByUuid($username, $password, $email, $accounttype, $uuid) {
+        if (!isValidAccountType($accounttype)) {
+            header('Location: index.php?action=users&error=update&msg=' . urlencode('Invalid account type'));
+            exit();
+        }
         $result = $this->userModel->updateUserByUuid($username, $password, $email, $accounttype, $uuid);
         if ($result) {
             // If the current user updated their own profile, refresh session data

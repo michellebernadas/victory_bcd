@@ -20,6 +20,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- Show / Hide Columns widget — binds to any <span class="col-toggle" data-table="..."> -->
     <script src="<?php echo asset('js/column-toggle.js'); ?>"></script>
+    <!-- Linked Member → First/Last Name auto-fill (Attendance, L113, SF forms) -->
+    <script src="<?php echo asset('js/linked-member.js'); ?>"></script>
 
     <script>
     $(document).ready(function() {

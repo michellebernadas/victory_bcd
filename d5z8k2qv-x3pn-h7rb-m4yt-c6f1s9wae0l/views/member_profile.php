@@ -66,13 +66,6 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                     <?php endif; ?>
                                 </span>
                                 <?php endif; ?>
-                                <?php
-                                $vs = strtoupper(trim($member['volunteer_status'] ?? ''));
-                                $vsColors = ['ACTIVE'=>'success','NEW'=>'info','INACTIVE'=>'secondary'];
-                                $vsColor  = $vsColors[$vs] ?? 'secondary';
-                                if ($vs): ?>
-                                <span class="badge bg-<?php echo $vsColor; ?>"><i class="bi bi-hand-thumbs-up me-1"></i><?php echo $vs; ?></span>
-                                <?php endif; ?>
                                 <?php if (!empty($member['civil_status'])): ?>
                                 <span class="badge bg-light text-dark border"><?php echo htmlspecialchars($member['civil_status']); ?></span>
                                 <?php endif; ?>
@@ -98,10 +91,14 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                 <small class="text-muted">Discipleship Journey</small>
                             </div>
                         </div>
-                        <div class="col-12 border-top pt-3">
+                        <div class="col-12 border-top pt-3 d-flex flex-wrap gap-2">
                             <a href="index.php?action=editMember&id=<?php echo $member['id']; ?>" class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-pencil me-1"></i>Edit Member
                             </a>
+                            <button type="button" class="btn btn-sm btn-primary"
+                                    data-bs-toggle="modal" data-bs-target="#addClassRecordModal">
+                                <i class="bi bi-journal-plus me-1"></i>Add Class Record
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -122,8 +119,8 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                 <?php
                                 $details = [
                                     ['bi-telephone',      'Contact #',         $member['contact_number'] ?? '',   null],
+                                    ['bi-envelope',       'Email',             $member['email'] ?? '',            'email'],
                                     ['bi-heart',          'Life Stage',        $member['civil_status'] ?? '',     null],
-                                    ['bi-hand-thumbs-up', 'Volunteer Status',  $member['volunteer_status'] ?? '', null],
                                     ['bi-people',         'Ministry',          $member['ministry'] ?? '',         'ministry'],
                                     ['bi-clock',          'Service Attending', $member['service_attending'] ?? '','service'],
                                 ];
@@ -135,7 +132,11 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                 <tr>
                                     <td class="text-muted small ps-3" style="width:40%"><i class="bi <?php echo $icon; ?> me-1"></i><?php echo $label; ?></td>
                                     <td class="small fw-semibold">
+                                        <?php if ($kind === 'email'): ?>
+                                        <a href="mailto:<?php echo htmlspecialchars($value); ?>" class="text-decoration-none"><?php echo htmlspecialchars($value); ?></a>
+                                        <?php else: ?>
                                         <?php echo htmlspecialchars($value); ?>
+                                        <?php endif; ?>
                                         <?php if ($inactive): ?>
                                         <i class="bi bi-exclamation-triangle-fill text-warning ms-1"
                                            title="<?php echo $kind === 'ministry' ? 'Ministry' : 'Service'; ?> &quot;<?php echo htmlspecialchars($value); ?>&quot; is inactive. Please reassign this member."
@@ -144,6 +145,26 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
+                                <?php
+                                // Facebook Profile — a plain outbound link, never an embed.
+                                // Only http(s) is rendered; the model rejects anything else on
+                                // save, and this re-checks so an older row can't inject a
+                                // javascript: URL into the href.
+                                $fbUrl    = trim((string)($member['facebook_url'] ?? ''));
+                                $fbScheme = $fbUrl !== '' ? strtolower((string)parse_url($fbUrl, PHP_URL_SCHEME)) : '';
+                                if ($fbUrl !== '' && in_array($fbScheme, ['http', 'https'], true)):
+                                ?>
+                                <tr>
+                                    <td class="text-muted small ps-3" style="width:40%"><i class="bi bi-facebook me-1"></i>Facebook</td>
+                                    <td class="small fw-semibold">
+                                        <a href="<?php echo htmlspecialchars($fbUrl); ?>"
+                                           target="_blank" rel="noopener noreferrer nofollow"
+                                           class="text-decoration-none">
+                                            Facebook Profile <i class="bi bi-box-arrow-up-right ms-1" style="font-size:10px;"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                <?php endif; ?>
                                 </tbody>
                             </table>
                         </div>
@@ -157,7 +178,13 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                         </div>
                         <?php if (empty($memberGroups)): ?>
                         <div class="card-body text-muted small text-center py-3">
-                            <i class="bi bi-people display-6 d-block mb-2 opacity-25"></i>Not assigned to any group
+                            <i class="bi bi-people display-6 d-block mb-2 opacity-25"></i>
+                            Not in a group yet.
+                            <div class="mt-2">
+                                <a href="index.php?action=victoryGroups" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-plus-circle me-1"></i>Add to Group
+                                </a>
+                            </div>
                         </div>
                         <?php else: ?>
                         <div class="accordion accordion-flush" id="vgAccordion">
@@ -296,10 +323,34 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                         </div>
                                         <?php endif; ?>
 
+                                        <?php
+                                        // Edits the GROUP itself, on the Groups page. The member
+                                        // record never carries its own copy of the group's day,
+                                        // time or venue, so the two can't drift apart.
+                                        ?>
+                                        <div class="border-top mt-3 pt-2 d-flex gap-2">
+                                            <?php
+                                                $grpTab = $grp['group_kind'] === 'leadership_group' ? 'lg' : ($grp['group_kind'] === 'campus' ? 'campus' : 'vg');
+                                            ?>
+                                            <a href="index.php?action=victoryGroups&tab=<?php echo $grpTab; ?>&highlight=<?php echo (int)$gid; ?>#group-<?php echo (int)$gid; ?>"
+                                               class="btn btn-sm btn-outline-secondary flex-fill">
+                                                <i class="bi bi-eye me-1"></i>View Group
+                                            </a>
+                                            <a href="index.php?action=editGroup&id=<?php echo (int)$gid; ?>"
+                                               class="btn btn-sm btn-outline-primary flex-fill">
+                                                <i class="bi bi-pencil me-1"></i>Edit Group Details
+                                            </a>
+                                        </div>
+
                                     </div>
                                 </div>
                             </div>
                             <?php endforeach; ?>
+                            <div class="card-body pt-2">
+                                <a href="index.php?action=victoryGroups" class="btn btn-sm btn-outline-primary w-100">
+                                    <i class="bi bi-plus-circle me-1"></i>Add to Another Group
+                                </a>
+                            </div>
                         </div>
                         <?php endif; ?>
                     </div>
@@ -511,12 +562,33 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                     </div>
 
                     <!-- Serve Teams -->
-                    <?php if (!empty($serveTeams)): ?>
+                    <?php
+                    // Always rendered, even when empty. The list is derived from
+                    // serve_team_members — the single source of truth — so adding or
+                    // removing someone from a team on the Serve Teams page shows up
+                    // here immediately. There is deliberately no editable Serve Team
+                    // field on the member record to drift away from it.
+                    ?>
                     <div class="card mb-4">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h6 class="mb-0"><i class="bi bi-hand-thumbs-up me-2"></i>Serve Teams</h6>
                             <span class="badge bg-light text-dark border"><?php echo count($serveTeams); ?></span>
                         </div>
+                        <?php if (empty($serveTeams)): ?>
+                        <div class="card-body text-muted small text-center py-3">
+                            <i class="bi bi-hand-thumbs-up display-6 d-block mb-2 opacity-25"></i>
+                            Not on any serve team yet.
+                            <div class="mt-2">
+                                <a href="index.php?action=serveTeams" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-plus-circle me-1"></i>Add to a Serve Team
+                                </a>
+                            </div>
+                            <div class="mt-2" style="font-size:10px;">
+                                Serve team membership is managed on the Serve Teams page
+                                and appears here automatically.
+                            </div>
+                        </div>
+                        <?php else: ?>
                         <div class="card-body py-2">
                             <?php foreach ($serveTeams as $st): ?>
                             <div class="d-flex align-items-center justify-content-between border-bottom py-2">
@@ -532,9 +604,12 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                 </span>
                             </div>
                             <?php endforeach; ?>
+                            <a href="index.php?action=serveTeams" class="btn btn-sm btn-outline-secondary w-100 mt-2">
+                                <i class="bi bi-pencil me-1"></i>Manage Serve Teams
+                            </a>
                         </div>
+                        <?php endif; ?>
                     </div>
-                    <?php endif; ?>
 
                     <!-- Notes -->
                     <?php if (!empty($member['notes'])): ?>
@@ -660,13 +735,16 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                     <?php if (empty($attendances)): ?>
                     <!-- No attendance records — show grayed-out "step placeholder" cards so the page still
                          feels like a discipleship overview, with explicit calls to add records. -->
-                    <div class="alert alert-info py-2 small mb-3">
-                        <i class="bi bi-info-circle me-1"></i>
-                        No attendance records found yet for this member. Add a record on the
-                        <a href="index.php?action=attendanceRecords" target="_blank" class="alert-link">Attendance Records</a>
-                        page (or
-                        <a href="index.php?action=leadership113" target="_blank" class="alert-link">Leadership 1-1-3</a>
-                        for L113) — that will automatically light up the matching step below.
+                    <div class="alert alert-info py-2 small mb-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                        <span>
+                            <i class="bi bi-info-circle me-1"></i>
+                            No class records yet for this member. Adding one marks the matching
+                            step as completed automatically.
+                        </span>
+                        <button type="button" class="btn btn-sm btn-primary"
+                                data-bs-toggle="modal" data-bs-target="#addClassRecordModal">
+                            <i class="bi bi-plus-circle me-1"></i>Add Class Record
+                        </button>
                     </div>
                     <div class="row g-3 mb-4">
                         <?php foreach ($discipleshipSteps as $step):
@@ -684,11 +762,29 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                         <div class="fw-semibold text-muted"><?php echo htmlspecialchars($step['name']); ?></div>
                                         <div class="small text-muted">No record yet.</div>
                                     </div>
+                                    <?php
+                                    // Simple classes open an inline modal — no new tab, no
+                                    // re-finding the member. L113 and Spiritual Foundations
+                                    // need their per-session grid, so they navigate in the
+                                    // SAME tab and carry a Back to Member link.
+                                    $dedicatedAction = [
+                                        'leadership_113'        => 'leadership113',
+                                        'spiritual_foundations' => 'spiritualFoundations',
+                                    ][$pType] ?? null;
+                                    ?>
+                                    <?php if ($dedicatedAction): ?>
                                     <a class="btn btn-sm btn-outline-<?php echo htmlspecialchars($step['color']); ?>"
-                                       href="index.php?action=<?php echo $pType === 'leadership_113' ? 'leadership113' : 'attendanceRecords&program_type='.urlencode($pType); ?>"
-                                       target="_blank">
-                                        <i class="bi bi-plus-circle me-1"></i>Add
+                                       href="index.php?action=<?php echo $dedicatedAction; ?>&back_member=<?php echo (int)$member['id']; ?>"
+                                       title="Opens the <?php echo htmlspecialchars($step['name']); ?> module">
+                                        <i class="bi bi-box-arrow-up-right me-1"></i>Open
                                     </a>
+                                    <?php else: ?>
+                                    <button type="button" class="btn btn-sm btn-outline-<?php echo htmlspecialchars($step['color']); ?>"
+                                            data-bs-toggle="modal" data-bs-target="#addClassRecordModal"
+                                            data-preselect="<?php echo htmlspecialchars($pType); ?>">
+                                        <i class="bi bi-plus-circle me-1"></i>Add
+                                    </button>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -857,7 +953,20 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
 }
 </style>
 
+<?php include 'shared/member_class_modal.php'; ?>
+
 <script>
+// A per-step "Add" button preselects its own class, so the admin confirms the
+// class rather than picking it again from scratch.
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-preselect]');
+    if (!btn) return;
+    var sel = document.getElementById('mcProgramType');
+    if (!sel) return;
+    sel.value = btn.dataset.preselect || '';
+    sel.dispatchEvent(new Event('change'));
+});
+
 // Initialize Bootstrap tooltips for the inactive-value warning icons.
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {

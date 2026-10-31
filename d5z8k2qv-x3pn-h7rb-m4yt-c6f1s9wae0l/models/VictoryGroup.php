@@ -13,6 +13,10 @@ class VictoryGroup {
             $sql = "SELECT vg.* FROM victory_groups vg WHERE vg.is_deleted = 0";
             $params = [];
 
+            if (!empty($filters['group_kind'])) {
+                $sql .= " AND vg.group_kind = ?";
+                $params[] = $filters['group_kind'];
+            }
             if (!empty($filters['group_category'])) {
                 $sql .= " AND vg.group_category = ?";
                 $params[] = $filters['group_category'];
@@ -85,12 +89,26 @@ class VictoryGroup {
         $groupIds = array_column($groups, 'id');
         $placeholders = implode(',', array_fill(0, count($groupIds), '?'));
 
-        // COALESCE: use live members.full_name if linked, otherwise fall back to stored name
+        // display_name is the verbatim name on file (couples never split); it wins over
+        // everything else. Fall back to COALESCE(members.full_name, vg_members.name) only
+        // when display_name is empty (legacy rows written before that column existed).
+        // The clickable link text, when linked, is still the live members.full_name.
+        //
+        // A couple row ("Amy & Carl") keeps that ONE verbatim string as its name and
+        // carries TWO member links: member_id is Person 1, member_id_2 is Person 2, each
+        // with its own link_status. Both are joined here so the Victory Groups screen can
+        // show who each slot resolved to without a second query per row. member2_name is
+        // NULL on every non-couple row, which is what keeps their rendering unchanged.
         $mStmt = $this->db->prepare(
-            "SELECT vm.group_id, COALESCE(m.full_name, vm.name) AS name,
-                    vm.gender, vm.role, vm.member_id
+            "SELECT vm.id AS vg_member_id, vm.group_id,
+                    COALESCE(NULLIF(vm.display_name, ''), m.full_name, vm.name) AS name,
+                    vm.gender, vm.role, vm.member_id, vm.link_status,
+                    vm.is_couple, vm.member_id_2, vm.link_status_2,
+                    m.full_name  AS member_name,
+                    m2.full_name AS member2_name
              FROM vg_members vm
-             LEFT JOIN members m ON vm.member_id = m.id
+             LEFT JOIN members m  ON vm.member_id   = m.id
+             LEFT JOIN members m2 ON vm.member_id_2 = m2.id
              WHERE vm.group_id IN ($placeholders)
              ORDER BY vm.sort_order ASC, vm.id ASC"
         );
@@ -104,9 +122,17 @@ class VictoryGroup {
 
         foreach ($groups as &$g) {
             $gid = $g['id'];
-            $g['leaders']   = $byGroup[$gid]['leader']   ?? [];
-            $g['interns']   = $byGroup[$gid]['intern']   ?? [];
-            $g['attendees'] = $byGroup[$gid]['attendee'] ?? [];
+            $g['leaders']    = $byGroup[$gid]['leader']    ?? [];
+            $g['interns']    = $byGroup[$gid]['intern']    ?? [];
+            $g['attendees']  = $byGroup[$gid]['attendee']  ?? [];
+            $g['lg_leaders'] = $byGroup[$gid]['lg_leader'] ?? [];
+            // Leadership Groups imported before the 'lg_leader' role existed stored their
+            // leaders as plain 'leader'. Treat those as LG leaders so the LG tab, its
+            // filter and its stat card all see the same people.
+            if (($g['group_kind'] ?? '') === 'leadership_group' && empty($g['lg_leaders'])) {
+                $g['lg_leaders'] = $g['leaders'];
+                $g['leaders']    = [];
+            }
         }
 
         return $groups;
@@ -114,20 +140,25 @@ class VictoryGroup {
 
     // ── Add / Update / Delete ─────────────────────────────────────────────────
 
-    public function addGroup($data, $leaders, $interns, $attendees) {
+    private const VALID_KINDS = ['victory_group', 'leadership_group', 'campus'];
+
+    public function addGroup($data, $leaders, $interns, $attendees, $lgLeaders = []) {
         try {
             $uuid = $this->generateUUID();
+            $groupKind = in_array($data['group_kind'] ?? '', self::VALID_KINDS, true)
+                ? $data['group_kind'] : 'victory_group';
             $stmt = $this->db->prepare("
                 INSERT INTO victory_groups
-                    (uuid, group_type, group_category, day_of_week, meeting_time,
+                    (uuid, group_kind, group_type, group_category, day_of_week, meeting_time,
                      location, meeting_frequency, group_status, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $dayOfWeek = is_array($data['day_of_week'] ?? null)
                 ? implode(', ', array_filter(array_map('trim', $data['day_of_week'])))
                 : ($data['day_of_week'] ?? '');
             $stmt->execute([
                 $uuid,
+                $groupKind,
                 $data['group_type']        ?? '',
                 $data['group_category']    ?? '',
                 $dayOfWeek,
@@ -138,7 +169,7 @@ class VictoryGroup {
                 $data['notes']             ?? '',
             ]);
             $groupId = $this->db->lastInsertId();
-            $this->syncMembers($groupId, $leaders, $interns, $attendees);
+            $this->syncMembers($groupId, $leaders, $interns, $attendees, $lgLeaders);
             return $groupId;
         } catch (PDOException $e) {
             error_log("Add group error: " . $e->getMessage());
@@ -146,11 +177,13 @@ class VictoryGroup {
         }
     }
 
-    public function updateGroup($id, $data, $leaders, $interns, $attendees) {
+    public function updateGroup($id, $data, $leaders, $interns, $attendees, $lgLeaders = []) {
         try {
+            $groupKind = in_array($data['group_kind'] ?? '', self::VALID_KINDS, true)
+                ? $data['group_kind'] : 'victory_group';
             $stmt = $this->db->prepare("
                 UPDATE victory_groups SET
-                    group_type = ?, group_category = ?, day_of_week = ?, meeting_time = ?,
+                    group_kind = ?, group_type = ?, group_category = ?, day_of_week = ?, meeting_time = ?,
                     location = ?, meeting_frequency = ?, group_status = ?, notes = ?
                 WHERE id = ?
             ");
@@ -158,6 +191,7 @@ class VictoryGroup {
                 ? implode(', ', array_filter(array_map('trim', $data['day_of_week'])))
                 : ($data['day_of_week'] ?? '');
             $stmt->execute([
+                $groupKind,
                 $data['group_type']        ?? '',
                 $data['group_category']    ?? '',
                 $dayOfWeek,
@@ -168,7 +202,7 @@ class VictoryGroup {
                 $data['notes']             ?? '',
                 $id,
             ]);
-            $this->syncMembers($id, $leaders, $interns, $attendees);
+            $this->syncMembers($id, $leaders, $interns, $attendees, $lgLeaders);
             return true;
         } catch (PDOException $e) {
             error_log("Update group error: " . $e->getMessage());
@@ -229,25 +263,161 @@ class VictoryGroup {
         }
     }
 
-    // Replace all vg_members rows for a group in one operation
-    private function syncMembers($groupId, $leaders, $interns, $attendees) {
+    /**
+     * Replace all vg_members rows for a group in one operation.
+     *
+     * COUPLE LINKS SURVIVE AN EDIT. This method deletes and re-inserts the whole
+     * roster, so without the snapshot below, saving an unrelated change on the
+     * Edit Group form (a new venue, a reordered member) would silently throw away
+     * every second-spouse link an admin had hand-made on that group. The form has
+     * no field for member_id_2, so it cannot resend them. They are read back out
+     * first, keyed on (role, name), and re-applied to the row that carries the
+     * same verbatim name.
+     *
+     * is_couple is recomputed from the name with the same test the importer uses,
+     * so a couple typed straight into the form gets its second slot too.
+     */
+    private function syncMembers($groupId, $leaders, $interns, $attendees, $lgLeaders = []) {
+        require_once 'models/GroupImport.php';
+
+        // Snapshot the hand-made second links before the delete.
+        $keepSlot2 = [];
+        try {
+            $prev = $this->db->prepare(
+                "SELECT role, COALESCE(NULLIF(display_name, ''), name) AS nm, member_id_2, link_status_2
+                 FROM vg_members
+                 WHERE group_id = ? AND member_id_2 IS NOT NULL"
+            );
+            $prev->execute([$groupId]);
+            foreach ($prev->fetchAll() as $r) {
+                $keepSlot2[$r['role'] . '|' . mb_strtolower(trim($r['nm']), 'UTF-8')] =
+                    [(int)$r['member_id_2'], $r['link_status_2']];
+            }
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::syncMembers snapshot error: " . $e->getMessage());
+        }
+
         $this->db->prepare("DELETE FROM vg_members WHERE group_id = ?")->execute([$groupId]);
         $stmt = $this->db->prepare(
-            "INSERT INTO vg_members (group_id, member_id, name, gender, role, sort_order) VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO vg_members (group_id, member_id, member_id_2, name, display_name, is_couple,
+                                     gender, role, link_status, link_status_2, sort_order)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
         $all = [
-            'leader'   => $leaders,
-            'intern'   => $interns,
-            'attendee' => $attendees,
+            'leader'    => $leaders,
+            'intern'    => $interns,
+            'attendee'  => $attendees,
+            'lg_leader' => $lgLeaders,
         ];
         foreach ($all as $role => $members) {
             foreach ($members as $i => $m) {
                 $name = trim($m['name'] ?? '');
                 if ($name === '') continue;
-                // If a member_id was passed (from form), use it; otherwise try to match by name
-                $memberId = isset($m['member_id']) && $m['member_id'] ? (int)$m['member_id'] : $this->findMemberIdByName($name);
-                $stmt->execute([$groupId, $memberId ?: null, $name, trim($m['gender'] ?? ''), $role, $i]);
+                $isCouple = GroupImport::isCoupleName($name);
+                // A couple string names two people, so it must never be matched to a
+                // single member by name — exactly as the importer refuses to.
+                $memberId = isset($m['member_id']) && $m['member_id']
+                    ? (int)$m['member_id']
+                    : ($isCouple ? null : $this->findMemberIdByName($name));
+                $linkStatus = $memberId ? 'linked' : 'needs_link';
+
+                [$mid2, $status2] = $keepSlot2[$role . '|' . mb_strtolower($name, 'UTF-8')] ?? [null, 'needs_link'];
+
+                $stmt->execute([
+                    $groupId, $memberId ?: null, $mid2, $name, $name, $isCouple ? 1 : 0,
+                    trim($m['gender'] ?? ''), $role, $linkStatus, $status2, $i,
+                ]);
             }
+        }
+    }
+
+    // ── Manual linking of one vg_members row to a member ──────────────────────
+
+    /**
+     * Point one slot of one vg_members row at one member.
+     *
+     * This is the ONLY way a couple ever becomes linked: an admin picks Person 1
+     * and Person 2 by hand, from members that already exist. It creates nothing —
+     * no member is inserted, and display_name is never touched, so "Amy & Carl"
+     * still reads "Amy & Carl" after both spouses are linked.
+     *
+     * Slot 2 is refused on a row that is not a couple: there is no second person
+     * in "Alejandro Abad" to link, and allowing it would put a member on a row
+     * whose text does not name them.
+     *
+     * @param int $slot 1 or 2.
+     * @return array{ok:bool,msg:string}
+     */
+    public function linkVgMember(int $vgMemberId, int $slot, int $memberId): array {
+        if ($slot !== 1 && $slot !== 2) return ['ok' => false, 'msg' => 'Unknown link slot.'];
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT id, is_couple, member_id, member_id_2 FROM vg_members WHERE id = ?"
+            );
+            $stmt->execute([$vgMemberId]);
+            $row = $stmt->fetch();
+            if (!$row) return ['ok' => false, 'msg' => 'That name is no longer on this group.'];
+
+            if ($slot === 2 && !(int)$row['is_couple']) {
+                return ['ok' => false, 'msg' => 'This name is only one person, so it has a single link.'];
+            }
+
+            $stmt = $this->db->prepare("SELECT full_name FROM members WHERE id = ? AND is_deleted = 0");
+            $stmt->execute([$memberId]);
+            $fullName = $stmt->fetchColumn();
+            if ($fullName === false) return ['ok' => false, 'msg' => 'That member could not be found.'];
+
+            // The same member in both slots of one couple would double-count them.
+            $other = $slot === 1 ? $row['member_id_2'] : $row['member_id'];
+            if ($other !== null && (int)$other === $memberId) {
+                return ['ok' => false, 'msg' => htmlspecialchars($fullName) . ' is already linked to the other half of this name.'];
+            }
+
+            $col  = $slot === 1 ? 'member_id'   : 'member_id_2';
+            $stat = $slot === 1 ? 'link_status' : 'link_status_2';
+            $this->db->prepare("UPDATE vg_members SET `$col` = ?, `$stat` = 'linked' WHERE id = ?")
+                     ->execute([$memberId, $vgMemberId]);
+            return ['ok' => true, 'msg' => 'Linked to ' . $fullName . '.'];
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::linkVgMember error: " . $e->getMessage());
+            return ['ok' => false, 'msg' => 'The link could not be saved.'];
+        }
+    }
+
+    /**
+     * Clear one slot, returning it to Needs Link.
+     *
+     * The verbatim name stays exactly where it is — unlinking a spouse removes
+     * the pointer, never the person's name from the group.
+     */
+    public function unlinkVgMember(int $vgMemberId, int $slot): array {
+        if ($slot !== 1 && $slot !== 2) return ['ok' => false, 'msg' => 'Unknown link slot.'];
+        try {
+            $col  = $slot === 1 ? 'member_id'   : 'member_id_2';
+            $stat = $slot === 1 ? 'link_status' : 'link_status_2';
+            $stmt = $this->db->prepare(
+                "UPDATE vg_members SET `$col` = NULL, `$stat` = 'needs_link' WHERE id = ?"
+            );
+            $stmt->execute([$vgMemberId]);
+            if ($stmt->rowCount() === 0) return ['ok' => false, 'msg' => 'Nothing to unlink.'];
+            return ['ok' => true, 'msg' => 'Unlinked. The name is back on Needs Link.'];
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::unlinkVgMember error: " . $e->getMessage());
+            return ['ok' => false, 'msg' => 'The link could not be removed.'];
+        }
+    }
+
+    /** The group a vg_members row belongs to, so a link action can redirect back to its tab. */
+    public function getGroupKindForVgMember(int $vgMemberId): string {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT vg.group_kind FROM vg_members vm
+                 JOIN victory_groups vg ON vg.id = vm.group_id WHERE vm.id = ?"
+            );
+            $stmt->execute([$vgMemberId]);
+            return (string)($stmt->fetchColumn() ?: '');
+        } catch (PDOException $e) {
+            return '';
         }
     }
 
@@ -265,32 +435,108 @@ class VictoryGroup {
 
     // ── Stats ─────────────────────────────────────────────────────────────────
 
+    /**
+     * Group counts are simple row counts (by group_kind). Person counts (leaders/interns/
+     * lg_leaders) are COUNT(DISTINCT member_id) restricted to link_status='linked' — so one
+     * person leading 3 Victory Groups counts once, and needs-link rows are excluded entirely.
+     * Campus is its own group_kind and is NEVER folded into the victory_group counts.
+     *
+     * COUPLES COUNT AS THE PEOPLE ACTUALLY LINKED, NOT AS ONE ROW.
+     * A couple row ("Amy & Carl") is one vg_members row holding up to two member links.
+     * The query below UNIONs the two link slots into one "(group_kind, role, person)"
+     * stream before counting, so a couple with both spouses linked contributes 2, with one
+     * spouse linked contributes 1, and with neither contributes 0 — and a spouse who is
+     * also listed individually on another card still counts once overall, because the
+     * DISTINCT spans the whole union, not each slot separately.
+     */
     public function getStats() {
+        $stats = [
+            'total' => 0, 'active' => 0,
+            'vg' => 0, 'vg_active' => 0, 'vg_leaders' => 0, 'vg_interns' => 0,
+            'lg' => 0, 'lg_active' => 0, 'lg_leaders' => 0,
+            'campus' => 0, 'campus_active' => 0, 'campus_leaders' => 0, 'campus_interns' => 0,
+        ];
         try {
-            $stats = [];
-            $stats['total']  = $this->db->query("SELECT COUNT(*) FROM victory_groups WHERE is_deleted = 0")->fetchColumn();
-            $stats['active'] = $this->db->query("SELECT COUNT(*) FROM victory_groups WHERE is_deleted = 0 AND group_status = 'active'")->fetchColumn();
-            $stats['vg']     = $this->db->query("SELECT COUNT(*) FROM victory_groups WHERE is_deleted = 0 AND group_type LIKE 'VG%' AND group_status = 'active'")->fetchColumn();
-            $stats['lg']     = $this->db->query("SELECT COUNT(*) FROM victory_groups WHERE is_deleted = 0 AND group_type LIKE 'LG%' AND group_status = 'active'")->fetchColumn();
+            $stats['total']  = (int)$this->db->query("SELECT COUNT(*) FROM victory_groups WHERE is_deleted = 0")->fetchColumn();
+            $stats['active'] = (int)$this->db->query("SELECT COUNT(*) FROM victory_groups WHERE is_deleted = 0 AND group_status = 'active'")->fetchColumn();
+
+            // Group counts per kind (row counts, not person counts).
+            $kindRows = $this->db->query(
+                "SELECT group_kind,
+                        COUNT(*) AS total,
+                        SUM(group_status = 'active') AS active
+                 FROM victory_groups
+                 WHERE is_deleted = 0
+                 GROUP BY group_kind"
+            )->fetchAll();
+            foreach ($kindRows as $row) {
+                $prefix = $row['group_kind'] === 'leadership_group' ? 'lg' : ($row['group_kind'] === 'campus' ? 'campus' : 'vg');
+                $stats[$prefix]            = (int)$row['total'];
+                $stats[$prefix . '_active'] = (int)$row['active'];
+            }
+
+            // Distinct linked people per (group_kind, role), counting only active groups.
+            // A plain 'leader' inside a Leadership Group is a legacy pre-'lg_leader' row —
+            // normalised here so it lands in lg_leaders, matching what the LG tab shows.
+            $personRows = $this->db->query(
+                "SELECT group_kind, role, COUNT(DISTINCT member_id) AS cnt
+                 FROM (
+                     SELECT vg.group_kind,
+                            IF(vg.group_kind = 'leadership_group' AND vm.role = 'leader', 'lg_leader', vm.role) AS role,
+                            vm.member_id
+                     FROM vg_members vm
+                     JOIN victory_groups vg ON vg.id = vm.group_id
+                     WHERE vg.is_deleted = 0 AND vg.group_status = 'active'
+                       AND vm.link_status = 'linked' AND vm.member_id IS NOT NULL
+                     UNION ALL
+                     SELECT vg.group_kind,
+                            IF(vg.group_kind = 'leadership_group' AND vm.role = 'leader', 'lg_leader', vm.role) AS role,
+                            vm.member_id_2 AS member_id
+                     FROM vg_members vm
+                     JOIN victory_groups vg ON vg.id = vm.group_id
+                     WHERE vg.is_deleted = 0 AND vg.group_status = 'active'
+                       AND vm.link_status_2 = 'linked' AND vm.member_id_2 IS NOT NULL
+                 ) AS linked_people
+                 GROUP BY group_kind, role"
+            )->fetchAll();
+            foreach ($personRows as $row) {
+                $kind = $row['group_kind'];
+                $cnt  = (int)$row['cnt'];
+                if ($kind === 'victory_group' && $row['role'] === 'leader') $stats['vg_leaders'] = $cnt;
+                if ($kind === 'victory_group' && $row['role'] === 'intern') $stats['vg_interns'] = $cnt;
+                if ($kind === 'leadership_group' && $row['role'] === 'lg_leader') $stats['lg_leaders'] = $cnt;
+                if ($kind === 'campus' && $row['role'] === 'leader') $stats['campus_leaders'] = $cnt;
+                if ($kind === 'campus' && $row['role'] === 'intern') $stats['campus_interns'] = $cnt;
+            }
+
             return $stats;
         } catch (PDOException $e) {
-            return ['total' => 0, 'active' => 0, 'vg' => 0, 'lg' => 0];
+            error_log("VictoryGroup::getStats error: " . $e->getMessage());
+            return $stats;
         }
     }
 
     public function getDistinctMemberNames($role) {
         try {
-            // CRITICAL: use the SAME display-name expression as attachMembers() — COALESCE(m.full_name, vm.name).
-            // Otherwise the dropdown shows the raw vg_members.name (e.g. "Aiber Arela") while rows store
-            // the linked members.full_name (e.g. "Arela, Aiber") in their data-leaders attribute, and
+            // CRITICAL: use the SAME display-name expression as attachMembers() —
+            // COALESCE(NULLIF(vm.display_name,''), m.full_name, vm.name). Otherwise the dropdown
+            // shows a name that never matches what the row's data-leaders attribute carries, and
             // the filter never matches anything.
+            // Legacy Leadership Groups store their leaders as role 'leader'; attachMembers()
+            // re-buckets those into lg_leaders, so this dropdown has to do the same or the
+            // LG Leader filter would be empty while the rows show names.
+            // A couple contributes ONE option — its verbatim string, "Amy & Carl" — because
+            // that is the single name the table cell and its data-leaders attribute carry,
+            // whether zero, one or both spouses are linked. Offering the two spouses'
+            // member names separately would list choices that match no row. This is a
+            // name filter, not a people count; getStats() is what counts people.
             $stmt = $this->db->prepare(
-                "SELECT DISTINCT TRIM(COALESCE(m.full_name, vm.name)) AS name
+                "SELECT DISTINCT TRIM(COALESCE(NULLIF(vm.display_name, ''), m.full_name, vm.name)) AS name
                  FROM vg_members vm
                  JOIN victory_groups vg ON vg.id = vm.group_id
                  LEFT JOIN members m ON m.id = vm.member_id
-                 WHERE vm.role = ?
-                   AND TRIM(COALESCE(m.full_name, vm.name)) != ''
+                 WHERE IF(vg.group_kind = 'leadership_group' AND vm.role = 'leader', 'lg_leader', vm.role) = ?
+                   AND TRIM(COALESCE(NULLIF(vm.display_name, ''), m.full_name, vm.name)) != ''
                    AND vg.is_deleted = 0
                  ORDER BY name"
             );

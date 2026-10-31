@@ -41,6 +41,11 @@
                 <i class="bi bi-hand-thumbs-up me-2"></i>Serve Teams
             </a>
         </li>
+        <li class="nav-item">
+            <a href="index.php?action=serviceAttendance" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'serviceAttendance') ? 'active' : ''; ?>">
+                <i class="bi bi-heart-pulse me-2"></i>Sunday Attendance
+            </a>
+        </li>
         <li class="mt-2 mb-1">
             <small class="text-muted px-3 fw-bold" style="font-size: 11px; letter-spacing: 1px;">CLASSES</small>
         </li>
@@ -85,7 +90,23 @@
                 <i class="bi bi-shield me-2"></i>Spiritual Foundations
             </a>
         </li>
-        <?php if (isset($_SESSION['user']['accounttype']) && $_SESSION['user']['accounttype'] === 'admin') { ?>
+        <?php /* Facility Booking is visible to every logged-in account,
+                 including Facilities Personnel — canViewFacilityBooking().
+                 What each role may DO once inside is decided per button by
+                 facility_row_actions.php, not by hiding the whole section. */ ?>
+        <?php if (canViewFacilityBooking()) { ?>
+        <li class="mt-2 mb-1">
+            <small class="text-muted px-3 fw-bold" style="font-size: 11px; letter-spacing: 1px;">FACILITIES</small>
+        </li>
+        <li class="nav-item">
+            <a href="index.php?action=facilityCalendar" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'facilityCalendar') ? 'active' : ''; ?>">
+                <i class="bi bi-calendar3 me-2"></i>Facility Booking
+            </a>
+        </li>
+        <?php } ?>
+        <?php /* Administration stays admin-only: Facilities Personnel get the
+                 booking workflow and nothing else. */ ?>
+        <?php if (canAdminister()) { ?>
         <li class="mt-2 mb-1">
             <small class="text-muted px-3 fw-bold" style="font-size: 11px; letter-spacing: 1px;">ADMINISTRATION</small>
         </li>
@@ -135,7 +156,7 @@
                                 <?php echo htmlspecialchars(strtoupper(mb_substr($pu, 0, 1))); ?>
                             </div>
                             <h5 class="mb-1"><?php echo htmlspecialchars($pu); ?></h5>
-                            <span class="badge bg-primary"><?php echo ucfirst($_SESSION['user']['accounttype'] ?? 'Editor'); ?></span>
+                            <span class="badge bg-primary"><?php echo htmlspecialchars(accountTypeLabel($_SESSION['user']['accounttype'] ?? 'editor')); ?></span>
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Email</label>
@@ -149,7 +170,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <?php if (isset($_SESSION['user']['accounttype']) && $_SESSION['user']['accounttype'] === 'admin'): ?>
+                    <?php if (canAdminister()): ?>
                     <a href="index.php?action=editUser&id=<?php echo $_SESSION['user']['id'] ?? ''; ?>" class="btn btn-primary">Edit Profile</a>
                     <?php endif; ?>
                 </div>

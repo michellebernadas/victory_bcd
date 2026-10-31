@@ -10,7 +10,8 @@ $members           = $members ?? [];
 $activeTab         = $_GET['tab'] ?? 'list';
 
 $CIVIL_STATUSES      = ['Single', 'Student', 'Married', 'Widowed', 'Separated'];
-$VOLUNTEER_STATUSES  = ['ACTIVE', 'NEW', 'INACTIVE'];
+// Volunteer Status was removed in the 2026 reset. Who serves where is now
+// answered by Serve Team membership, which is maintained in one place.
 
 // Active reference sets used to flag rows whose value points to a deactivated Settings option.
 $activeMinistryNames = array_flip(array_column($ministries, 'name'));
@@ -28,9 +29,16 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                     <h1 class="h3 mb-0"><i class="bi bi-people me-2 text-primary"></i>Members</h1>
                     <p class="text-muted mb-0">Discipleship journey tracking for all members</p>
                 </div>
-                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMemberModal">
-                    <i class="bi bi-person-plus me-1"></i> Add Member
-                </button>
+                <div class="d-flex gap-2">
+                    <?php if (($_SESSION['user']['accounttype'] ?? '') === 'admin'): ?>
+                    <a href="index.php?action=memberImport" class="btn btn-outline-primary">
+                        <i class="bi bi-upload me-1"></i> Import from Excel
+                    </a>
+                    <?php endif; ?>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMemberModal">
+                        <i class="bi bi-person-plus me-1"></i> Add Member
+                    </button>
+                </div>
             </div>
 
             <!-- Notifications -->
@@ -222,14 +230,6 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Volunteer Status</label>
-                                <select id="mfVolunteerStatus" class="filter-select2" multiple="multiple" data-placeholder="All statuses..." style="display:none">
-                                    <?php foreach ($VOLUNTEER_STATUSES as $vs): ?>
-                                    <option value="<?php echo htmlspecialchars(strtoupper($vs)); ?>"><?php echo htmlspecialchars($vs); ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
                                 <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Member Status</label>
                                 <select id="mfMemberStatus" class="filter-select2" multiple="multiple" data-placeholder="All statuses..." style="display:none">
                                     <option value="active">Active</option>
@@ -282,7 +282,6 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                         $filterBadges = [];
                         if (!empty($activeFilters['ministry']))         $filterBadges[] = ['icon' => 'bi-people',         'label' => 'Ministry', 'value' => $activeFilters['ministry']];
                         if (!empty($activeFilters['civil_status']))     $filterBadges[] = ['icon' => 'bi-heart',          'label' => 'Life Stage', 'value' => $activeFilters['civil_status']];
-                        if (!empty($activeFilters['volunteer_status'])) $filterBadges[] = ['icon' => 'bi-hand-thumbs-up', 'label' => 'Volunteer', 'value' => $activeFilters['volunteer_status']];
                         if (!empty($activeFilters['member_status']))    $filterBadges[] = ['icon' => 'bi-circle-fill',    'label' => 'Status', 'value' => ucfirst($activeFilters['member_status'])];
                         foreach ($filterBadges as $b):
                         ?>
@@ -322,9 +321,9 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                                     <th>Full Name</th>
                                     <th>Life Stage</th>
                                     <th>Ministry</th>
-                                    <th>Volunteer Status</th>
                                     <th>Service</th>
                                     <th>Contact #</th>
+                                    <th>Email</th>
                                     <th>VG / LG</th>
                                     <?php foreach ($discipleshipSteps as $step): ?>
                                     <th class="text-center"><?php echo htmlspecialchars($step['abbreviation']); ?></th>
@@ -334,12 +333,9 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($members as $i => $m):
-                                    $vsNorm = strtoupper(trim($m['volunteer_status'] ?? ''));
-                                ?>
+                                <?php foreach ($members as $i => $m): ?>
                                 <tr data-ministry="<?php echo htmlspecialchars(strtolower($m['ministry'])); ?>"
                                     data-life-stage="<?php echo htmlspecialchars(strtolower($m['civil_status'])); ?>"
-                                    data-volunteer-status="<?php echo htmlspecialchars($vsNorm); ?>"
                                     data-member-status="<?php echo htmlspecialchars($m['member_status']); ?>"
                                     data-service="<?php echo htmlspecialchars(strtolower($m['service_attending'] ?? '')); ?>"
                                     data-completed-steps="<?php echo htmlspecialchars(implode(',', $m['completed_step_ids'])); ?>">
@@ -375,19 +371,6 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                                     </td>
                                     <td>
                                         <?php
-                                        $vs = strtoupper(trim($m['volunteer_status'] ?? ''));
-                                        if ($vs === 'ACTIVE'):
-                                        ?><span class="badge bg-success">ACTIVE</span><?php
-                                        elseif ($vs === 'NEW'):
-                                        ?><span class="badge bg-info text-white">NEW</span><?php
-                                        elseif ($vs === 'INACTIVE'):
-                                        ?><span class="badge bg-secondary">INACTIVE</span><?php
-                                        elseif ($vs !== ''):
-                                        ?><span class="badge bg-light text-dark border"><?php echo htmlspecialchars($vs); ?></span><?php
-                                        endif; ?>
-                                    </td>
-                                    <td>
-                                        <?php
                                         $svcName = trim($m['service_attending'] ?? '');
                                         echo htmlspecialchars($svcName);
                                         $svcTokens   = array_filter(array_map('trim', explode(',', $svcName)));
@@ -400,6 +383,17 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                                         <?php endif; ?>
                                     </td>
                                     <td><?php echo htmlspecialchars($m['contact_number'] ?? ''); ?></td>
+                                    <td class="small">
+                                        <?php $mEmail = trim((string)($m['email'] ?? '')); ?>
+                                        <?php if ($mEmail !== ''): ?>
+                                        <a href="mailto:<?php echo htmlspecialchars($mEmail); ?>"
+                                           class="text-decoration-none" title="<?php echo htmlspecialchars($mEmail); ?>">
+                                            <?php echo htmlspecialchars($mEmail); ?>
+                                        </a>
+                                        <?php else: ?>
+                                        <span class="text-muted">&mdash;</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td class="small">
                                         <?php
                                         $vgs = $m['vg_memberships'] ?? [];
@@ -501,15 +495,11 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
         $stActive      = 0;
         $stInactive    = 0;
         $stWithVg      = 0;
-        $stVolNew      = 0;
-        $stVolActive   = 0;
-        $stVolInactive = 0;
         $stFullyDisc   = 0;            // completed all 5 discipleship steps
         $stInMinistry  = 0;            // serving in at least one real ministry
         $stVgLeaders   = 0;            // serving as leader or intern in any VG/LG
         $byMinistry    = [];
         $byCivil       = [];
-        $byVolunteer   = [];          // volunteer_status => count
         $byService     = [];          // service token => count
         $vgByCivil     = [];          // For members in a VG: civil_status => count
         $byStep        = [];           // step_id => completed_count
@@ -522,7 +512,7 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
             // VG / LG Leaders — any membership where this member serves as leader or intern.
             if ($hasVg) {
                 foreach ($m['vg_memberships'] as $vm) {
-                    if (in_array($vm['role'] ?? '', ['leader', 'intern'], true)) {
+                    if (in_array($vm['role'] ?? '', ['leader', 'intern', 'lg_leader'], true)) {
                         $stVgLeaders++;
                         break; // count member once even if leader in multiple groups
                     }
@@ -535,12 +525,6 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                 return strcasecmp($t, 'No Ministry') !== 0;
             });
             if (!empty($minTokensTmp)) $stInMinistry++;
-
-            $vol = strtoupper(trim($m['volunteer_status'] ?? ''));
-            if ($vol !== '') $byVolunteer[$vol] = ($byVolunteer[$vol] ?? 0) + 1;
-            if ($vol === 'NEW')      $stVolNew++;
-            if ($vol === 'ACTIVE')   $stVolActive++;
-            if ($vol === 'INACTIVE') $stVolInactive++;
 
             // Service Attending — comma-separated tokens like ministry
             foreach (array_filter(array_map('trim', explode(',', $m['service_attending'] ?? ''))) as $svc) {
@@ -569,7 +553,6 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
         }
         arsort($byMinistry);
         arsort($byCivil);
-        arsort($byVolunteer);
         arsort($byService);
         arsort($vgByCivil);
 
@@ -618,14 +601,6 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
             </div>
         </div>
         <!-- Row 2: engagement & leadership counts -->
-        <div class="col-6 col-md-4 col-xl-3">
-            <div class="card h-100">
-                <div class="card-body text-center py-3">
-                    <div class="display-6 fw-bold text-warning mb-0"><?php echo $stVolActive; ?></div>
-                    <div class="small text-muted mt-1">Active Volunteers <span class="text-warning-emphasis fw-semibold">(<?php echo $pct($stVolActive); ?>)</span></div>
-                </div>
-            </div>
-        </div>
         <div class="col-6 col-md-4 col-xl-3">
             <div class="card h-100">
                 <div class="card-body text-center py-3">
@@ -706,9 +681,9 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
         </div>
     </div>
 
-    <!-- Life Stage / Volunteer Status / VG-by-Life-Stage — small data sets, pies work nicely -->
+    <!-- Life Stage / VG-by-Life-Stage — small data sets, pies work nicely -->
     <div class="row g-3 mb-4">
-        <div class="col-lg-4">
+        <div class="col-lg-6">
             <div class="card h-100">
                 <div class="card-header py-2 d-flex justify-content-between align-items-center">
                     <span class="small fw-bold text-white"><i class="bi bi-pie-chart me-2"></i>Life Stage</span>
@@ -719,18 +694,7 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                 </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="card h-100">
-                <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                    <span class="small fw-bold text-white"><i class="bi bi-pie-chart me-2"></i>Volunteer Status</span>
-                    <button class="btn btn-sm btn-outline-light" onclick="exportMemberChartPng('memberVolunteerChart','members_by_volunteer_status')"><i class="bi bi-download me-1"></i>PNG</button>
-                </div>
-                <div class="card-body" style="max-height:280px;">
-                    <canvas id="memberVolunteerChart" style="max-height:240px;"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-4">
+        <div class="col-lg-6">
             <div class="card h-100">
                 <div class="card-header py-2 d-flex justify-content-between align-items-center">
                     <span class="small fw-bold text-white"><i class="bi bi-people-fill me-2"></i>VG Members by Life Stage</span>
@@ -758,9 +722,6 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
         }
         foreach ($byCivil as $cs => $cnt) {
             $summaryRows[] = ['Life Stage: ' . $cs, $cnt];
-        }
-        foreach ($byVolunteer as $v => $cnt) {
-            $summaryRows[] = ['Volunteer Status: ' . $v, $cnt];
         }
         foreach ($byMinistry as $min => $cnt) {
             $summaryRows[] = ['Ministry: ' . $min, $cnt];
@@ -810,7 +771,6 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                             'count' => $byStep[(int)$s['id']] ?? 0,
                         ], $discipleshipSteps)); ?>,
             civil:       <?php echo json_encode($byCivil); ?>,
-            volunteer:   <?php echo json_encode($byVolunteer); ?>,
             vgByCivil:   <?php echo json_encode($vgByCivil); ?>,
             totalActive: <?php echo (int)$stActive; ?>,
         };
@@ -859,15 +819,6 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                                 <option value="inactive">Inactive</option>
                             </select>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Volunteer Status <span class="text-danger">*</span></label>
-                            <select name="volunteer_status" class="form-select member-select2" required>
-                                <option value="">— Select —</option>
-                                <?php foreach ($VOLUNTEER_STATUSES as $vs): ?>
-                                <option value="<?php echo $vs; ?>"><?php echo $vs; ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Ministry <span class="text-danger">*</span> <span class="text-muted small">(select one or more)</span></label>
                             <select name="ministry[]" class="form-select member-select2-multi" multiple required>
@@ -889,7 +840,15 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                             <label class="form-label fw-semibold">Contact Number</label>
                             <input type="text" class="form-control" name="contact_number" placeholder="09XXXXXXXXX">
                         </div>
-                        <div class="col-md-8">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Email <span class="text-muted small fw-normal">(optional)</span></label>
+                            <input type="email" class="form-control" name="email" placeholder="name@example.com">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Facebook Profile <span class="text-muted small fw-normal">(optional)</span></label>
+                            <input type="url" class="form-control" name="facebook_url" placeholder="https://facebook.com/username">
+                        </div>
+                        <div class="col-12">
                             <label class="form-label fw-semibold d-block">Discipleship Journey</label>
                             <?php // Read-only: completion is derived by DiscipleshipProgressService
                                   // from attendance evidence plus admin-approved historical records.
@@ -951,15 +910,6 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                                 <option value="inactive">Inactive</option>
                             </select>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Volunteer Status <span class="text-danger">*</span></label>
-                            <select name="volunteer_status" id="edit_volunteer_status" class="form-select member-select2" required>
-                                <option value="">— Select —</option>
-                                <?php foreach ($VOLUNTEER_STATUSES as $vs): ?>
-                                <option value="<?php echo $vs; ?>"><?php echo $vs; ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Ministry <span class="text-danger">*</span> <span class="text-muted small">(select one or more)</span></label>
                             <select name="ministry[]" id="edit_ministry" class="form-select member-select2-multi" multiple required>
@@ -981,7 +931,15 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                             <label class="form-label fw-semibold">Contact Number</label>
                             <input type="text" class="form-control" name="contact_number" id="edit_contact_number" placeholder="09XXXXXXXXX">
                         </div>
-                        <div class="col-md-8">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Email <span class="text-muted small fw-normal">(optional)</span></label>
+                            <input type="email" class="form-control" name="email" id="edit_email" placeholder="name@example.com">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Facebook Profile <span class="text-muted small fw-normal">(optional)</span></label>
+                            <input type="url" class="form-control" name="facebook_url" id="edit_facebook_url" placeholder="https://facebook.com/username">
+                        </div>
+                        <div class="col-12">
                             <label class="form-label fw-semibold d-block">Discipleship Journey</label>
                             <?php // Read-only: completion is derived by DiscipleshipProgressService
                                   // from attendance evidence plus admin-approved historical records.
@@ -1080,8 +1038,9 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
         document.getElementById('edit_first_name').value         = member.first_name || '';
         document.getElementById('edit_civil_status').value       = member.civil_status || '';
         document.getElementById('edit_member_status').value      = member.member_status;
-        document.getElementById('edit_volunteer_status').value   = (member.volunteer_status || '').toUpperCase();
         document.getElementById('edit_contact_number').value     = member.contact_number || '';
+        document.getElementById('edit_email').value              = member.email || '';
+        document.getElementById('edit_facebook_url').value       = member.facebook_url || '';
         document.getElementById('edit_notes').value              = member.notes || '';
 
         // Ministry & service are stored as comma-separated strings (or legacy single value).
@@ -1099,7 +1058,7 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
         setMulti($('#edit_service_attending'), member.service_attending);
 
         // Single-select dropdowns now wrapped in Select2 — also need change.select2 trigger
-        $('#edit_civil_status, #edit_member_status, #edit_volunteer_status').trigger('change.select2');
+        $('#edit_civil_status, #edit_member_status').trigger('change.select2');
 
         // No discipleship controls to populate here any more — completion is
         // derived, so the form shows a read-only note instead. The member's
@@ -1220,7 +1179,7 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                         ) : '') +
                         '    </div>' +
                         '    <div class="mt-3">' +
-                        '      <a href="index.php?action=victoryGroups&tab=groups#group-' + (parseInt(vg.group_id, 10) || 0) + '" target="_blank" class="small">' +
+                        '      <a href="index.php?action=victoryGroups&tab=' + (vg.group_kind === 'leadership_group' ? 'lg' : (vg.group_kind === 'campus' ? 'campus' : 'vg')) + '#group-' + (parseInt(vg.group_id, 10) || 0) + '" target="_blank" class="small">' +
                         '        Open group in Victory Groups <i class="bi bi-box-arrow-up-right ms-1"></i>' +
                         '      </a>' +
                         '    </div>' +
@@ -1417,24 +1376,7 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
             });
         }
 
-        // 6) Volunteer Status — pie
-        var volEl = document.getElementById('memberVolunteerChart');
-        if (volEl) {
-            var volNames = Object.keys(S.volunteer);
-            var volColorMap = { ACTIVE:'rgba(25,135,84,.8)', NEW:'rgba(13,202,240,.8)', INACTIVE:'rgba(108,117,125,.7)' };
-            new Chart(volEl, {
-                type: 'pie',
-                data: { labels: volNames, datasets: [{
-                    data: volNames.map(function(k){ return S.volunteer[k]; }),
-                    backgroundColor: volNames.map(function(k){ return volColorMap[k] || palette[0]; }),
-                    borderWidth: 1
-                }]},
-                options: {
-                    maintainAspectRatio: false,
-                    plugins: { legend:{ position:'bottom', labels:{ boxWidth:12, padding:8 } } }
-                }
-            });
-        }
+        // 6) (Volunteer Status pie removed with the volunteer_status column.)
 
         // 7) VG Members by Life Stage — pie
         var vgCivEl = document.getElementById('memberVgCivilChart');
@@ -1585,7 +1527,6 @@ $(document).ready(function() {
 
         var ministryVals  = $('#mfMinistry').val()        || [];
         var lifeStageVals = $('#mfLifeStage').val()       || [];
-        var volunteerVals = $('#mfVolunteerStatus').val()  || [];
         var memberStVals  = $('#mfMemberStatus').val()     || [];
         var serviceVals   = $('#mfService').val()          || [];
         var hasCompVals   = $('#mfHasCompleted').val()     || [];
@@ -1593,7 +1534,6 @@ $(document).ready(function() {
 
         var rowMinistry  = ($row.data('ministry')         || '').toLowerCase();
         var rowLifeStage = ($row.data('life-stage')       || '').toLowerCase();
-        var rowVolunteer = ($row.data('volunteer-status') || '').toUpperCase();
         var rowMemberSt  = ($row.data('member-status')    || '');
         var rowService   = ($row.data('service')          || '').toLowerCase();
         var rowCompleted = String($row.data('completed-steps') || '').split(',').filter(Boolean);
@@ -1604,7 +1544,6 @@ $(document).ready(function() {
             if (!ministryVals.some(function(v){ return rowMinTokens.indexOf(v) !== -1; })) return false;
         }
         if (lifeStageVals.length && lifeStageVals.indexOf(rowLifeStage) === -1) return false;
-        if (volunteerVals.length && volunteerVals.indexOf(rowVolunteer)  === -1) return false;
         if (memberStVals.length  && memberStVals.indexOf(rowMemberSt)   === -1) return false;
         // Service: row may have CSV like "9:00 am, 11:00 am" — match if ANY token equals a selected value.
         if (serviceVals.length) {
@@ -1627,7 +1566,6 @@ $(document).ready(function() {
         var total =
             ($('#mfMinistry').val()        || []).length +
             ($('#mfLifeStage').val()       || []).length +
-            ($('#mfVolunteerStatus').val() || []).length +
             ($('#mfMemberStatus').val()    || []).length +
             ($('#mfService').val()         || []).length +
             ($('#mfHasCompleted').val()    || []).length +
@@ -1662,7 +1600,6 @@ $(document).ready(function() {
         }
         chip('Ministry',  $('#mfMinistry').val());
         chip('Life Stage',$('#mfLifeStage').val());
-        chip('Volunteer', $('#mfVolunteerStatus').val());
         chip('Status',    $('#mfMemberStatus').val());
         chip('Service',   $('#mfService').val());
         chipSteps('Completed',     $('#mfHasCompleted').val());
@@ -1691,7 +1628,7 @@ $(document).ready(function() {
 
     // Clear button
     $('#memberClearFilters').on('click', function() {
-        $('#mfMinistry, #mfLifeStage, #mfVolunteerStatus, #mfMemberStatus, #mfService, #mfHasCompleted, #mfNotCompleted')
+        $('#mfMinistry, #mfLifeStage, #mfMemberStatus, #mfService, #mfHasCompleted, #mfNotCompleted')
             .val(null).trigger('change.select2');
         $('#memberSearch').val('');
         if ($.fn.DataTable.isDataTable('#membersTable')) {

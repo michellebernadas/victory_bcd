@@ -1,8 +1,6 @@
 <?php
 if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
-if (!isset($_SESSION['user']['accounttype']) || $_SESSION['user']['accounttype'] !== 'admin') {
-    header('Location: index.php'); exit();
-}
+if (!canAdminister()) { header('Location: index.php'); exit(); }
 include 'shared/header.php';
 $editUser = $editUser ?? null;
 ?>
@@ -92,7 +90,10 @@ $editUser = $editUser ?? null;
                                         <?php if ($u['id'] == $_SESSION['user']['id']): ?><span class="badge bg-info ms-1">You</span><?php endif; ?>
                                     </td>
                                     <td><?php echo htmlspecialchars($u['email']); ?></td>
-                                    <td><span class="badge <?php echo $u['accounttype'] === 'admin' ? 'bg-danger' : 'bg-primary'; ?>"><?php echo ucfirst($u['accounttype']); ?></span></td>
+                                    <td><span class="badge <?php
+                                        echo $u['accounttype'] === ROLE_ADMIN ? 'bg-danger'
+                                           : ($u['accounttype'] === ROLE_FACILITIES ? 'bg-info text-dark' : 'bg-primary');
+                                    ?>"><?php echo htmlspecialchars(accountTypeLabel($u['accounttype'])); ?></span></td>
                                     <td><?php echo ($u['last_login'] && $u['last_login'] != '0000-00-00 00:00:00') ? date('M d, Y g:i A', strtotime($u['last_login'])) : '<span class="text-muted">Never</span>'; ?></td>
                                     <td class="text-center">
                                         <span class="badge <?php echo $u['accountstatus'] === 'active' ? 'bg-success' : 'bg-secondary'; ?>">
@@ -163,9 +164,19 @@ $editUser = $editUser ?? null;
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
                         <select name="accounttype" class="form-select" required>
-                            <option value="editor">Editor</option>
-                            <option value="admin">Admin</option>
+                            <?php foreach (ACCOUNT_TYPE_LABELS as $value => $label): ?>
+                            <option value="<?php echo htmlspecialchars($value); ?>" <?php echo $value === ROLE_EDITOR ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($label); ?>
+                            </option>
+                            <?php endforeach; ?>
                         </select>
+                        <div class="form-text" style="font-size:.75rem">
+                            <strong>Editor</strong> — discipleship records; may submit facility requests.<br>
+                            <strong>Facilities Personnel</strong> — adds the Facilities review and confirmation
+                            steps of the booking workflow. Does <em>not</em> include the Minister's approval
+                            or any admin settings.<br>
+                            <strong>Admin</strong> — everything, including the Minister's approval.
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -207,8 +218,9 @@ $editUser = $editUser ?? null;
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
                         <select name="accounttype" id="eu_accounttype" class="form-select" required>
-                            <option value="editor">Editor</option>
-                            <option value="admin">Admin</option>
+                            <?php foreach (ACCOUNT_TYPE_LABELS as $value => $label): ?>
+                            <option value="<?php echo htmlspecialchars($value); ?>"><?php echo htmlspecialchars($label); ?></option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                 </div>

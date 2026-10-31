@@ -11,7 +11,7 @@
 // distinct people, with records and unlinked rows as supporting detail.
 //
 // Requires in scope: $paStats, $participantsByProgram, $activeStats,
-//                    $availableYears, $volunteerJourneyData, $memberStats
+//                    $availableYears, $memberStats
 $programDefs = [
     'victory_weekend'       => ['label' => 'Victory Weekend',       'color' => 'primary',   'icon' => 'bi-sun',         'short' => 'VW',   'link' => 'index.php?action=attendanceRecords&program_type=victory_weekend'],
     'church_community'      => ['label' => 'Church Community',      'color' => 'secondary', 'icon' => 'bi-building',    'short' => 'CC',   'link' => 'index.php?action=attendanceRecords&program_type=church_community'],
@@ -129,131 +129,9 @@ $daActiveTotal = max(1, (int)($activeStats['total'] ?? 0));
     </div>
     <?php endforeach; ?>
 </div>
-
-<!-- ── Volunteers vs discipleship journey ───────────────────────────────── -->
-<?php
-// The raw volunteer_status column is free text ("FOR AUDITION", blanks, …), so
-// the old table led with a 272-row "Unspecified" bucket and buried the useful
-// rows. Normalise into the four statuses the church actually uses, roll anything
-// else into "Other", and order them by the journey rather than by size.
-$volBuckets = [
-    'ACTIVE'   => ['label' => 'Active volunteers',   'color' => 'success',   'note' => 'Currently serving'],
-    'NEW'      => ['label' => 'New volunteers',      'color' => 'info',      'note' => 'Recently joined a team'],
-    'INACTIVE' => ['label' => 'Inactive volunteers', 'color' => 'secondary', 'note' => 'Previously served'],
-    'OTHER'    => ['label' => 'Other / in process',  'color' => 'warning',   'note' => 'e.g. awaiting audition'],
-    'NONE'     => ['label' => 'Not a volunteer yet', 'color' => 'light',     'note' => 'No volunteer status recorded'],
-];
-$volRows = [];
-foreach ($volBuckets as $volKey => $volDef) {
-    $volRows[$volKey] = $volDef + ['total' => 0, 'vw' => 0, 'cc' => 0, 'md' => 0, 'el' => 0, 'l113' => 0, 'raw' => []];
-}
-foreach ($volunteerJourneyData as $vrow) {
-    $raw = strtoupper(trim((string)$vrow['vol_status']));
-    if ($raw === '' || $raw === 'UNSPECIFIED')          $key = 'NONE';
-    elseif (isset($volBuckets[$raw]) && $raw !== 'OTHER') $key = $raw;
-    else                                                 $key = 'OTHER';
-    $volRows[$key]['total'] += (int)$vrow['total'];
-    foreach (['vw', 'cc', 'md', 'el', 'l113'] as $sk) $volRows[$key][$sk] += (int)$vrow[$sk];
-    if ($key === 'OTHER' && $raw !== '') $volRows[$key]['raw'][] = ucwords(strtolower($raw));
-}
-// Volunteers = everyone with a status other than "none".
-$volTotalVolunteers = 0;
-foreach ($volRows as $volKey => $vr) if ($volKey !== 'NONE') $volTotalVolunteers += $vr['total'];
-$volGrandTotal = $volTotalVolunteers + $volRows['NONE']['total'];
-?>
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h6 class="mb-0 text-white">
-            <i class="bi bi-person-lines-fill me-2"></i>Volunteers &amp; Their Discipleship Journey
-        </h6>
-        <div class="d-flex align-items-center gap-2">
-            <span class="col-toggle" data-table="dashVolunteerTable" data-locked="0"></span>
-            <span class="badge bg-white text-dark border"><?php echo (int)$volTotalVolunteers; ?> volunteers</span>
-        </div>
-    </div>
-    <div class="card-body p-0">
-        <p class="text-muted small mb-0 px-3 pt-3">
-            <i class="bi bi-info-circle me-1"></i>
-            How far along the discipleship journey each volunteer group is. Each class column shows how many
-            of that group have completed it, and what share of the group that represents &mdash; so a low
-            percentage flags a group that needs following up.
-        </p>
-        <div class="table-responsive">
-            <table class="table table-hover table-sm mb-0 align-middle" id="dashVolunteerTable">
-                <thead class="table-light">
-                    <tr>
-                        <th>Volunteer Group</th>
-                        <th class="text-center">People</th>
-                        <th class="text-center" title="Victory Weekend"><i class="bi bi-sun text-primary"></i> VW</th>
-                        <th class="text-center" title="Church Community"><i class="bi bi-building text-secondary"></i> CC</th>
-                        <th class="text-center" title="Making Disciples"><i class="bi bi-person-plus text-success"></i> MD</th>
-                        <th class="text-center" title="Empowering Leaders"><i class="bi bi-star text-warning"></i> EL</th>
-                        <th class="text-center" title="Leadership 1-1-3"><i class="bi bi-trophy text-danger"></i> L113</th>
-                        <th style="min-width:150px;" title="Average number of the 5 classes completed per person in this group">
-                            Avg. classes done
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($volRows as $volKey => $vr):
-                        if ($vr['total'] === 0) continue;                 // hide empty buckets
-                        $stepsDone = $vr['vw'] + $vr['cc'] + $vr['md'] + $vr['el'] + $vr['l113'];
-                        $avgSteps  = $vr['total'] > 0 ? round($stepsDone / $vr['total'], 1) : 0;
-                        $avgPct    = (int)round($avgSteps / 5 * 100);
-                        $avgColor  = $avgPct >= 60 ? 'success' : ($avgPct >= 30 ? 'warning' : 'danger');
-                    ?>
-                    <tr>
-                        <td>
-                            <span class="fw-semibold"><?php echo htmlspecialchars($vr['label']); ?></span>
-                            <div class="text-muted" style="font-size:10px;">
-                                <?php echo htmlspecialchars($vr['note']); ?>
-                                <?php if ($volKey === 'OTHER' && $vr['raw']): ?>
-                                &mdash; <?php echo htmlspecialchars(implode(', ', array_unique($vr['raw']))); ?>
-                                <?php endif; ?>
-                            </div>
-                        </td>
-                        <td class="text-center">
-                            <span class="badge bg-<?php echo $vr['color'] === 'light' ? 'light text-dark border' : $vr['color']; ?>">
-                                <?php echo (int)$vr['total']; ?>
-                            </span>
-                        </td>
-                        <?php foreach ([['vw','primary'],['cc','secondary'],['md','success'],['el','warning'],['l113','danger']] as [$sk, $sc]):
-                            $sCount = (int)$vr[$sk];
-                            $sPct   = $vr['total'] > 0 ? (int)round($sCount / $vr['total'] * 100) : 0;
-                        ?>
-                        <td class="text-center">
-                            <div class="fw-semibold text-<?php echo $sc; ?>"><?php echo $sCount; ?></div>
-                            <div class="text-muted" style="font-size:10px;"><?php echo $sPct; ?>%</div>
-                        </td>
-                        <?php endforeach; ?>
-                        <td>
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="progress flex-grow-1" style="height:8px;">
-                                    <div class="progress-bar bg-<?php echo $avgColor; ?>" style="width:<?php echo $avgPct; ?>%"></div>
-                                </div>
-                                <small class="fw-semibold text-<?php echo $avgColor; ?>" style="min-width:52px;">
-                                    <?php echo $avgSteps; ?> / 5
-                                </small>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-                <tfoot class="table-light">
-                    <tr class="fw-semibold">
-                        <td>All members on record</td>
-                        <td class="text-center"><?php echo (int)$volGrandTotal; ?></td>
-                        <td colspan="6" class="text-muted small">
-                            <?php echo (int)$volTotalVolunteers; ?> have a volunteer status;
-                            <?php echo (int)$volRows['NONE']['total']; ?> do not yet.
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-    </div>
-</div>
-
+<!-- The "Volunteers vs discipleship journey" panel was removed with the
+     volunteer_status column (2026 reset). Serve Team membership is now the
+     single source of truth for who serves. -->
 <script>
 // Year filter for the per-card "By year" rows. Data-attribute driven so the
 // buttons carry no inline handlers.

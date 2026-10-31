@@ -6,7 +6,14 @@ $vgOptions    = $vgOptions    ?? [];
 $statDefs     = $statDefs     ?? [];
 $statsGrouped = $statsGrouped ?? [];
 $statSections = $statSections ?? [];
-$activeTab    = $_GET['tab']  ?? 'groups';
+$activeTab    = $_GET['tab']  ?? 'vg';
+// The three group-kind tabs all render the same Groups List markup, scoped server-side
+// (VictoryGroupController::TAB_KIND_MAP) to victory_group / leadership_group / campus.
+$kindTabKinds = ['vg' => 'victory_group', 'lg' => 'leadership_group', 'campus' => 'campus'];
+$isGroupsTab  = isset($kindTabKinds[$activeTab]);
+$currentKind  = $kindTabKinds[$activeTab] ?? '';
+// Leadership Groups drop the INTERN(S) column, so the table is one column narrower.
+$colCount     = $currentKind === 'leadership_group' ? 12 : 13;
 
 $optTypes      = $vgOptions['group_type']        ?? [];
 $optCats       = $vgOptions['group_category']    ?? [];
@@ -26,17 +33,66 @@ function vg_inactive_icon(string $kind, string $value): string {
 $leaderNames   = $leaderNames   ?? [];
 $internNames   = $internNames   ?? [];
 $attendeeNames = $attendeeNames ?? [];
+$lgLeaderNames = $lgLeaderNames ?? [];
 $distinctTimes = $distinctTimes ?? [];
 $allMembers        = $allMembers        ?? [];
 $distinctLocations = $distinctLocations ?? [];
+$groupStats        = $groupStats        ?? [];
 
+
+// Needs-link rows (link_status='needs_link' or no member_id) are kept visible, labeled
+// "Needs Link" rather than "Unregistered" — these are imported names awaiting an admin
+// match, not a prompt to auto-create a member.
+//
+// COUPLES
+// A name the sheet wrote as a couple ("Amy & Carl") is ONE row holding TWO link slots.
+// The verbatim string is always what is printed — it is never replaced by, or split
+// into, the member records it links to. Underneath it each spouse gets their own small
+// control: a green profile link once linked, a "Link" button while not. A couple with
+// one spouse linked reads "1 of 2 linked", which is the honest middle state: it is no
+// longer untouched, and it is not finished either.
+function vg_link_slot(array $m, int $slot): string {
+    $isLinked = $slot === 1
+        ? (!empty($m['member_id'])   && ($m['link_status']   ?? '') === 'linked')
+        : (!empty($m['member_id_2']) && ($m['link_status_2'] ?? '') === 'linked');
+    $memberId = $slot === 1 ? (int)($m['member_id'] ?? 0)   : (int)($m['member_id_2'] ?? 0);
+    $memberNm = $slot === 1 ? ($m['member_name'] ?? '')     : ($m['member2_name'] ?? '');
+    $vgmId    = (int)($m['vg_member_id'] ?? 0);
+    $label    = 'Person ' . $slot;
+
+    $out = '<div class="d-flex align-items-center gap-1 flex-wrap" style="font-size:.7rem">'
+         . '<span class="text-muted">' . $label . ':</span>';
+
+    if ($isLinked && $memberId > 0) {
+        $out .= '<a href="index.php?action=memberProfile&id=' . $memberId . '"'
+              . ' class="text-primary text-decoration-none" title="View member profile">'
+              . '<i class="bi bi-person-fill me-1 text-success"></i>'
+              . htmlspecialchars($memberNm !== '' ? $memberNm : 'Linked member') . '</a>'
+              . ' <a href="index.php?action=unlinkVgMember&vgm=' . $vgmId . '&slot=' . $slot . '"'
+              . ' class="text-danger text-decoration-none" title="Unlink this person. The name stays as written."'
+              . ' onclick="return confirm(\'Unlink this person? The name stays exactly as written and goes back to Needs Link.\');">'
+              . '<i class="bi bi-x-circle"></i></a>';
+    } else {
+        $out .= '<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none"'
+              . ' style="font-size:.7rem"'
+              . ' onclick="openLinkPersonModal(' . $vgmId . ',' . $slot . ','
+              . htmlspecialchars(json_encode((string)$m['name']), ENT_QUOTES) . ')">'
+              . '<i class="bi bi-link-45deg me-1"></i>Link</button>';
+    }
+    return $out . '</div>';
+}
 
 function renderNameList($members, $showGender = true) {
     if (empty($members)) return '<span class="text-muted">—</span>';
+    $canLink = ($_SESSION['user']['accounttype'] ?? '') === 'admin';
     $out = '';
     foreach ($members as $m) {
-        $out .= '<div>';
-        if (!empty($m['member_id'])) {
+        $isCouple = !empty($m['is_couple']);
+        $out .= '<div class="mb-1">';
+
+        // The verbatim name, always. For a couple it is deliberately plain text:
+        // one string naming two people must not become one person's hyperlink.
+        if (!empty($m['member_id']) && !$isCouple) {
             // Blue link to indicate a clickable hyperlink (consistent with rest of admin panel)
             $out .= '<a href="index.php?action=memberProfile&id=' . (int)$m['member_id'] . '"'
                   . ' class="text-primary text-decoration-none" title="View member profile">'
@@ -49,11 +105,34 @@ function renderNameList($members, $showGender = true) {
             $out .= ' <span class="badge bg-secondary bg-opacity-50 text-dark" style="font-size:.7rem">'
                   . htmlspecialchars($m['gender']) . '</span>';
         }
-        if (empty($m['member_id'])) {
-            $out .= ' <a href="index.php?action=members&openAdd=1" class="badge bg-warning text-dark text-decoration-none"'
-                  . ' style="font-size:.65rem;cursor:pointer"'
-                  . ' title="Not in Members list — click to add this person as a member">'
-                  . '<i class="bi bi-exclamation-triangle-fill me-1"></i>Unregistered</a>';
+
+        if ($isCouple) {
+            $n = (int)(!empty($m['member_id'])   && ($m['link_status']   ?? '') === 'linked')
+               + (int)(!empty($m['member_id_2']) && ($m['link_status_2'] ?? '') === 'linked');
+            if ($n === 2) {
+                $out .= ' <span class="badge bg-success" style="font-size:.65rem"'
+                      . ' title="Both people in this name are linked to their own member record.">'
+                      . '<i class="bi bi-people-fill me-1"></i>Both linked</span>';
+            } else {
+                $out .= ' <span class="badge bg-warning text-dark" style="font-size:.65rem"'
+                      . ' title="Written as a couple — two people, two links. Link each one separately.">'
+                      . '<i class="bi bi-link-45deg me-1"></i>' . $n . ' of 2 linked</span>';
+            }
+            if ($canLink) {
+                $out .= '<div class="ms-3 mt-1">' . vg_link_slot($m, 1) . vg_link_slot($m, 2) . '</div>';
+            }
+        } elseif (empty($m['member_id'])) {
+            $out .= ' <span class="badge bg-warning text-dark" style="font-size:.65rem">'
+                  . '<i class="bi bi-link-45deg me-1"></i>Needs Link</span>';
+            if ($canLink) {
+                $out .= ' <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" style="font-size:.7rem"'
+                      . ' onclick="openLinkPersonModal(' . (int)($m['vg_member_id'] ?? 0) . ',1,'
+                      . htmlspecialchars(json_encode((string)$m['name']), ENT_QUOTES) . ')">'
+                      . 'Link</button>';
+            } else {
+                $out .= ' <a href="index.php?action=members&openAdd=1" class="text-decoration-none small"'
+                      . ' title="Not linked to a member record">Add as member</a>';
+            }
         }
         $out .= '</div>';
     }
@@ -72,10 +151,17 @@ function renderNameList($members, $showGender = true) {
                     <h1 class="h3 mb-0"><i class="bi bi-diagram-3 me-2 text-info"></i>Victory Groups / Leadership Groups</h1>
                     <p class="text-muted mb-0">Manage VG and LG schedules, leaders, and meeting details</p>
                 </div>
-                <?php if ($activeTab === 'groups'): ?>
-                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal" onclick="initAddModal()">
-                    <i class="bi bi-plus-circle me-1"></i> Add Group
-                </button>
+                <?php if ($isGroupsTab): ?>
+                <div class="d-flex gap-2">
+                    <?php if (($_SESSION['user']['accounttype'] ?? '') === 'admin'): ?>
+                    <a href="index.php?action=groupImport" class="btn btn-outline-primary">
+                        <i class="bi bi-upload me-1"></i> Import VG Schedule
+                    </a>
+                    <?php endif; ?>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal" onclick="initAddModal('<?php echo $currentKind; ?>')">
+                        <i class="bi bi-plus-circle me-1"></i> Add Group
+                    </button>
+                </div>
                 <?php elseif ($activeTab === 'statDefs'): ?>
                 <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStatModal">
                     <i class="bi bi-plus-circle me-1"></i> Add Stat Definition
@@ -83,21 +169,25 @@ function renderNameList($members, $showGender = true) {
                 <?php endif; ?>
             </div>
 
-            <!-- Tabs -->
+            <!-- Tabs — Victory Groups / Leadership Groups / Campus are the three real
+                 categories (group_kind), each with its own stat cards, filters, and table.
+                 "VG Statistics" / "Stat Definitions" are hidden from nav (deprecated in favor
+                 of the stat cards on these tabs) but remain reachable at ?tab=stats /
+                 ?tab=statDefs and their underlying code is untouched. -->
             <ul class="nav nav-tabs mb-4">
                 <li class="nav-item">
-                    <a class="nav-link <?php echo $activeTab === 'groups' ? 'active' : ''; ?>" href="index.php?action=victoryGroups&tab=groups">
-                        <i class="bi bi-table me-1"></i>Groups List
+                    <a class="nav-link <?php echo $activeTab === 'vg' ? 'active' : ''; ?>" href="index.php?action=victoryGroups&tab=vg">
+                        <i class="bi bi-people-fill me-1"></i>Victory Groups
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link <?php echo $activeTab === 'stats' ? 'active' : ''; ?>" href="index.php?action=victoryGroups&tab=stats">
-                        <i class="bi bi-bar-chart-line me-1"></i>VG Statistics
+                    <a class="nav-link <?php echo $activeTab === 'lg' ? 'active' : ''; ?>" href="index.php?action=victoryGroups&tab=lg">
+                        <i class="bi bi-diagram-3 me-1"></i>Leadership Groups
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link <?php echo $activeTab === 'statDefs' ? 'active' : ''; ?>" href="index.php?action=victoryGroups&tab=statDefs">
-                        <i class="bi bi-sliders me-1"></i>Stat Definitions
+                    <a class="nav-link <?php echo $activeTab === 'campus' ? 'active' : ''; ?>" href="index.php?action=victoryGroups&tab=campus">
+                        <i class="bi bi-building me-1"></i>Campus
                     </a>
                 </li>
             </ul>
@@ -119,7 +209,13 @@ function renderNameList($members, $showGender = true) {
                     'stat_deactivate' => 'Stat definition has been deactivated successfully. It will no longer appear on the Statistics tab.',
                     'stat_activate'   => 'Stat definition has been reactivated successfully.',
                 ];
-                echo $msgs[$_GET['notif']] ?? 'Done.';
+                // Linking carries its own sentence (which member, which half of a
+                // couple), so it reports &msg rather than a canned string.
+                if (($_GET['notif'] ?? '') === 'link') {
+                    echo htmlspecialchars($_GET['msg'] ?? 'Linked.');
+                } else {
+                    echo $msgs[$_GET['notif']] ?? 'Done.';
+                }
                 ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
@@ -132,63 +228,47 @@ function renderNameList($members, $showGender = true) {
             </div>
             <?php endif; ?>
 
-            <?php if ($activeTab === 'groups'): ?>
+            <?php if ($isGroupsTab): ?>
 
-            <!-- Stat Cards (Groups List) -->
+            <!-- Stat Cards — group counts are simple row counts; leader/intern counts are
+                 DISTINCT linked people (VictoryGroup::getStats()), so one person leading 3
+                 groups counts once. Needs-link rows are excluded. Scoped to the active tab's
+                 group_kind — Campus is never folded into the Victory Group counts. -->
             <?php
-                $vgTotal       = count($groups);
-                $vgActive      = 0;
-                $vgInactive    = 0;
-                $vgLeaders     = 0;
-                $vgInterns     = 0;
-                foreach ($groups as $_g) {
-                    if (strtolower($_g['group_status'] ?? '') === 'active') $vgActive++;
-                    else $vgInactive++;
-                    $vgLeaders += count($_g['leaders']   ?? []);
-                    $vgInterns += count($_g['interns']   ?? []);
+                $gs = $groupStats ?: [];
+                if ($currentKind === 'victory_group') {
+                    $statCards = [
+                        ['label' => 'Victory Groups',   'value' => $gs['vg']          ?? 0, 'color' => 'primary'],
+                        ['label' => 'Active',           'value' => $gs['vg_active']   ?? 0, 'color' => 'success'],
+                        ['label' => 'VG Leaders',       'value' => $gs['vg_leaders']  ?? 0, 'color' => 'info'],
+                        ['label' => 'Interns',          'value' => $gs['vg_interns']  ?? 0, 'color' => 'warning'],
+                    ];
+                } elseif ($currentKind === 'leadership_group') {
+                    $statCards = [
+                        ['label' => 'Leadership Groups', 'value' => $gs['lg']         ?? 0, 'color' => 'primary'],
+                        ['label' => 'Active',            'value' => $gs['lg_active']  ?? 0, 'color' => 'success'],
+                        ['label' => 'LG Leaders',        'value' => $gs['lg_leaders'] ?? 0, 'color' => 'info'],
+                    ];
+                } else { // campus
+                    $statCards = [
+                        ['label' => 'Campus Groups',    'value' => $gs['campus']          ?? 0, 'color' => 'primary'],
+                        ['label' => 'Active',           'value' => $gs['campus_active']   ?? 0, 'color' => 'success'],
+                        ['label' => 'Leaders',          'value' => $gs['campus_leaders']  ?? 0, 'color' => 'info'],
+                        ['label' => 'Interns',          'value' => $gs['campus_interns']  ?? 0, 'color' => 'warning'],
+                    ];
                 }
             ?>
             <div class="row mb-3 g-2">
+                <?php foreach ($statCards as $i => $sc): ?>
                 <div class="col-6 col-md-3 col-xl">
-                    <div class="card text-center h-100 border-primary border-2">
+                    <div class="card text-center h-100<?php echo $i === 0 ? ' border-primary border-2' : ''; ?>">
                         <div class="card-body py-2 px-1">
-                            <div class="h4 fw-bold text-primary mb-0"><?php echo $vgTotal; ?></div>
-                            <div style="font-size:11px;" class="text-muted">Total Groups</div>
+                            <div class="h4 fw-bold text-<?php echo $sc['color']; ?> mb-0"><?php echo (int)$sc['value']; ?></div>
+                            <div style="font-size:11px;" class="text-muted"><?php echo htmlspecialchars($sc['label']); ?></div>
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-3 col-xl">
-                    <div class="card text-center h-100">
-                        <div class="card-body py-2 px-1">
-                            <div class="h4 fw-bold text-success mb-0"><?php echo $vgActive; ?></div>
-                            <div style="font-size:11px;" class="text-muted">Active Groups</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3 col-xl">
-                    <div class="card text-center h-100">
-                        <div class="card-body py-2 px-1">
-                            <div class="h4 fw-bold text-secondary mb-0"><?php echo $vgInactive; ?></div>
-                            <div style="font-size:11px;" class="text-muted">Inactive Groups</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3 col-xl">
-                    <div class="card text-center h-100">
-                        <div class="card-body py-2 px-1">
-                            <div class="h4 fw-bold text-info mb-0"><?php echo $vgLeaders; ?></div>
-                            <div style="font-size:11px;" class="text-muted">Total Leaders</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3 col-xl">
-                    <div class="card text-center h-100">
-                        <div class="card-body py-2 px-1">
-                            <div class="h4 fw-bold text-warning mb-0"><?php echo $vgInterns; ?></div>
-                            <div style="font-size:11px;" class="text-muted">Total Interns</div>
-                        </div>
-                    </div>
-                </div>
+                <?php endforeach; ?>
             </div>
 
             <!-- Search & Filter Panel -->
@@ -277,10 +357,30 @@ function renderNameList($members, $showGender = true) {
                             </div>
                         </div>
 
-                        <!-- Row 3: Name, location & time filters (from DB) -->
+                        <!-- Row 3: Name, location & time filters (from DB). Role filters shown
+                             depend on the active tab's kind — LG has no Intern/Attendee roles,
+                             it has LG Leader + Member instead. -->
                         <div class="row g-3 mb-3">
+                            <?php if ($currentKind === 'leadership_group'): ?>
                             <div class="col-md-2">
-                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">VG Leader</label>
+                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">LG Leader</label>
+                                <select id="filterLgLeader" class="filter-select2" multiple="multiple" data-placeholder="All LG leaders..." style="display:none">
+                                    <?php foreach ($lgLeaderNames as $n): ?>
+                                    <option value="<?php echo htmlspecialchars(strtolower($n)); ?>"><?php echo htmlspecialchars($n); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Member</label>
+                                <select id="filterAttendees" class="filter-select2" multiple="multiple" data-placeholder="All members..." style="display:none">
+                                    <?php foreach ($attendeeNames as $n): ?>
+                                    <option value="<?php echo htmlspecialchars(strtolower($n)); ?>"><?php echo htmlspecialchars($n); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <?php else: ?>
+                            <div class="col-md-2">
+                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Leader</label>
                                 <select id="filterLeader" class="filter-select2" multiple="multiple" data-placeholder="All leaders..." style="display:none">
                                     <?php foreach ($leaderNames as $n): ?>
                                     <option value="<?php echo htmlspecialchars(strtolower($n)); ?>"><?php echo htmlspecialchars($n); ?></option>
@@ -296,13 +396,14 @@ function renderNameList($members, $showGender = true) {
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Attendees</label>
-                                <select id="filterAttendees" class="filter-select2" multiple="multiple" data-placeholder="All attendees..." style="display:none">
+                                <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Member</label>
+                                <select id="filterAttendees" class="filter-select2" multiple="multiple" data-placeholder="All members..." style="display:none">
                                     <?php foreach ($attendeeNames as $n): ?>
                                     <option value="<?php echo htmlspecialchars(strtolower($n)); ?>"><?php echo htmlspecialchars($n); ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
+                            <?php endif; ?>
                             <div class="col-md-3">
                                 <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Meeting Place</label>
                                 <select id="filterLocation" class="filter-select2" multiple="multiple" data-placeholder="All meeting places..." style="display:none">
@@ -333,7 +434,7 @@ function renderNameList($members, $showGender = true) {
                                 </label>
                                 <form method="GET" action="index.php" class="d-flex flex-wrap gap-2 align-items-end">
                                     <input type="hidden" name="action" value="victoryGroups">
-                                    <input type="hidden" name="tab" value="groups">
+                                    <input type="hidden" name="tab" value="<?php echo htmlspecialchars($activeTab); ?>">
                                     <div>
                                         <label class="form-label small mb-1">From</label>
                                         <input type="date" name="date_from" class="form-control form-control-sm"
@@ -347,7 +448,7 @@ function renderNameList($members, $showGender = true) {
                                     <div class="d-flex gap-1">
                                         <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Apply</button>
                                         <?php if ($vgDateFrom || $vgDateTo): ?>
-                                        <a href="index.php?action=victoryGroups&tab=groups" class="btn btn-sm btn-outline-secondary">Clear Date</a>
+                                        <a href="index.php?action=victoryGroups&tab=<?php echo htmlspecialchars($activeTab); ?>" class="btn btn-sm btn-outline-secondary">Clear Date</a>
                                         <?php endif; ?>
                                     </div>
                                     <?php if ($vgDateFrom || $vgDateTo): ?>
@@ -366,7 +467,7 @@ function renderNameList($members, $showGender = true) {
                                         class="btn btn-sm btn-outline-warning"
                                         onclick="toggleUnregisteredFilter()"
                                         title="Show only groups that have at least one unregistered member">
-                                    <i class="bi bi-exclamation-triangle-fill me-1"></i> Unregistered Members
+                                    <i class="bi bi-link-45deg me-1"></i> Needs Link
                                 </button>
                             </div>
                         </div>
@@ -396,7 +497,7 @@ function renderNameList($members, $showGender = true) {
                             <label class="text-white small mb-0">per page</label>
                         </div>
                         <!-- Show / Hide Columns (# and Actions stay locked) -->
-                        <span class="col-toggle" data-table="groupsTable" data-locked="0,12"></span>
+                        <span class="col-toggle" data-table="groupsTable" data-locked="<?php echo $currentKind === 'leadership_group' ? '0,11' : '0,12'; ?>"></span>
                         <div class="btn-group" role="group">
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="exportCSV()" title="Export CSV"><i class="bi bi-filetype-csv me-1"></i>CSV</button>
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="exportExcel()" title="Export Excel"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
@@ -415,9 +516,14 @@ function renderNameList($members, $showGender = true) {
                                     <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="day"       style="cursor:pointer">DAY <span class="dt-column-order"></span></th>
                                     <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="time"      style="cursor:pointer">MEETUP TIME <span class="dt-column-order"></span></th>
                                     <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="location"  style="cursor:pointer">MEETING PLACE <span class="dt-column-order"></span></th>
-                                    <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="leaders"   style="cursor:pointer">VICTORY GROUP LEADER(S) <span class="dt-column-order"></span></th>
+                                    <?php if ($currentKind === 'leadership_group'): ?>
+                                    <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="leaders"   style="cursor:pointer">LG LEADER(S) <span class="dt-column-order"></span></th>
+                                    <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="attendees" style="cursor:pointer">MEMBER(S) <span class="dt-column-order"></span></th>
+                                    <?php else: ?>
+                                    <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="leaders"   style="cursor:pointer">LEADER(S) <span class="dt-column-order"></span></th>
                                     <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="interns"   style="cursor:pointer">INTERN(S) <span class="dt-column-order"></span></th>
-                                    <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="attendees" style="cursor:pointer">ATTENDEES <span class="dt-column-order"></span></th>
+                                    <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="attendees" style="cursor:pointer">MEMBER(S) <span class="dt-column-order"></span></th>
+                                    <?php endif; ?>
                                     <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="category"  style="cursor:pointer">CATEGORY <span class="dt-column-order"></span></th>
                                     <th class="groups-sort dt-orderable-asc dt-orderable-desc" data-sort="freq"      style="cursor:pointer">FREQUENCY <span class="dt-column-order"></span></th>
                                     <th>NOTES</th>
@@ -428,14 +534,25 @@ function renderNameList($members, $showGender = true) {
                             <tbody>
                                 <?php foreach ($groups as $i => $g): ?>
                                 <?php
-                                    $leaderStr   = strtolower(implode('|', array_column($g['leaders'],   'name')));
-                                    $internStr   = strtolower(implode('|', array_column($g['interns'],   'name')));
-                                    $attendeeStr = strtolower(implode('|', array_column($g['attendees'], 'name')));
+                                    // Leadership Groups keep their leaders in lg_leaders (role 'lg_leader')
+                                    // and have no interns, so the row data mirrors whichever tab is showing.
+                                    $rowIsLg     = ($g['group_kind'] ?? '') === 'leadership_group';
+                                    $rowLeaders  = $rowIsLg ? ($g['lg_leaders'] ?? []) : ($g['leaders'] ?? []);
+                                    $rowInterns  = $rowIsLg ? [] : ($g['interns'] ?? []);
+                                    $rowAtt      = $g['attendees'] ?? [];
+                                    $leaderStr   = strtolower(implode('|', array_column($rowLeaders, 'name')));
+                                    $internStr   = strtolower(implode('|', array_column($rowInterns, 'name')));
+                                    $attendeeStr = strtolower(implode('|', array_column($rowAtt,     'name')));
                                     $timeStr     = $g['meeting_time'] ? date('g:i A', strtotime($g['meeting_time'])) : '';
                                     $searchStr   = strtolower($g['group_type'] . ' ' . $g['day_of_week'] . ' ' . $timeStr . ' ' . $g['location'] . ' ' . $leaderStr . ' ' . $internStr . ' ' . $attendeeStr . ' ' . $g['group_category'] . ' ' . $g['meeting_frequency'] . ' ' . $g['group_status']);
+                                    // "Needs Link" for a group means any person on it is still
+                                    // unlinked. A couple is two people, so it stays incomplete
+                                    // until BOTH slots are filled — a half-linked couple must not
+                                    // disappear from the Needs Link filter and look finished.
                                     $hasUnreg = false;
-                                    foreach (array_merge($g['leaders'], $g['interns'], $g['attendees']) as $_m) {
+                                    foreach (array_merge($rowLeaders, $rowInterns, $rowAtt) as $_m) {
                                         if (empty($_m['member_id'])) { $hasUnreg = true; break; }
+                                        if (!empty($_m['is_couple']) && empty($_m['member_id_2'])) { $hasUnreg = true; break; }
                                     }
                                 ?>
                                 <tr class="group-row" id="group-<?php echo (int)$g['id']; ?>"
@@ -447,6 +564,7 @@ function renderNameList($members, $showGender = true) {
                                     data-time="<?php echo htmlspecialchars(strtolower($timeStr)); ?>"
                                     data-location="<?php echo htmlspecialchars(strtolower($g['location'])); ?>"
                                     data-leaders="<?php echo htmlspecialchars($leaderStr); ?>"
+                                    data-lgleaders="<?php echo htmlspecialchars($rowIsLg ? $leaderStr : ''); ?>"
                                     data-interns="<?php echo htmlspecialchars($internStr); ?>"
                                     data-attendees="<?php echo htmlspecialchars($attendeeStr); ?>"
                                     data-search="<?php echo htmlspecialchars($searchStr); ?>"
@@ -468,11 +586,13 @@ function renderNameList($members, $showGender = true) {
                                     </td>
                                     <td><?php echo $g['meeting_time'] ? date('g:i A', strtotime($g['meeting_time'])) : '—'; ?></td>
                                     <td><?php echo htmlspecialchars($g['location']); ?></td>
-                                    <td class="fw-semibold"><?php echo renderNameList($g['leaders']); ?></td>
-                                    <td><?php echo renderNameList($g['interns']); ?></td>
+                                    <td class="fw-semibold"><?php echo renderNameList($rowLeaders); ?></td>
+                                    <?php if ($currentKind !== 'leadership_group'): ?>
+                                    <td><?php echo renderNameList($rowInterns); ?></td>
+                                    <?php endif; ?>
                                     <td>
                                         <?php
-                                        $att = $g['attendees'];
+                                        $att = $rowAtt;
                                         if (empty($att)) {
                                             echo '<span class="text-muted">—</span>';
                                         } elseif (count($att) <= 4) {
@@ -504,12 +624,16 @@ function renderNameList($members, $showGender = true) {
                                         </span>
                                     </td>
                                     <td class="text-center text-nowrap">
+                                        <button class="btn btn-sm btn-outline-secondary me-1" title="View"
+                                            onclick="openViewGroupModal(<?php echo htmlspecialchars(json_encode($g)); ?>)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
                                         <button class="btn btn-sm btn-outline-primary me-1" title="Edit"
                                             onclick="openEditGroupModal(<?php echo htmlspecialchars(json_encode($g)); ?>)">
                                             <i class="bi bi-pencil"></i>
                                         </button>
                                         <?php
-                                            $firstLeader = !empty($g['leaders']) ? $g['leaders'][0]['name'] : 'this group';
+                                            $firstLeader = !empty($rowLeaders) ? $rowLeaders[0]['name'] : 'this group';
                                             $leaderAttr  = htmlspecialchars(addslashes($firstLeader));
                                         ?>
                                         <?php if ($g['group_status'] === 'active'): ?>
@@ -532,10 +656,10 @@ function renderNameList($members, $showGender = true) {
                                 </tr>
                                 <?php endforeach; ?>
                                 <?php if (empty($groups)): ?>
-                                <tr id="emptyRow"><td colspan="13" class="text-center text-muted py-4">No groups found. <a href="#" data-bs-toggle="modal" data-bs-target="#addGroupModal" onclick="initAddModal()">Add the first group</a>.</td></tr>
+                                <tr id="emptyRow"><td colspan="<?php echo $colCount; ?>" class="text-center text-muted py-4">No groups found. <a href="#" data-bs-toggle="modal" data-bs-target="#addGroupModal" onclick="initAddModal('<?php echo $currentKind; ?>')">Add the first group</a>.</td></tr>
                                 <?php endif; ?>
                                 <tr id="noResultsRow" class="d-none">
-                                    <td colspan="13" class="text-center text-muted py-4">
+                                    <td colspan="<?php echo $colCount; ?>" class="text-center text-muted py-4">
                                         <i class="bi bi-search me-2"></i>No groups match the selected filters.
                                         <a href="#" onclick="clearAllFilters(); return false;">Clear filters</a>
                                     </td>
@@ -1080,6 +1204,14 @@ function renderNameList($members, $showGender = true) {
                     </div>
                     <div class="row g-3">
                         <div class="col-md-3">
+                            <label class="form-label fw-semibold">Kind <span class="text-danger">*</span></label>
+                            <select name="group_kind" class="modal-select2" id="ag_kind" onchange="toggleKindSections('ag_kind','am')">
+                                <option value="victory_group">Victory Group</option>
+                                <option value="leadership_group">Leadership Group</option>
+                                <option value="campus">Campus</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
                             <label class="form-label fw-semibold">Group Type <span class="text-danger">*</span></label>
                             <select name="group_type" class="modal-select2" id="ag_type">
                                 <option value="">— Select —</option>
@@ -1134,21 +1266,27 @@ function renderNameList($members, $showGender = true) {
                                 <option value="inactive">Inactive</option>
                             </select>
                         </div>
-                        <div class="col-12">
+                        <div class="col-12 am-vg-section">
                             <label class="form-label fw-semibold">Victory Group Leader(s) <span class="text-danger">*</span></label>
                             <div id="am-leaders"></div>
                             <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addMemberRow('am-leaders','leader')"><i class="bi bi-plus me-1"></i>Add Leader</button>
                             <div id="am_leaders_error" class="text-danger small mt-1 d-none"><i class="bi bi-exclamation-circle me-1"></i>At least one leader is required.</div>
                         </div>
-                        <div class="col-12">
+                        <div class="col-12 am-vg-section">
                             <label class="form-label fw-semibold">Intern(s)</label>
                             <div id="am-interns"></div>
                             <button type="button" class="btn btn-sm btn-outline-secondary mt-1" onclick="addMemberRow('am-interns','intern')"><i class="bi bi-plus me-1"></i>Add Intern</button>
                         </div>
+                        <div class="col-12 am-lg-section d-none">
+                            <label class="form-label fw-semibold">LG Leader(s) <span class="text-danger">*</span></label>
+                            <div id="am-lgleaders"></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addMemberRow('am-lgleaders','lg_leader')"><i class="bi bi-plus me-1"></i>Add LG Leader</button>
+                            <div id="am_lgleaders_error" class="text-danger small mt-1 d-none"><i class="bi bi-exclamation-circle me-1"></i>At least one LG Leader is required.</div>
+                        </div>
                         <div class="col-12">
-                            <label class="form-label fw-semibold">Attendees <span class="text-danger">*</span></label>
+                            <label class="form-label fw-semibold am-attendee-label">Attendees <span class="text-danger">*</span></label>
                             <div id="am-attendees"></div>
-                            <button type="button" class="btn btn-sm btn-outline-secondary mt-1" onclick="addMemberRow('am-attendees','attendee')"><i class="bi bi-plus me-1"></i>Add Attendee</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary mt-1" onclick="addMemberRow('am-attendees','attendee')"><i class="bi bi-plus me-1"></i>Add Member</button>
                             <div id="am_attendees_error" class="text-danger small mt-1 d-none"><i class="bi bi-exclamation-circle me-1"></i>At least one attendee is required.</div>
                         </div>
                         <div class="col-12">
@@ -1166,6 +1304,25 @@ function renderNameList($members, $showGender = true) {
         </div>
     </div>
 
+    <!-- VIEW GROUP MODAL (read-only) -->
+    <div class="modal fade" id="viewGroupModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-eye me-2"></i>Group Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="viewGroupBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="viewGroupEditBtn">
+                        <i class="bi bi-pencil me-1"></i>Edit
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- EDIT GROUP MODAL -->
     <div class="modal fade" id="editGroupModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl">
@@ -1177,6 +1334,14 @@ function renderNameList($members, $showGender = true) {
                 <form method="POST" id="editGroupForm" action="">
                 <div class="modal-body">
                     <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Kind</label>
+                            <select name="group_kind" class="modal-select2" id="eg_kind" onchange="toggleKindSections('eg_kind','em')">
+                                <option value="victory_group">Victory Group</option>
+                                <option value="leadership_group">Leadership Group</option>
+                                <option value="campus">Campus</option>
+                            </select>
+                        </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Group Type</label>
                             <select name="group_type" id="eg_type" class="modal-select2">
@@ -1232,20 +1397,25 @@ function renderNameList($members, $showGender = true) {
                                 <option value="inactive">Inactive</option>
                             </select>
                         </div>
-                        <div class="col-12">
+                        <div class="col-12 em-vg-section">
                             <label class="form-label fw-semibold">Victory Group Leader(s) <span class="text-danger">*</span></label>
                             <div id="em-leaders"></div>
                             <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addMemberRow('em-leaders','leader')"><i class="bi bi-plus me-1"></i>Add Leader</button>
                         </div>
-                        <div class="col-12">
+                        <div class="col-12 em-vg-section">
                             <label class="form-label fw-semibold">Intern(s)</label>
                             <div id="em-interns"></div>
                             <button type="button" class="btn btn-sm btn-outline-secondary mt-1" onclick="addMemberRow('em-interns','intern')"><i class="bi bi-plus me-1"></i>Add Intern</button>
                         </div>
+                        <div class="col-12 em-lg-section d-none">
+                            <label class="form-label fw-semibold">LG Leader(s) <span class="text-danger">*</span></label>
+                            <div id="em-lgleaders"></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addMemberRow('em-lgleaders','lg_leader')"><i class="bi bi-plus me-1"></i>Add LG Leader</button>
+                        </div>
                         <div class="col-12">
-                            <label class="form-label fw-semibold">Attendees</label>
+                            <label class="form-label fw-semibold em-attendee-label">Attendees</label>
                             <div id="em-attendees"></div>
-                            <button type="button" class="btn btn-sm btn-outline-secondary mt-1" onclick="addMemberRow('em-attendees','attendee')"><i class="bi bi-plus me-1"></i>Add Attendee</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary mt-1" onclick="addMemberRow('em-attendees','attendee')"><i class="bi bi-plus me-1"></i>Add Member</button>
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Notes</label>
@@ -1381,6 +1551,56 @@ function renderNameList($members, $showGender = true) {
         </div>
     </div>
 
+    <!-- LINK PERSON MODAL ───────────────────────────────────────────────────
+         Attaches ONE person on a group roster to ONE existing member record.
+         A couple row opens this twice — once per spouse — so "Amy & Carl" ends
+         up pointing at two members while still reading "Amy & Carl".
+
+         It can only CHOOSE an existing member. There is deliberately no "create
+         this person" path here: the sheet often gives one spouse's first name
+         only, so a create button would invent a surname. Encode the member on
+         the Members page first, then link. -->
+    <?php if (($_SESSION['user']['accounttype'] ?? '') === 'admin'): ?>
+    <div class="modal fade" id="linkPersonModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form method="POST" action="index.php?action=linkVgMember">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-link-45deg me-2"></i>Link to a member</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="vg_member_id" id="lp_vgm">
+                    <input type="hidden" name="slot"         id="lp_slot">
+                    <input type="hidden" name="tab"          value="<?php echo htmlspecialchars($activeTab); ?>">
+                    <p class="mb-2">
+                        Name as written on the schedule:
+                        <strong id="lp_name" class="d-block mt-1"></strong>
+                    </p>
+                    <p class="text-muted small" id="lp_hint"></p>
+                    <label class="form-label small fw-semibold">Member record</label>
+                    <select name="member_id" id="lp_member" class="form-select" required>
+                        <option value="">— Choose a member —</option>
+                        <?php foreach ($allMembers as $_am): ?>
+                        <option value="<?php echo (int)$_am['id']; ?>"><?php echo htmlspecialchars($_am['full_name']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="form-text">
+                        The name above is never changed by linking — it stays exactly as the
+                        schedule spelled it. If this person is not in the list yet,
+                        <a href="index.php?action=members&openAdd=1">add them as a member</a> first.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-link-45deg me-1"></i>Link</button>
+                </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <script>
     var totalRows   = <?php echo count($groups); ?>;
     var ALL_MEMBERS = <?php echo json_encode(array_values($allMembers)); ?>;
@@ -1429,6 +1649,7 @@ function renderNameList($members, $showGender = true) {
         var selFreq      = $('#filterFreq').val()      || [];
         var selStatus    = $('#filterStatus').val()    || [];
         var selLeaders   = $('#filterLeader').val()    || [];
+        var selLgLeaders = $('#filterLgLeader').val()  || [];
         var selInterns   = $('#filterIntern').val()    || [];
         var selAttendees = $('#filterAttendees').val() || [];
         var selTimes     = $('#filterTime').val()      || [];
@@ -1458,6 +1679,10 @@ function renderNameList($members, $showGender = true) {
             if (selLeaders.length) {
                 var names = (d.leaders || '').split('|').filter(Boolean);
                 if (!selLeaders.some(function(s) { return names.indexOf(s) !== -1; })) show = false;
+            }
+            if (selLgLeaders.length) {
+                var names = (d.lgleaders || '').split('|').filter(Boolean);
+                if (!selLgLeaders.some(function(s) { return names.indexOf(s) !== -1; })) show = false;
             }
             if (selInterns.length) {
                 var names = (d.interns || '').split('|').filter(Boolean);
@@ -1505,7 +1730,7 @@ function renderNameList($members, $showGender = true) {
 
         // Active filter badge (filter panel header)
         var total = selType.length + selDay.length + selCategory.length + selFreq.length + selStatus.length
-                  + selLeaders.length + selInterns.length + selAttendees.length + selTimes.length
+                  + selLeaders.length + selLgLeaders.length + selInterns.length + selAttendees.length + selTimes.length
                   + selLocations.length + (txtSearch ? 1 : 0) + (showOnlyUnreg ? 1 : 0);
         var badge = document.getElementById('activeFilterBadge');
         if (badge) { badge.textContent = total + ' active'; badge.classList.toggle('d-none', total === 0); }
@@ -1529,15 +1754,16 @@ function renderNameList($members, $showGender = true) {
             makeChip('Frequency', selFreq);
             makeChip('Status',    selStatus);
             makeChip('Leader',    selLeaders);
+            makeChip('LG Leader', selLgLeaders);
             makeChip('Intern',    selInterns);
-            makeChip('Attendee',  selAttendees);
+            makeChip('Member',    selAttendees);
             makeChip('Time',      selTimes);
             makeChip('Meeting Place', selLocations);
             if (txtSearch) {
                 chips.push('<span class="badge bg-light text-dark border">Search: "' + esc(txtSearch) + '"</span>');
             }
             if (showOnlyUnreg) {
-                chips.push('<span class="badge bg-warning text-dark"><i class="bi bi-person-exclamation me-1"></i>Unregistered only</span>');
+                chips.push('<span class="badge bg-warning text-dark"><i class="bi bi-link-45deg me-1"></i>Needs Link only</span>');
             }
             // Cap at 4 chips for header; overflow \u2192 "+N more" pill
             var shown    = chips.slice(0, 4).join(' ');
@@ -1625,11 +1851,11 @@ function renderNameList($members, $showGender = true) {
             + ' onclick="this.closest(\'.member-row\').remove()"><i class="bi bi-x"></i></button>';
         var unreg = (name && !memberId)
             ? '<span class="badge bg-warning text-dark flex-shrink-0 unregistered-badge" style="font-size:.65rem;cursor:pointer"'
-              + ' title="Not in Members list — please register this person">'
-              + '<i class="bi bi-exclamation-triangle-fill me-1"></i>Unregistered</span>'
+              + ' title="Not linked to a member record — link this person from the Members page">'
+              + '<i class="bi bi-link-45deg me-1"></i>Needs Link</span>'
             : '<span class="badge bg-warning text-dark flex-shrink-0 unregistered-badge d-none" style="font-size:.65rem;cursor:pointer"'
-              + ' title="Not in Members list — please register this person">'
-              + '<i class="bi bi-exclamation-triangle-fill me-1"></i>Unregistered</span>';
+              + ' title="Not linked to a member record — link this person from the Members page">'
+              + '<i class="bi bi-link-45deg me-1"></i>Needs Link</span>';
         if (type === 'attendee') {
             div.innerHTML = nameInput + unreg + removeBtn;
         } else {
@@ -1690,23 +1916,137 @@ function renderNameList($members, $showGender = true) {
         }
     }
 
-    function initAddModal() {
+    // Shows/hides the VG-style (Leader/Intern/Member) vs LG-style (LG Leader/Member) role
+    // sections based on the selected Kind, and relabels the shared "Attendees" field to
+    // "Member(s)" for Leadership Group since it has no separate attendee role distinct from
+    // regular membership.
+    function toggleKindSections(kindSelectId, prefix) {
+        var kind = document.getElementById(kindSelectId).value;
+        var isLg = kind === 'leadership_group';
+        document.querySelectorAll('.' + prefix + '-vg-section').forEach(function(el) { el.classList.toggle('d-none', isLg); });
+        document.querySelectorAll('.' + prefix + '-lg-section').forEach(function(el) { el.classList.toggle('d-none', !isLg); });
+        var label = document.querySelector('.' + prefix + '-attendee-label');
+        if (label) {
+            var req = label.querySelector('.text-danger');
+            label.firstChild.textContent = isLg ? 'Member(s) ' : 'Attendees ';
+            if (req) label.appendChild(req);
+        }
+    }
+
+    function initAddModal(kind) {
+        kind = kind || 'victory_group';
+        document.getElementById('ag_kind').value = kind;
+        toggleKindSections('ag_kind', 'am');
         populateMembers('am-leaders','leader',[]);
         populateMembers('am-interns','intern',[]);
+        populateMembers('am-lgleaders','lg_leader',[]);
         populateMembers('am-attendees','attendee',[]);
     }
 
     var pendingEditGroup = null;
 
+    // Read-only summary. Mirrors the table's rules: LG groups show LG Leader(s) and
+    // no Intern row; unlinked people keep the same "Needs Link" badge.
+    function openViewGroupModal(g) {
+        var isLg = (g.group_kind || '') === 'leadership_group';
+        // Mirrors renderNameList(): a couple keeps its one verbatim string and reports
+        // how many of its two people are linked, so this read-only view agrees with
+        // the table instead of calling a half-linked couple "linked".
+        function people(list) {
+            list = list || [];
+            if (!list.length) return '<span class="text-muted">—</span>';
+            return list.map(function(m) {
+                var name = esc(m.name || '');
+                if (m.is_couple && String(m.is_couple) !== '0') {
+                    var n = (m.member_id && m.link_status === 'linked' ? 1 : 0)
+                          + (m.member_id_2 && m.link_status_2 === 'linked' ? 1 : 0);
+                    var cls = n === 2 ? 'bg-success' : 'bg-warning text-dark';
+                    var txt = n === 2 ? '<i class="bi bi-people-fill me-1"></i>Both linked'
+                                      : '<i class="bi bi-link-45deg me-1"></i>' + n + ' of 2 linked';
+                    return '<div>' + name + ' <span class="badge ' + cls + '" style="font-size:.65rem">'
+                         + txt + '</span></div>';
+                }
+                if (m.member_id) {
+                    return '<div><a href="index.php?action=memberProfile&id=' + (parseInt(m.member_id, 10) || 0) + '"'
+                         + ' class="text-primary text-decoration-none">' + name + '</a></div>';
+                }
+                return '<div>' + name + ' <span class="badge bg-warning text-dark" style="font-size:.65rem">'
+                     + '<i class="bi bi-link-45deg me-1"></i>Needs Link</span></div>';
+            }).join('');
+        }
+        function row(label, value) {
+            return '<div class="row mb-2"><div class="col-4 fw-semibold text-muted small text-uppercase">'
+                 + label + '</div><div class="col-8">' + value + '</div></div>';
+        }
+        var kindLabel = isLg ? 'Leadership Group' : ((g.group_kind === 'campus') ? 'Campus' : 'Victory Group');
+        var html = row('Kind', '<span class="badge bg-primary">' + esc(kindLabel) + '</span>')
+                 + row('Type', esc(g.group_type || '—'))
+                 + row('Category', esc(g.group_category || '—'))
+                 + row('Day', esc(g.day_of_week || '—'))
+                 + row('Meetup Time', esc(g.meeting_time || '—'))
+                 + row('Frequency', esc(g.meeting_frequency || '—'))
+                 + row('Meeting Place', esc(g.location || '—'))
+                 + row('Status', '<span class="badge ' + (g.group_status === 'active' ? 'bg-success' : 'bg-secondary') + '">'
+                       + esc(g.group_status || '') + '</span>')
+                 + '<hr>'
+                 + row(isLg ? 'LG Leader(s)' : 'Leader(s)', people(isLg ? g.lg_leaders : g.leaders))
+                 + (isLg ? '' : row('Intern(s)', people(g.interns)))
+                 + row('Member(s)', people(g.attendees))
+                 + '<hr>'
+                 + row('Notes', esc(g.notes || '—'));
+        document.getElementById('viewGroupBody').innerHTML = html;
+        var editBtn = document.getElementById('viewGroupEditBtn');
+        editBtn.onclick = function() {
+            var m = bootstrap.Modal.getInstance(document.getElementById('viewGroupModal'));
+            if (m) m.hide();
+            openEditGroupModal(g);
+        };
+        new bootstrap.Modal(document.getElementById('viewGroupModal')).show();
+    }
+
     function openEditGroupModal(g) {
+        document.getElementById('eg_kind').value = g.group_kind || 'victory_group';
+        toggleKindSections('eg_kind', 'em');
         document.getElementById('eg_time').value  = g.meeting_time || '';
         document.getElementById('eg_notes').value = g.notes        || '';
         document.getElementById('editGroupForm').action = 'index.php?action=updateGroup&id=' + g.id;
         populateMembers('em-leaders',   'leader',   g.leaders   || []);
         populateMembers('em-interns',   'intern',   g.interns   || []);
+        populateMembers('em-lgleaders', 'lg_leader', g.lg_leaders || []);
         populateMembers('em-attendees', 'attendee', g.attendees || []);
         window.pendingEditGroup = g;
         new bootstrap.Modal(document.getElementById('editGroupModal')).show();
+    }
+
+    /**
+     * Open the Link Person modal for one roster line.
+     *
+     * slot 1 / slot 2 are the two halves of a couple ("Amy & Carl"); a plain name
+     * only ever uses slot 1. The verbatim text is shown read-only so the admin can
+     * see exactly which person they are resolving, and is never submitted — the
+     * link is a pointer added beside the name, not a replacement for it.
+     */
+    function openLinkPersonModal(vgMemberId, slot, writtenName) {
+        var modalEl = document.getElementById('linkPersonModal');
+        if (!modalEl) return;
+        document.getElementById('lp_vgm').value  = vgMemberId;
+        document.getElementById('lp_slot').value = slot;
+        document.getElementById('lp_name').textContent = writtenName || '';
+        document.getElementById('lp_hint').textContent = (slot === 2 || slot === '2')
+            ? 'This name was written as a couple. You are linking the SECOND person. '
+            + 'Link the first separately — each spouse keeps their own member record.'
+            : 'Choose the member this name refers to. Nothing is created.';
+        var sel = document.getElementById('lp_member');
+        sel.value = '';
+        new bootstrap.Modal(modalEl).show();
+        // Select2 makes a 400-member list usable; plain <select> is the fallback
+        // if the plugin has not loaded, so the form still works either way.
+        if (window.jQuery && jQuery.fn.select2) {
+            var $sel = jQuery(sel);
+            if ($sel.hasClass('select2-hidden-accessible')) $sel.select2('destroy');
+            $sel.select2({ dropdownParent: jQuery(modalEl), width: '100%',
+                           placeholder: '— Choose a member —' });
+        }
     }
 
     function confirmDeactivateGroup(id, leader) {
@@ -1746,6 +2086,7 @@ function renderNameList($members, $showGender = true) {
                 }
             });
             $('#am_leaders_error').addClass('d-none');
+            $('#am_lgleaders_error').addClass('d-none');
             $('#am_attendees_error').addClass('d-none');
 
             // Validate each required field
@@ -1764,23 +2105,37 @@ function renderNameList($members, $showGender = true) {
                 }
             });
 
-            // At least one leader
-            var hasLeader = false;
-            $('#am-leaders .member-name-select').each(function() {
-                if ($(this).val()) { hasLeader = true; return false; }
-            });
-            if (!hasLeader) {
-                errors.push('Victory Group Leader (at least one required)');
-                $('#am_leaders_error').removeClass('d-none');
+            var isLg = $('#ag_kind').val() === 'leadership_group';
+
+            if (isLg) {
+                // At least one LG Leader
+                var hasLgLeader = false;
+                $('#am-lgleaders .member-name-select').each(function() {
+                    if ($(this).val()) { hasLgLeader = true; return false; }
+                });
+                if (!hasLgLeader) {
+                    errors.push('LG Leader (at least one required)');
+                    $('#am_lgleaders_error').removeClass('d-none');
+                }
+            } else {
+                // At least one leader
+                var hasLeader = false;
+                $('#am-leaders .member-name-select').each(function() {
+                    if ($(this).val()) { hasLeader = true; return false; }
+                });
+                if (!hasLeader) {
+                    errors.push('Victory Group Leader (at least one required)');
+                    $('#am_leaders_error').removeClass('d-none');
+                }
             }
 
-            // At least one attendee
+            // At least one attendee/member
             var hasAttendee = false;
             $('#am-attendees .member-name-select').each(function() {
                 if ($(this).val()) { hasAttendee = true; return false; }
             });
             if (!hasAttendee) {
-                errors.push('Attendees (at least one required)');
+                errors.push(isLg ? 'Member (at least one required)' : 'Attendees (at least one required)');
                 $('#am_attendees_error').removeClass('d-none');
             }
 
@@ -1804,6 +2159,7 @@ function renderNameList($members, $showGender = true) {
                 else markSelect2Invalid(f.id, false);
             });
             $('#am_leaders_error').addClass('d-none');
+            $('#am_lgleaders_error').addClass('d-none');
             $('#am_attendees_error').addClass('d-none');
         });
     })();
@@ -2037,6 +2393,11 @@ function renderNameList($members, $showGender = true) {
                 new bootstrap.Tooltip(el);
             });
         }
+        // Arriving via ?action=editGroup&id=N (e.g. from a member profile) opens the
+        // Edit modal straight away on the tab matching that group's kind.
+        <?php if (!empty($editGroup)): ?>
+        openEditGroupModal(<?php echo json_encode($editGroup); ?>);
+        <?php endif; ?>
     });
 
     var STAT_SECTIONS = <?php echo json_encode(array_keys($statSections)); ?>;

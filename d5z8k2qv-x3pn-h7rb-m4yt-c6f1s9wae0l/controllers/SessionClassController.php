@@ -76,6 +76,11 @@ abstract class SessionClassController {
         $l113BatchNames = $scBatchNames;
         $l113Statuses   = $scStatuses;
 
+        // The view is included from inside this method, so the caller's $db is
+        // not in scope here. Shared partials (e.g. the Back to Member banner)
+        // expect a $db the same way the other views get one, so expose it.
+        $db = $this->db;
+
         extract($this->extraViewData(), EXTR_OVERWRITE);
         include $this->view;
     }

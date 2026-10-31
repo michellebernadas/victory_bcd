@@ -979,8 +979,14 @@ class ProgramAttendance {
             'members_per_leader' => 0.0, 'groups_per_leader' => 0.0,
         ];
         try {
+            // Roster lines, not linked members — this ratio is "how many people are
+            // serving", and an imported name still awaiting a member link is still a
+            // person. A couple row ("Amy & Carl") is ONE row naming TWO people, so it
+            // counts 2; every other row counts 1. Without the is_couple term the
+            // leadership base would be understated by one per couple and every
+            // per-leader ratio would read high.
             $roleCounts = $this->db->query(
-                "SELECT vm.role, COUNT(*) AS c
+                "SELECT vm.role, SUM(1 + vm.is_couple) AS c
                    FROM vg_members vm
                    JOIN victory_groups vg ON vg.id = vm.group_id
                   WHERE vg.is_deleted = 0 AND vg.group_status = 'active'

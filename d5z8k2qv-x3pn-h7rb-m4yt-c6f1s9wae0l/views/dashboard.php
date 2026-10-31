@@ -41,7 +41,38 @@ $dashUrl = function (array $over = []) use ($dashClass, $dashYear, $dashBucket) 
     return 'index.php' . ($q ? '?' . http_build_query($q) : '');
 };
 $dashFilterCount = count(array_filter([$dashClass, $dashYear]));
+// ── Sunday Service Attendance (Church Health) ─────────────────────────────
+// Its own range filter (Last 4 Sundays / Last 3 Months / This Year), kept
+// separate from the class filter above because it scopes a different table.
+// ONE scope object drives the cards, the average AND the chart, so the number
+// on a card and the line on the chart can never describe different periods.
+require_once 'models/ServiceAttendance.php';
+$saModel   = new ServiceAttendance($db);
+$sundayRange = ServiceAttendance::normaliseRange($_GET['sunday_range'] ?? '');
+$sundayScope = $saModel->rangeScope($sundayRange);
+$sundayStats  = $saModel->getStats($sundayScope['filters']);
+$sundayLatest = $saModel->getLatestSunday($sundayScope['filters']);
+$sundayTrend  = $saModel->getTrendSeries($sundayScope['filters'], $sundayScope['limit']);
+// Preserves the rest of the dashboard filter when switching the Sunday range.
+$sundayUrl = function (string $range) use ($dashClass, $dashYear, $dashBucket) {
+    $q = array_filter([
+        'dash_class'   => $dashClass,
+        'dash_year'    => $dashYear ?: '',
+        'dash_bucket'  => $dashBucket,
+        'sunday_range' => $range,
+    ], fn($v) => $v !== '' && $v !== null);
+    return 'index.php?' . http_build_query($q) . '#churchHealth';
+};
+
 $serviceStats       = $memberModel->getServiceAttendanceStats();
+// Headline Sunday figure for the stat card: active members across the AM/PM
+// services. Member dispositions (period '') are excluded — they aren't services.
+$sundayServiceTotal = 0;
+foreach ($serviceStats as $_svc) {
+    if (($_svc['period'] ?? '') !== '') $sundayServiceTotal += (int)$_svc['count'];
+}
+// Links into the Church Health section, or to the services panel when it renders.
+$sundayAnchor = !empty($serviceStats) ? '#sundayServices' : '#churchHealth';
 // Serve Teams roll-up (module is optional — tolerate a missing table).
 $serveTeamStats = ['total' => 0, 'active' => 0, 'leaders' => 0, 'servers' => 0];
 try {
@@ -49,25 +80,10 @@ try {
     $serveTeamStats = (new ServeTeam($db))->getStats();
 } catch (Exception $e) { /* Serve Teams not migrated yet — cards stay at zero. */ }
 
-// Volunteer journey breakdown by discipleship steps
-$volunteerJourneyData = [];
-try {
-    $vStmt = $db->query("
-        SELECT COALESCE(NULLIF(TRIM(volunteer_status),''), 'Unspecified') as vol_status,
-               COUNT(*) as total,
-               SUM(victory_weekend) as vw,
-               SUM(church_community) as cc,
-               SUM(making_disciples) as md,
-               SUM(empowering_leaders) as el,
-               SUM(leadership_113) as l113
-        FROM members
-        WHERE is_deleted = 0
-        GROUP BY COALESCE(NULLIF(TRIM(volunteer_status),''), 'Unspecified')
-        ORDER BY total DESC
-        LIMIT 12
-    ");
-    $volunteerJourneyData = $vStmt->fetchAll();
-} catch(Exception $e) { $volunteerJourneyData = []; }
+// The "Volunteers & Their Discipleship Journey" roll-up was removed with the
+// volunteer_status column. It was only ever as good as a field that was blank
+// for most members, and who serves where is now answered by Serve Team
+// membership — one source of truth instead of a parallel free-text status.
 
 // Gather available years from paStats
 $_allDashYrs = [];
@@ -110,74 +126,72 @@ include 'shared/header.php';
             </div>
             <div class="row mb-4 g-3">
                 <div class="col-6 col-md-4 col-lg-2">
-                    <a href="index.php?action=members" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Members">
-                        <div class="card-body py-3">
-                            <i class="bi bi-people display-5 text-primary mb-2"></i>
-                            <div class="h3 mb-0 fw-bold"><?php echo $memberStats['total']; ?></div>
-                            <small class="text-muted">Total Members</small>
-                        </div>
-                    </a>
-                </div>
-                <div class="col-6 col-md-4 col-lg-2">
                     <a href="index.php?action=members&member_status=active" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open active members">
                         <div class="card-body py-3">
                             <i class="bi bi-person-check display-5 text-success mb-2"></i>
-                            <div class="h3 mb-0 fw-bold"><?php echo $memberStats['active']; ?></div>
-                            <small class="text-muted">Active</small>
+                            <div class="h3 mb-0 fw-bold"><?php echo (int)($memberStats['active'] ?? 0); ?></div>
+                            <small class="text-muted">Active Members</small>
                         </div>
                     </a>
                 </div>
                 <div class="col-6 col-md-4 col-lg-2">
-                    <a href="index.php?action=victoryGroups&group_status=active" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Victory Groups / LG">
+                    <a href="index.php?action=victoryGroups&tab=vg" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Victory Groups">
                         <div class="card-body py-3">
-                            <i class="bi bi-diagram-3 display-5 text-info mb-2"></i>
-                            <div class="h3 mb-0 fw-bold"><?php echo $groupStats['active']; ?></div>
-                            <small class="text-muted">Active VG/LG</small>
+                            <i class="bi bi-people-fill display-5 text-primary mb-2"></i>
+                            <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['vg_active'] ?? 0); ?></div>
+                            <small class="text-muted">Active Victory Groups</small>
                         </div>
                     </a>
                 </div>
                 <div class="col-6 col-md-4 col-lg-2">
-                    <a href="index.php?action=victoryGroups&group_type=VG" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Victory Groups">
+                    <a href="index.php?action=victoryGroups&tab=vg" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Victory Group Leaders">
                         <div class="card-body py-3">
-                            <i class="bi bi-people-fill display-5 text-primary mb-2" style="opacity:0.7;"></i>
-                            <div class="h3 mb-0 fw-bold"><?php echo $groupStats['vg']; ?></div>
-                            <small class="text-muted">Victory Groups</small>
+                            <i class="bi bi-person-badge display-5 text-info mb-2"></i>
+                            <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['vg_leaders'] ?? 0); ?></div>
+                            <small class="text-muted">Active VG Leaders</small>
                         </div>
                     </a>
                 </div>
                 <div class="col-6 col-md-4 col-lg-2">
-                    <a href="index.php?action=victoryGroups&group_type=LG" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Life Groups">
+                    <a href="index.php?action=victoryGroups&tab=vg" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Victory Group Interns">
                         <div class="card-body py-3">
-                            <i class="bi bi-heart display-5 text-danger mb-2"></i>
-                            <div class="h3 mb-0 fw-bold"><?php echo $groupStats['lg']; ?></div>
-                            <small class="text-muted">Life Groups</small>
+                            <i class="bi bi-person-video2 display-5 text-warning mb-2"></i>
+                            <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['vg_interns'] ?? 0); ?></div>
+                            <small class="text-muted">Active Interns</small>
                         </div>
                     </a>
                 </div>
                 <div class="col-6 col-md-4 col-lg-2">
-                    <a href="index.php?action=serveTeams" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Serve Teams">
+                    <a href="index.php?action=victoryGroups&tab=campus" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Campus groups">
                         <div class="card-body py-3">
-                            <i class="bi bi-hand-thumbs-up display-5 text-info mb-2"></i>
-                            <div class="h3 mb-0 fw-bold"><?php echo (int)$serveTeamStats['active']; ?></div>
-                            <small class="text-muted">Serve Teams</small>
+                            <i class="bi bi-building display-5 text-danger mb-2"></i>
+                            <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['campus_active'] ?? 0); ?></div>
+                            <small class="text-muted">Campus</small>
                         </div>
                     </a>
                 </div>
-                <?php if (isset($_SESSION['user']['accounttype']) && $_SESSION['user']['accounttype'] === 'admin'): ?>
                 <div class="col-6 col-md-4 col-lg-2">
                     <?php
-                    try { $userCount = $db->query("SELECT COUNT(*) FROM accounts WHERE accountstatus='active'")->fetchColumn(); }
-                    catch(Exception $e) { $userCount = 0; }
+                    // Prefers the actual recorded head count for the most recent
+                    // service day. Until the first entry exists it falls back to
+                    // the member service sign-ups, which is what this card showed
+                    // before there was anywhere to record a real count.
+                    $sundayCardValue = $sundayLatest['date']
+                        ? (int)$sundayLatest['total']
+                        : ($sundayServiceTotal > 0 ? $sundayServiceTotal : null);
                     ?>
-                    <a href="index.php?action=users" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Users">
+                    <a href="<?php echo $sundayLatest['date'] ? 'index.php?action=serviceAttendance' : $sundayAnchor; ?>"
+                       class="card text-center h-100 stat-card text-decoration-none text-reset"
+                       title="<?php echo $sundayLatest['date']
+                           ? 'Recorded head count for ' . htmlspecialchars(date('M j, Y', strtotime($sundayLatest['date'])))
+                           : 'Jump to Attendance &amp; Church Health'; ?>">
                         <div class="card-body py-3">
-                            <i class="bi bi-person-gear display-5 text-warning mb-2"></i>
-                            <div class="h3 mb-0 fw-bold"><?php echo $userCount; ?></div>
-                            <small class="text-muted">Admin Users</small>
+                            <i class="bi bi-heart-pulse display-5 text-success mb-2"></i>
+                            <div class="h3 mb-0 fw-bold"><?php echo $sundayCardValue !== null ? $sundayCardValue : '—'; ?></div>
+                            <small class="text-muted">Sunday Service Attendance</small>
                         </div>
                     </a>
                 </div>
-                <?php endif; ?>
             </div>
 
 
@@ -265,7 +279,7 @@ include 'shared/header.php';
                             <h6 class="text-muted small fw-bold mb-2 mt-3">GROUPS</h6>
                             <div class="d-grid gap-2 mb-3">
                                 <a href="index.php?action=victoryGroups" class="btn btn-sm btn-outline-info">
-                                    <i class="bi bi-diagram-3 me-1"></i> Add VG / Life Group
+                                    <i class="bi bi-diagram-3 me-1"></i> Add VG / Leadership Group
                                 </a>
                                 <a href="index.php?action=victoryGroups" class="btn btn-sm btn-outline-secondary">
                                     <i class="bi bi-list-ul me-1"></i> View All Groups
@@ -421,7 +435,11 @@ include 'shared/header.php';
                                 </table>
                             </div>
                             <?php else: ?>
-                            <p class="text-muted mb-0 text-center py-3"><i class="bi bi-info-circle me-1"></i>No attendance data yet. <a href="import.php">Run the import</a> to load program data.</p>
+                            <p class="text-muted mb-0 text-center py-3">
+                                <i class="bi bi-info-circle me-1"></i>No class records yet.
+                                Add them from <a href="index.php?action=attendanceRecords">Attendance Records</a>,
+                                or start by <a href="index.php?action=members">adding members</a>.
+                            </p>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -504,6 +522,65 @@ include 'shared/header.php';
             resizeDelay: 120,
             interaction: { mode: 'index', intersect: false },
             plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 0, autoSkipPadding: 8 } },
+                y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } }
+            }
+        }
+    });
+})();
+
+// Sunday Service Attendance trend. Same bounded .chart-box container and the
+// same options shape as the chart above. The series is already scoped by the
+// Last 4 Sundays / Last 3 Months / This Year filter server-side, so the chart
+// and the Average card always describe the same rows. No labels (which is the
+// empty-table case) means no canvas is rendered at all, so this returns early.
+(function () {
+    if (typeof Chart === 'undefined') return;
+    var el = document.getElementById('sundayTrendChart');
+    if (!el) return;
+    var labels = <?php echo json_encode($sundayTrend['labels'] ?? []); ?>;
+    var totals = <?php echo json_encode($sundayTrend['totals'] ?? []); ?>;
+    var adults = <?php echo json_encode($sundayTrend['adults'] ?? []); ?>;
+    var kids   = <?php echo json_encode($sundayTrend['kids']   ?? []); ?>;
+    if (!labels.length) return;
+    new Chart(el, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Grand Total',
+                    data: totals,
+                    borderColor: 'rgba(23,66,245,.9)',
+                    backgroundColor: 'rgba(23,66,245,.12)',
+                    borderWidth: 2, pointRadius: 3, pointHoverRadius: 5,
+                    fill: true, tension: .3
+                },
+                {
+                    label: 'Adults',
+                    data: adults,
+                    borderColor: 'rgba(25,135,84,.85)',
+                    backgroundColor: 'rgba(25,135,84,.08)',
+                    borderWidth: 1.5, pointRadius: 2, pointHoverRadius: 4,
+                    fill: false, tension: .3
+                },
+                {
+                    label: 'Kids',
+                    data: kids,
+                    borderColor: 'rgba(13,202,240,.85)',
+                    backgroundColor: 'rgba(13,202,240,.08)',
+                    borderWidth: 1.5, pointRadius: 2, pointHoverRadius: 4,
+                    fill: false, tension: .3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            resizeDelay: 120,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } },
             scales: {
                 x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 0, autoSkipPadding: 8 } },
                 y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } }

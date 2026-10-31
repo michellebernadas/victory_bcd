@@ -1,8 +1,28 @@
 <?php
-error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
+// E_STRICT was removed in PHP 8.4 and merely naming the constant raises a
+// deprecation on every request — noisy in the log on PHP 8.5, which is what
+// production runs. E_ALL has included its old meaning since PHP 5.4 anyway.
+error_reporting(E_ALL & ~E_DEPRECATED);
 ini_set('display_errors', 0);
 ini_set('log_errors', 1);
 ini_set('error_log', __DIR__ . '/logs/error.log');
+
+// Catch what the ini settings above don't: uncaught exceptions and fatal
+// errors (e.g. a PHP-version incompatibility in a required file) otherwise
+// reach the server as a blank 500 with nothing in error.log.
+set_exception_handler(function (Throwable $e) {
+    error_log('[UNCAUGHT] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine()
+        . "\n" . $e->getTraceAsString());
+    http_response_code(500);
+    echo 'Something went wrong. The error has been logged.';
+});
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        error_log('[FATAL] ' . $err['message'] . ' in ' . $err['file'] . ':' . $err['line']);
+        if (!headers_sent()) http_response_code(500);
+    }
+});
 
 // Session security
 session_set_cookie_params([
@@ -17,12 +37,16 @@ ini_set('session.gc_maxlifetime', 3600);
 session_start();
 
 require_once 'config/config.php';
+// The permission matrix. Required before the controllers so their own
+// defence-in-depth checks can call the same helpers the routes below use.
+require_once 'config/permissions.php';
 require_once 'controllers/UserController.php';
 require_once 'controllers/MemberController.php';
 require_once 'controllers/VictoryGroupController.php';
 require_once 'controllers/AttendanceController.php';
 require_once 'controllers/SettingsController.php';
 require_once 'controllers/VglStatController.php';
+require_once 'controllers/FacilityController.php';
 
 $db = getDB();
 $userController = new UserController($db);
@@ -31,6 +55,7 @@ $groupController = new VictoryGroupController($db);
 $statController  = new VglStatController($db);
 $attendanceController = new AttendanceController($db);
 $settingsController = new SettingsController($db);
+$facilityController = new FacilityController($db);
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
@@ -123,6 +148,140 @@ switch ($action) {
         $memberController->memberProfile($_GET['id']);
         break;
 
+    // ─── Member import: UPLOAD → PREVIEW → CONFIRM → IMPORT ──────────────
+    // Replaces the old top-level import.php, which required no login and
+    // deleted whole tables before inserting. Admin-only: a bad import is
+    // laborious to undo even with the preview.
+    case 'memberImport':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=members'); exit(); }
+        require_once 'controllers/MemberImportController.php';
+        (new MemberImportController($db))->showUpload();
+        break;
+
+    case 'memberImportUpload':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=members'); exit(); }
+        require_once 'controllers/MemberImportController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            (new MemberImportController($db))->upload();
+        } else {
+            header('Location: index.php?action=memberImport');
+        }
+        break;
+
+    case 'memberImportCommit':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=members'); exit(); }
+        require_once 'controllers/MemberImportController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            (new MemberImportController($db))->commit();
+        } else {
+            header('Location: index.php?action=memberImport');
+        }
+        break;
+
+    case 'memberImportDiscard':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=members'); exit(); }
+        require_once 'controllers/MemberImportController.php';
+        (new MemberImportController($db))->discard();
+        break;
+
+    case 'memberImportReview':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=members'); exit(); }
+        require_once 'controllers/MemberImportController.php';
+        (new MemberImportController($db))->downloadReview();
+        break;
+
+    // ─── Staff VG Schedule import: UPLOAD → PREVIEW → CONFIRM → IMPORT ───
+    // Same staged shape as memberImport above. Admin-only. Creates groups and
+    // their people; never creates a member — an unmatched name is saved
+    // verbatim as "Needs Link" for an admin to resolve by hand.
+    case 'groupImport':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=victoryGroups'); exit(); }
+        require_once 'controllers/GroupImportController.php';
+        (new GroupImportController($db))->showUpload();
+        break;
+
+    case 'groupImportUpload':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=victoryGroups'); exit(); }
+        require_once 'controllers/GroupImportController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            (new GroupImportController($db))->upload();
+        } else {
+            header('Location: index.php?action=groupImport');
+        }
+        break;
+
+    case 'groupImportCommit':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=victoryGroups'); exit(); }
+        require_once 'controllers/GroupImportController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            (new GroupImportController($db))->commit();
+        } else {
+            header('Location: index.php?action=groupImport');
+        }
+        break;
+
+    case 'groupImportDiscard':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=victoryGroups'); exit(); }
+        require_once 'controllers/GroupImportController.php';
+        (new GroupImportController($db))->discard();
+        break;
+
+    case 'groupImportReview':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=victoryGroups'); exit(); }
+        require_once 'controllers/GroupImportController.php';
+        (new GroupImportController($db))->downloadReview();
+        break;
+
+    // ─── Facilities Request Form import ──────────────────────────────────
+    // Same staged shape again. Every imported request lands at Submitted; the
+    // importer has no path to approved or confirmed (see
+    // FacilityRequestImport::commit).
+    case 'facilityImport':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=facilityCalendar'); exit(); }
+        require_once 'controllers/FacilityImportController.php';
+        (new FacilityImportController($db))->showUpload();
+        break;
+
+    case 'facilityImportUpload':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=facilityCalendar'); exit(); }
+        require_once 'controllers/FacilityImportController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            (new FacilityImportController($db))->upload();
+        } else {
+            header('Location: index.php?action=facilityImport');
+        }
+        break;
+
+    case 'facilityImportCommit':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=facilityCalendar'); exit(); }
+        require_once 'controllers/FacilityImportController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            (new FacilityImportController($db))->commit();
+        } else {
+            header('Location: index.php?action=facilityImport');
+        }
+        break;
+
+    case 'facilityImportDiscard':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php?action=facilityCalendar'); exit(); }
+        require_once 'controllers/FacilityImportController.php';
+        (new FacilityImportController($db))->discard();
+        break;
+
     // ─── Victory Groups ───────────────────────────────────────────────
     case 'victoryGroups':
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
@@ -165,6 +324,27 @@ switch ($action) {
     case 'hardDeleteGroup':
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
         $groupController->hardDeleteGroup($_GET['id']);
+        break;
+
+    // ─── Manual person linking on a group roster ─────────────────────────
+    // The only way a name imported as "Needs Link" ever gains a member, and the
+    // only way a couple ("Amy & Carl") is resolved — one row, two slots, two
+    // separate hand-made links. Nothing here creates a member or alters the
+    // verbatim name, so it is admin-only but not destructive.
+    case 'linkVgMember':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canAdminister()) { header('Location: index.php?action=victoryGroups'); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $groupController->linkVgMember();
+        } else {
+            header('Location: index.php?action=victoryGroups');
+        }
+        break;
+
+    case 'unlinkVgMember':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canAdminister()) { header('Location: index.php?action=victoryGroups'); exit(); }
+        $groupController->unlinkVgMember();
         break;
 
     // ─── VGL Stat Definitions ────────────────────────────────────────
@@ -225,13 +405,20 @@ switch ($action) {
         }
         break;
 
+    // These two were the only user-management routes without a role check.
+    // editUser only renders a view that redirects non-admins, but updateUser
+    // acts directly: any logged-in account could POST to it and set its own
+    // accounttype to 'admin'. Closed here rather than left for the new role to
+    // walk through.
     case 'editUser':
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canAdminister($currentUserType)) { header('Location: index.php'); exit(); }
         $userController->editUser($_GET['id']);
         break;
 
     case 'updateUser':
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canAdminister($currentUserType)) { header('Location: index.php'); exit(); }
         if (isset($_GET['uuid'])) {
             $userController->updateUserByUuid($_POST['username'], $_POST['password'], $_POST['email'], $_POST['accounttype'], $_GET['uuid']);
         } else {
@@ -296,6 +483,33 @@ switch ($action) {
         else { header('Location: index.php?action=attendanceRecords'); exit(); }
         break;
 
+    // ─── Sunday Service Attendance (Church Health) ───────────────────
+    case 'serviceAttendance':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/ServiceAttendanceController.php';
+        (new ServiceAttendanceController($db))->listRecords();
+        break;
+    case 'addServiceAttendance':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/ServiceAttendanceController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') (new ServiceAttendanceController($db))->addRecord($_POST);
+        else { header('Location: index.php?action=serviceAttendance'); exit(); }
+        break;
+    case 'updateServiceAttendance':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/ServiceAttendanceController.php';
+        $saId = (int)($_GET['id'] ?? 0);
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && $saId) (new ServiceAttendanceController($db))->updateRecord($saId, $_POST);
+        else { header('Location: index.php?action=serviceAttendance'); exit(); }
+        break;
+    case 'deleteServiceAttendance':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/ServiceAttendanceController.php';
+        $saId = (int)($_GET['id'] ?? 0);
+        if ($saId) (new ServiceAttendanceController($db))->deleteRecord($saId);
+        else { header('Location: index.php?action=serviceAttendance'); exit(); }
+        break;
+
     // ─── AJAX: member search for Select2 ─────────────────────────────
     case 'ajaxSearchMembers':
         if (!isset($_SESSION['user'])) { http_response_code(401); exit(); }
@@ -303,9 +517,15 @@ switch ($action) {
         header('Content-Type: application/json');
         $memberModel = new Member($db);
         $rows = $memberModel->searchByName($term, 50);
+        // first_name / last_name ride along so the form can fill the name fields
+        // the moment a member is picked — the admin never retypes a name that
+        // the member record already holds.
         $results = array_map(fn($r) => [
-            'id'   => $r['id'],
-            'text' => $r['full_name'] . ($r['ministry'] ? ' — ' . strtoupper($r['ministry']) : ''),
+            'id'         => $r['id'],
+            'text'       => $r['full_name'] . ($r['ministry'] ? ' — ' . strtoupper($r['ministry']) : ''),
+            'first_name' => $r['first_name'] ?? '',
+            'last_name'  => $r['last_name']  ?? '',
+            'full_name'  => $r['full_name']  ?? '',
         ], $rows);
         echo json_encode(['results' => $results]);
         exit();
@@ -788,6 +1008,109 @@ switch ($action) {
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
         if ($currentUserType !== 'admin') { header('Location: index.php'); exit(); }
         $settingsController->activateVgOption($_GET['id']);
+        break;
+
+    // ─── Facility Booking (Phase G) ──────────────────────────────────
+    // Calendar + the four policy steps: Requestor -> Facilities Review ->
+    // Minister -> Facilities Confirmation. Each transition is its own action
+    // so the append-only history gets exactly one row per decision.
+    //
+    // Every gate below asks config/permissions.php rather than comparing an
+    // accounttype string, so the matrix lives in exactly one file. The
+    // controller re-checks the same helpers — a route guard alone would be
+    // bypassable the moment a method is called from anywhere else.
+    case 'facilityCalendar':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canViewFacilityBooking($currentUserType)) { header('Location: index.php'); exit(); }
+        $facilityController->showCalendar();
+        break;
+
+    case 'submitFacilityRequest':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canSubmitFacilityRequest($currentUserType)) { header('Location: index.php'); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $facilityController->submitRequest($_POST);
+        } else {
+            header('Location: index.php?action=facilityCalendar');
+        }
+        break;
+
+    case 'updateFacilityRequest':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canSubmitFacilityRequest($currentUserType)) { header('Location: index.php'); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $facilityController->updateRequest((int)($_GET['id'] ?? 0), $_POST);
+        } else {
+            header('Location: index.php?action=facilityCalendar');
+        }
+        break;
+
+    case 'facilitiesReviewRequest':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canFacilitiesReview($currentUserType)) { header('Location: index.php?action=facilityCalendar&tab=requests&error=1&msg=' . urlencode('Only Facilities Personnel may perform the Facilities review.')); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $facilityController->facilitiesReview((int)($_GET['id'] ?? 0), $_POST);
+        } else {
+            header('Location: index.php?action=facilityCalendar');
+        }
+        break;
+
+    case 'ministerDecideRequest':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        // Admin only. Facilities Personnel are deliberately excluded (policy 5.2 / 6.2).
+        if (!canMinisterApprove($currentUserType)) { header('Location: index.php?action=facilityCalendar&tab=requests&error=1&msg=' . urlencode('Only the Minister may approve or decline a request.')); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $facilityController->ministerDecision(
+                (int)($_GET['id'] ?? 0), $_POST['decision'] ?? '', $_POST['minister_comments'] ?? null
+            );
+        } else {
+            header('Location: index.php?action=facilityCalendar');
+        }
+        break;
+
+    case 'confirmFacilityRequest':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canFacilitiesConfirm($currentUserType)) { header('Location: index.php?action=facilityCalendar&tab=requests&error=1&msg=' . urlencode('Only Facilities Personnel may confirm a reservation.')); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $facilityController->confirmRequest(
+                (int)($_GET['id'] ?? 0), $_POST['notes'] ?? null, !empty($_POST['force'])
+            );
+        } else {
+            header('Location: index.php?action=facilityCalendar');
+        }
+        break;
+
+    case 'cancelFacilityRequest':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        // No per-account ownership column exists on facility_requests, so this
+        // cannot be "cancel your own" — it is Facilities/admin only for now.
+        if (!canCancelFacilityRequest($currentUserType)) { header('Location: index.php?action=facilityCalendar&tab=requests&error=1&msg=' . urlencode('Ask Facilities Personnel to cancel this request.')); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $facilityController->cancelRequest((int)($_GET['id'] ?? 0), $_POST['notes'] ?? null);
+        } else {
+            header('Location: index.php?action=facilityCalendar');
+        }
+        break;
+
+    // Read-only AJAX. Any logged-in account, including one that cannot act on
+    // the workflow — a person who may not confirm may still need to read why a
+    // room is taken and who decided it.
+    case 'ajaxFacilityRequestHistory':
+        if (!isset($_SESSION['user'])) { http_response_code(401); exit(); }
+        if (!canViewFacilityBooking($currentUserType)) { http_response_code(403); exit(); }
+        $facilityController->ajaxRequestHistory((int)($_GET['id'] ?? 0));
+        break;
+
+    case 'ajaxFacilityRequestDetail':
+        if (!isset($_SESSION['user'])) { http_response_code(401); exit(); }
+        if (!canViewFacilityBooking($currentUserType)) { http_response_code(403); exit(); }
+        $facilityController->ajaxRequestDetail((int)($_GET['id'] ?? 0));
+        break;
+
+    case 'ajaxFacilityAvailability':
+        if (!isset($_SESSION['user'])) { http_response_code(401); exit(); }
+        if (!canViewFacilityBooking($currentUserType)) { http_response_code(403); exit(); }
+        $facilityController->ajaxCheckAvailability();
         break;
 
     // ─── Default / Dashboard ─────────────────────────────────────────

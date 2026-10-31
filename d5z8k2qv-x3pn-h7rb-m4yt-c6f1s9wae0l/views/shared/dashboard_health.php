@@ -24,7 +24,7 @@ $healthCards = [
 ];
 $bucketLabels = ['weekly' => 'Weekly', 'monthly' => 'Monthly', 'quarterly' => 'Quarterly', 'annually' => 'Annually'];
 ?>
-<div class="card mb-4">
+<div class="card mb-4" id="churchHealth">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h6 class="mb-0">
             <i class="bi bi-activity me-2"></i>Attendance &amp; Church Health
@@ -125,6 +125,90 @@ $bucketLabels = ['weekly' => 'Weekly', 'monthly' => 'Monthly', 'quarterly' => 'Q
             <div class="chart-box chart-box-sm"><canvas id="dashTrendChart"></canvas></div>
         </div>
         <?php endif; ?>
+
+        <!-- ── Sunday Service Attendance ── -->
+        <?php
+        // Recorded head counts from service_attendances. Its own range filter,
+        // because it scopes a different table from the class filter above —
+        // and ONE scope drives the four cards, the average and the chart.
+        $saEmpty = ((int)($sundayStats['records'] ?? 0)) === 0;
+        ?>
+        <div class="border-top pt-3 mb-4" id="sundayAttendance">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <span class="small fw-bold text-muted text-uppercase" style="letter-spacing:.05em">
+                    <i class="bi bi-people-fill me-1"></i>Sunday Service Attendance
+                    <span class="fw-normal text-lowercase">&mdash; <?php echo htmlspecialchars($sundayScope['label']); ?></span>
+                </span>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Attendance range">
+                        <?php foreach (ServiceAttendance::RANGES as $srKey => $srLabel): ?>
+                        <a href="<?php echo htmlspecialchars($sundayUrl($srKey)); ?>"
+                           class="btn btn-sm <?php echo $sundayRange === $srKey ? 'btn-primary' : 'btn-outline-primary'; ?>">
+                            <?php echo htmlspecialchars($srLabel); ?>
+                        </a>
+                        <?php endforeach; ?>
+                    </div>
+                    <a href="index.php?action=serviceAttendance" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-plus-circle me-1"></i>Record
+                    </a>
+                </div>
+            </div>
+
+            <div class="row g-2">
+                <?php
+                // Latest Sunday is the whole most recent service DAY (all its
+                // services summed), not whichever row was entered last.
+                $saCards = [
+                    ['label' => 'Latest Sunday', 'value' => $sundayLatest['date'] ? (int)$sundayLatest['total'] : null,
+                     'sub'   => $sundayLatest['date'] ? date('M j, Y', strtotime($sundayLatest['date'])) . ' · ' . (int)$sundayLatest['services'] . ' service' . ((int)$sundayLatest['services'] === 1 ? '' : 's') : 'no entries yet',
+                     'color' => 'primary', 'icon' => 'bi-calendar-event'],
+                    ['label' => 'Adults', 'value' => $saEmpty ? null : (int)$sundayStats['adults'],
+                     'sub'   => 'in range', 'color' => 'success', 'icon' => 'bi-person'],
+                    ['label' => 'Kids', 'value' => $saEmpty ? null : (int)$sundayStats['kids'],
+                     'sub'   => 'in range', 'color' => 'info', 'icon' => 'bi-balloon'],
+                    ['label' => 'Average Attendance', 'value' => $saEmpty ? null : (int)$sundayStats['average'],
+                     'sub'   => $saEmpty ? 'no entries yet' : 'per service · ' . (int)$sundayStats['records'] . ' entries',
+                     'color' => 'warning', 'icon' => 'bi-calculator'],
+                ];
+                foreach ($saCards as $saCard): ?>
+                <div class="col-6 col-lg-3">
+                    <a href="index.php?action=serviceAttendance" class="card h-100 stat-card text-decoration-none text-reset border-<?php echo $saCard['color']; ?> border-opacity-25">
+                        <div class="card-body py-2 px-2 text-center">
+                            <i class="bi <?php echo $saCard['icon']; ?> text-<?php echo $saCard['color']; ?>"></i>
+                            <div class="h4 fw-bold text-<?php echo $saCard['color']; ?> mb-0 mt-1">
+                                <?php echo $saCard['value'] === null ? '&mdash;' : $saCard['value']; ?>
+                            </div>
+                            <div class="small fw-semibold" style="font-size:11px;"><?php echo htmlspecialchars($saCard['label']); ?></div>
+                            <div class="text-muted" style="font-size:10px;"><?php echo htmlspecialchars($saCard['sub']); ?></div>
+                        </div>
+                    </a>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <?php if (!empty($sundayTrend['labels'])): ?>
+            <div class="mt-3">
+                <div class="small fw-bold text-muted text-uppercase mb-2" style="letter-spacing:.05em">
+                    <i class="bi bi-graph-up me-1"></i>Attendance Trend
+                    <span class="fw-normal text-lowercase">(<?php echo count($sundayTrend['labels']); ?> service day<?php echo count($sundayTrend['labels']) === 1 ? '' : 's'; ?>)</span>
+                </div>
+                <div class="chart-box chart-box-sm"><canvas id="sundayTrendChart"></canvas></div>
+                <div class="mt-2 small text-muted">
+                    <i class="bi bi-calculator me-1"></i>
+                    <?php echo (int)$sundayStats['total']; ?> people &divide; <?php echo (int)$sundayStats['records']; ?> entries
+                    = <strong class="text-warning"><?php echo (int)$sundayStats['average']; ?></strong> average per service.
+                    Computed from the records each time &mdash; no stored average, no stored total.
+                </div>
+            </div>
+            <?php else: ?>
+            <div class="alert alert-light border py-2 small mt-3 mb-0">
+                <i class="bi bi-info-circle me-1"></i>
+                No Sunday head counts recorded for <?php echo htmlspecialchars(strtolower($sundayScope['label'])); ?>.
+                Add them on the <a href="index.php?action=serviceAttendance" class="alert-link">Sunday Service Attendance</a> page
+                and the totals, average and trend will appear here.
+            </div>
+            <?php endif; ?>
+        </div>
 
         <!-- ── Church health ── -->
         <div class="border-top pt-3">

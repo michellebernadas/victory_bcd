@@ -32,10 +32,6 @@ class Member {
                 $sql .= " AND civil_status = ?";
                 $params[] = $filters['civil_status'];
             }
-            if (!empty($filters['volunteer_status'])) {
-                $sql .= " AND volunteer_status = ?";
-                $params[] = $filters['volunteer_status'];
-            }
             if (!empty($filters['member_status'])) {
                 $sql .= " AND member_status = ?";
                 $params[] = $filters['member_status'];
@@ -71,31 +67,49 @@ class Member {
             }
             unset($row);
 
-            // Fetch each member's VG/LG memberships in a single query, then attach
+            // Fetch each member's VG/LG memberships in a single query, then attach.
+            //
+            // A member can be reached through EITHER link slot on a vg_members row: a
+            // couple row ("Amy & Carl") carries member_id for one spouse and member_id_2
+            // for the other. The UNION flattens the two slots into one (row, member)
+            // stream, so both spouses see the group on their own line of the Members page
+            // — which a plain `WHERE vm.member_id IN (...)` could not do, because the row
+            // can only sit on one side of that comparison.
+            //
+            // The *_list sub-selects read display_name first, so a couple shows as the
+            // verbatim "Amy & Carl" rather than being replaced by one spouse's member
+            // record. The source text is never overwritten by what it links to.
             if (!empty($rows)) {
                 $ids = array_column($rows, 'id');
                 $ph  = implode(',', array_fill(0, count($ids), '?'));
+                $nameExpr = "COALESCE(NULLIF(vm2.display_name, ''), m2.full_name, vm2.name)";
                 $stmt = $this->db->prepare(
-                    "SELECT vm.member_id, vm.role, vg.id AS group_id, vg.group_type, vg.group_category,
+                    "SELECT vm.member_id, vm.role, vg.id AS group_id, vg.group_kind, vg.group_type, vg.group_category,
                             vg.day_of_week, vg.meeting_time, vg.meeting_frequency, vg.location, vg.group_status,
-                            (SELECT GROUP_CONCAT(COALESCE(m2.full_name, vm2.name) ORDER BY vm2.sort_order SEPARATOR '||')
+                            (SELECT GROUP_CONCAT($nameExpr ORDER BY vm2.sort_order SEPARATOR '||')
                              FROM vg_members vm2 LEFT JOIN members m2 ON m2.id = vm2.member_id
                              WHERE vm2.group_id = vg.id AND vm2.role = 'leader') AS leader_list,
-                            (SELECT GROUP_CONCAT(COALESCE(m2.full_name, vm2.name) ORDER BY vm2.sort_order SEPARATOR '||')
+                            (SELECT GROUP_CONCAT($nameExpr ORDER BY vm2.sort_order SEPARATOR '||')
                              FROM vg_members vm2 LEFT JOIN members m2 ON m2.id = vm2.member_id
                              WHERE vm2.group_id = vg.id AND vm2.role = 'intern') AS intern_list,
-                            (SELECT GROUP_CONCAT(COALESCE(m2.full_name, vm2.name) ORDER BY vm2.sort_order SEPARATOR '||')
+                            (SELECT GROUP_CONCAT($nameExpr ORDER BY vm2.sort_order SEPARATOR '||')
                              FROM vg_members vm2 LEFT JOIN members m2 ON m2.id = vm2.member_id
                              WHERE vm2.group_id = vg.id AND vm2.role = 'attendee') AS attendee_list,
-                            (SELECT GROUP_CONCAT(COALESCE(m2.full_name, vm2.name) ORDER BY vm2.sort_order SEPARATOR ', ')
+                            (SELECT GROUP_CONCAT($nameExpr ORDER BY vm2.sort_order SEPARATOR ', ')
                              FROM vg_members vm2 LEFT JOIN members m2 ON m2.id = vm2.member_id
                              WHERE vm2.group_id = vg.id AND vm2.role = 'leader') AS leader_names
-                     FROM vg_members vm
+                     FROM (
+                         SELECT group_id, role, sort_order, member_id
+                           FROM vg_members WHERE member_id IN ($ph)
+                         UNION ALL
+                         SELECT group_id, role, sort_order, member_id_2 AS member_id
+                           FROM vg_members WHERE member_id_2 IN ($ph)
+                     ) vm
                      JOIN victory_groups vg ON vg.id = vm.group_id
-                     WHERE vm.member_id IN ($ph) AND vg.is_deleted = 0
+                     WHERE vg.is_deleted = 0
                      ORDER BY FIELD(vm.role, 'leader', 'intern', 'attendee'), vg.group_status"
                 );
-                $stmt->execute($ids);
+                $stmt->execute(array_merge($ids, $ids));
                 $byMember = [];
                 foreach ($stmt->fetchAll() as $r) {
                     $byMember[$r['member_id']][] = $r;
@@ -148,10 +162,10 @@ class Member {
             $stmt = $this->db->prepare("
                 INSERT INTO members (uuid, full_name, last_name, first_name,
                     civil_status, ministry, service_attending,
-                    volunteer_status, contact_number,
+                    contact_number, email, facebook_url,
                     victory_weekend, church_community, making_disciples, empowering_leaders,
                     leadership_113, purple_book_class, spiritual_foundations, member_status, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, ?, ?)
             ");
             $stmt->execute([
                 $uuid,
@@ -161,8 +175,9 @@ class Member {
                 $data['civil_status'] ?? '',
                 $data['ministry'] ?? '',
                 $data['service_attending'] ?? '',
-                strtoupper(trim($data['volunteer_status'] ?? '')),
                 $data['contact_number'] ?? '',
+                self::normalizeOptional($data['email'] ?? null),
+                self::normalizeOptional($data['facebook_url'] ?? null),
                 $data['member_status'] ?? 'active',
                 $data['notes'] ?? ''
             ]);
@@ -171,6 +186,56 @@ class Member {
             error_log("Add member error: " . $e->getMessage());
             return false;
         }
+    }
+
+    /**
+     * Blank optional input stores as NULL, not ''.
+     *
+     * email and facebook_url are nullable with no default, so "never provided"
+     * and "provided then cleared" both have to land on the same value —
+     * otherwise `WHERE email IS NULL` and `WHERE email = ''` would each find a
+     * different half of the members who have no address.
+     */
+    public static function normalizeOptional(?string $value): ?string {
+        $value = trim((string)$value);
+        return $value === '' ? null : $value;
+    }
+
+    /**
+     * Validates the two optional contact fields. Returns an error string, or
+     * null when both are acceptable.
+     *
+     * Both are OPTIONAL: an empty value is always valid. Only a value that was
+     * actually typed gets checked, so the church is never blocked from saving a
+     * member whose email they simply don't have.
+     */
+    public static function validateContactFields(array $data): ?string {
+        $email = self::normalizeOptional($data['email'] ?? null);
+        if ($email !== null) {
+            if (mb_strlen($email) > 255) {
+                return 'Email is too long (maximum 255 characters).';
+            }
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                return 'Please enter a valid email address, for example name@example.com.';
+            }
+        }
+
+        $fb = self::normalizeOptional($data['facebook_url'] ?? null);
+        if ($fb !== null) {
+            if (mb_strlen($fb) > 500) {
+                return 'Facebook Profile link is too long (maximum 500 characters).';
+            }
+            if (!filter_var($fb, FILTER_VALIDATE_URL)) {
+                return 'Please enter a valid Facebook profile link, for example https://facebook.com/username.';
+            }
+            // Only http(s) is rendered as a link. Without this, a javascript:
+            // or data: URL typed into the field would be echoed into an href.
+            $scheme = strtolower((string)parse_url($fb, PHP_URL_SCHEME));
+            if (!in_array($scheme, ['http', 'https'], true)) {
+                return 'The Facebook link must start with http:// or https://.';
+            }
+        }
+        return null;
     }
 
     /**
@@ -216,7 +281,7 @@ class Member {
                 UPDATE members SET
                     full_name = ?, last_name = ?, first_name = ?,
                     civil_status = ?, ministry = ?, service_attending = ?,
-                    volunteer_status = ?, contact_number = ?,
+                    contact_number = ?, email = ?, facebook_url = ?,
                     member_status = ?, notes = ?
                 WHERE id = ?
             ");
@@ -227,8 +292,9 @@ class Member {
                 $data['civil_status'] ?? '',
                 $data['ministry'] ?? '',
                 $data['service_attending'] ?? '',
-                strtoupper(trim($data['volunteer_status'] ?? '')),
                 $data['contact_number'] ?? '',
+                self::normalizeOptional($data['email'] ?? null),
+                self::normalizeOptional($data['facebook_url'] ?? null),
                 $data['member_status'] ?? 'active',
                 $data['notes'] ?? '',
                 $id
@@ -291,12 +357,15 @@ class Member {
             $stmt->execute([$id]);
             $attCount = (int)$stmt->fetchColumn();
 
+            // Either link slot counts as "this member is on a group" — a spouse linked
+            // through a couple row is just as real a membership as a solo row, and the
+            // delete warning must say so.
             $stmt = $this->db->prepare(
                 "SELECT COUNT(*) FROM vg_members vm
                  JOIN victory_groups vg ON vg.id = vm.group_id
-                 WHERE vm.member_id = ? AND vg.is_deleted = 0"
+                 WHERE (vm.member_id = ? OR vm.member_id_2 = ?) AND vg.is_deleted = 0"
             );
-            $stmt->execute([$id]);
+            $stmt->execute([$id, $id]);
             $vgCount = (int)$stmt->fetchColumn();
 
             return [
@@ -457,7 +526,7 @@ class Member {
     public function searchByName(string $term, int $limit = 30): array {
         try {
             $stmt = $this->db->prepare(
-                "SELECT id, full_name, ministry FROM members
+                "SELECT id, full_name, first_name, last_name, ministry FROM members
                  WHERE full_name LIKE ? AND member_status = 'active' AND is_deleted = 0
                  ORDER BY full_name LIMIT ?"
             );

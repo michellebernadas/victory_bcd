@@ -116,6 +116,7 @@ foreach ($scStatuses as $s) {
     <?php include 'shared/menu.php'; ?>
     <div class="main-content">
         <div class="container-fluid">
+        <?php include 'shared/back_to_member.php'; ?>
 
             <!-- Header -->
             <div class="d-flex justify-content-between align-items-center mb-4">

@@ -49,8 +49,18 @@ database/database.sqlite3
 databases
 
 # ...but schema migrations ARE source and must be versioned.
+# Both levels are needed: `!migrations/*.sql` does NOT reach into
+# migrations/reset/, so the reset scripts would otherwise be silently dropped
+# from the repo — exactly the files that most need review before they are run.
 !migrations/
 !migrations/*.sql
+!migrations/reset/
+!migrations/reset/*.sql
+
+# Database BACKUPS, however, must never be committed — they are full dumps of
+# member PII. reset_2026.sh writes them here by default, outside the app dir.
+_backups/
+*_pre_reset_*.sql
 
 # User-uploaded / source data files — contain PII (member rosters, schedules)
 files/

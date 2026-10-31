@@ -16,8 +16,22 @@ class VictoryGroupController {
         $this->vgOptionModel = new VgOption($db);
     }
 
+    // Maps the Groups page's top-level nav tab to the group_kind it filters on.
+    const TAB_KIND_MAP = ['vg' => 'victory_group', 'lg' => 'leadership_group', 'campus' => 'campus'];
+    const KIND_TAB_MAP = ['victory_group' => 'vg', 'leadership_group' => 'lg', 'campus' => 'campus'];
+
+    private function tabForKind($kind) {
+        return self::KIND_TAB_MAP[$kind] ?? 'vg';
+    }
+
     public function listGroups() {
         $filters = [];
+        $tab = $_GET['tab'] ?? 'vg';
+        if (isset(self::TAB_KIND_MAP[$tab])) {
+            $filters['group_kind'] = self::TAB_KIND_MAP[$tab];
+        } elseif (!empty($_GET['group_kind'])) {
+            $filters['group_kind'] = sanitizeInput($_GET['group_kind']);
+        }
         if (!empty($_GET['group_category']))   $filters['group_category']   = sanitizeInput($_GET['group_category']);
         if (!empty($_GET['day_of_week']))       $filters['day_of_week']       = sanitizeInput($_GET['day_of_week']);
         if (!empty($_GET['meeting_frequency'])) $filters['meeting_frequency'] = sanitizeInput($_GET['meeting_frequency']);
@@ -37,9 +51,11 @@ class VictoryGroupController {
         $leaderNames   = $this->groupModel->getDistinctMemberNames('leader');
         $internNames   = $this->groupModel->getDistinctMemberNames('intern');
         $attendeeNames = $this->groupModel->getDistinctMemberNames('attendee');
+        $lgLeaderNames = $this->groupModel->getDistinctMemberNames('lg_leader');
         $distinctTimes = $this->groupModel->getDistinctTimes();
         $allMembers        = $this->groupModel->getAllMembersList();
         $distinctLocations = $this->groupModel->getDistinctLocations();
+        $groupStats        = $this->groupModel->getStats();
         include 'views/victory_groups.php';
     }
 
@@ -61,26 +77,31 @@ class VictoryGroupController {
         $leaders   = $this->parseMembersFromPost('leader_name', 'leader_gender');
         $interns   = $this->parseMembersFromPost('intern_name', 'intern_gender');
         $attendees = $this->parseMembersFromPost('attendee_name');
+        $lgLeaders = $this->parseMembersFromPost('lg_leader_name', 'lg_leader_gender');
+        $tab = $this->tabForKind($data['group_kind'] ?? '');
 
-        if (empty($leaders)) {
-            header('Location: index.php?action=victoryGroups&error=add&msg=' . urlencode('At least one leader is required'));
+        $isLeadership = ($data['group_kind'] ?? '') === 'leadership_group';
+        if ($isLeadership ? empty($lgLeaders) : empty($leaders)) {
+            header('Location: index.php?action=victoryGroups&tab=' . $tab . '&error=add&msg=' . urlencode('At least one leader is required'));
             exit();
         }
 
-        $result = $this->groupModel->addGroup($data, $leaders, $interns, $attendees);
+        $result = $this->groupModel->addGroup($data, $leaders, $interns, $attendees, $lgLeaders);
         if ($result) {
-            header('Location: index.php?action=victoryGroups&notif=add');
+            header('Location: index.php?action=victoryGroups&tab=' . $tab . '&notif=add');
         } else {
-            header('Location: index.php?action=victoryGroups&error=add&msg=' . urlencode('Failed to add group'));
+            header('Location: index.php?action=victoryGroups&tab=' . $tab . '&error=add&msg=' . urlencode('Failed to add group'));
         }
         exit();
     }
 
     public function editGroup($id) {
-        $filters       = [];
+        $editGroup = $this->groupModel->getGroupById($id);
+        $tab = $this->tabForKind(is_array($editGroup) ? ($editGroup['group_kind'] ?? '') : '');
+        $_GET['tab'] = $tab;
+        $filters       = ['group_kind' => self::TAB_KIND_MAP[$tab]];
         $groups        = $this->groupModel->getAllGroups($filters);
-        $editGroup     = $this->groupModel->getGroupById($id);
-        $activeFilters = [];
+        $activeFilters = $filters;
         $statDefs      = $this->statModel->getAll();
         $statsGrouped  = $this->statModel->getStatsGrouped();
         $statSections  = VglStatDefinition::SECTIONS;
@@ -88,9 +109,11 @@ class VictoryGroupController {
         $leaderNames   = $this->groupModel->getDistinctMemberNames('leader');
         $internNames   = $this->groupModel->getDistinctMemberNames('intern');
         $attendeeNames = $this->groupModel->getDistinctMemberNames('attendee');
+        $lgLeaderNames = $this->groupModel->getDistinctMemberNames('lg_leader');
         $distinctTimes = $this->groupModel->getDistinctTimes();
         $allMembers        = $this->groupModel->getAllMembersList();
         $distinctLocations = $this->groupModel->getDistinctLocations();
+        $groupStats        = $this->groupModel->getStats();
         include 'views/victory_groups.php';
     }
 
@@ -98,30 +121,78 @@ class VictoryGroupController {
         $leaders   = $this->parseMembersFromPost('leader_name', 'leader_gender');
         $interns   = $this->parseMembersFromPost('intern_name', 'intern_gender');
         $attendees = $this->parseMembersFromPost('attendee_name');
+        $lgLeaders = $this->parseMembersFromPost('lg_leader_name', 'lg_leader_gender');
+        $tab = $this->tabForKind($data['group_kind'] ?? '');
 
-        $result = $this->groupModel->updateGroup($id, $data, $leaders, $interns, $attendees);
+        $result = $this->groupModel->updateGroup($id, $data, $leaders, $interns, $attendees, $lgLeaders);
         if ($result) {
-            header('Location: index.php?action=victoryGroups&notif=update');
+            header('Location: index.php?action=victoryGroups&tab=' . $tab . '&notif=update');
         } else {
-            header('Location: index.php?action=victoryGroups&error=update&msg=' . urlencode('Failed to update group'));
+            header('Location: index.php?action=victoryGroups&tab=' . $tab . '&error=update&msg=' . urlencode('Failed to update group'));
         }
         exit();
     }
 
     public function deleteGroup($id) {
         // Soft delete: sets group_status='inactive'. Kept for backwards-compat with the Deactivate button.
+        $group = $this->groupModel->getGroupById($id);
+        $tab = $this->tabForKind(is_array($group) ? ($group['group_kind'] ?? '') : '');
         $result = $this->groupModel->deleteGroup($id);
-        header('Location: index.php?action=victoryGroups&notif=' . ($result ? 'deactivate' : 'error'));
+        header('Location: index.php?action=victoryGroups&tab=' . $tab . '&notif=' . ($result ? 'deactivate' : 'error'));
         exit();
     }
 
     public function activateGroup($id) {
+        $group = $this->groupModel->getGroupById($id);
+        $tab = $this->tabForKind(is_array($group) ? ($group['group_kind'] ?? '') : '');
         $result = $this->groupModel->activateGroup($id);
-        header('Location: index.php?action=victoryGroups&notif=' . ($result ? 'activate' : 'error'));
+        header('Location: index.php?action=victoryGroups&tab=' . $tab . '&notif=' . ($result ? 'activate' : 'error'));
+        exit();
+    }
+
+    // ── Manual person linking ────────────────────────────────────────────────
+
+    /**
+     * Link one roster line to one existing member.
+     *
+     * A couple row has two slots and is linked twice, once per spouse. Nothing is
+     * created here and the row's display_name is not touched, so the schedule's
+     * own wording survives the link. The model enforces that slot 2 only exists on
+     * a couple row and that the same member cannot fill both halves.
+     */
+    public function linkVgMember() {
+        $vgmId    = (int)($_POST['vg_member_id'] ?? 0);
+        $slot     = (int)($_POST['slot'] ?? 1);
+        $memberId = (int)($_POST['member_id'] ?? 0);
+        $tab      = $this->tabForKind($this->groupModel->getGroupKindForVgMember($vgmId));
+
+        if ($vgmId <= 0 || $memberId <= 0) {
+            $this->redirectLink($tab, false, 'Choose a member to link this name to.');
+        }
+        $res = $this->groupModel->linkVgMember($vgmId, $slot, $memberId);
+        $this->redirectLink($tab, $res['ok'], $res['msg']);
+    }
+
+    /** Clear one slot. The name stays on the group, back on Needs Link. */
+    public function unlinkVgMember() {
+        $vgmId = (int)($_GET['vgm'] ?? 0);
+        $slot  = (int)($_GET['slot'] ?? 1);
+        $tab   = $this->tabForKind($this->groupModel->getGroupKindForVgMember($vgmId));
+
+        if ($vgmId <= 0) $this->redirectLink($tab, false, 'That name could not be found.');
+        $res = $this->groupModel->unlinkVgMember($vgmId, $slot);
+        $this->redirectLink($tab, $res['ok'], $res['msg']);
+    }
+
+    private function redirectLink($tab, $ok, $msg) {
+        header('Location: index.php?action=victoryGroups&tab=' . $tab
+             . ($ok ? '&notif=link&msg=' : '&error=link&msg=') . urlencode($msg));
         exit();
     }
 
     public function hardDeleteGroup($id) {
+        $group = $this->groupModel->getGroupById($id);
+        $tab = $this->tabForKind(is_array($group) ? ($group['group_kind'] ?? '') : '');
         $usage = $this->groupModel->getUsageInfo((int)$id);
         if ($usage['member_count'] > 0) {
             $msg = sprintf(
@@ -129,11 +200,11 @@ class VictoryGroupController {
                 $usage['member_count'],
                 $usage['member_count'] === 1 ? ' is' : 's are'
             );
-            header('Location: index.php?action=victoryGroups&error=1&msg=' . urlencode($msg));
+            header('Location: index.php?action=victoryGroups&tab=' . $tab . '&error=1&msg=' . urlencode($msg));
             exit();
         }
         $result = $this->groupModel->hardDelete((int)$id);
-        header('Location: index.php?action=victoryGroups&notif=' . ($result ? 'delete' : 'error'));
+        header('Location: index.php?action=victoryGroups&tab=' . $tab . '&notif=' . ($result ? 'delete' : 'error'));
         exit();
     }
 }

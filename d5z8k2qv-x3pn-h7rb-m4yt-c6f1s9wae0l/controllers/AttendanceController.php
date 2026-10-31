@@ -97,10 +97,32 @@ class AttendanceController {
             // but the baptism-specific message lives in syncMemberDiscipleship). Keep both for now.
             $this->syncMemberDiscipleship((int)($data['member_id'] ?? 0), $data);
         }
-        $pt = $data['program_type'] ?? '';
-        $redir = 'index.php?action=attendanceRecords' . ($pt ? '&program_type=' . urlencode($pt) : '');
-        header('Location: ' . $redir . '&notif=' . ($result ? 'add' : 'error'));
+        header('Location: ' . $this->redirectAfterSave($data, $result ? 'add' : 'error'));
         exit();
+    }
+
+    /**
+     * Where to land after a save.
+     *
+     * A record added from the Member Profile modal returns to that profile, so
+     * the admin sees the step light up on the page they were already on. Adding
+     * from the Attendance Records page keeps the existing behaviour.
+     *
+     * return_to is only honoured for the known 'profile' value with a numeric
+     * member id — it is never echoed into the Location header as free text,
+     * which would make it an open redirect.
+     */
+    private function redirectAfterSave(array $data, string $notif): string {
+        if (($data['return_to'] ?? '') === 'profile') {
+            $memberId = (int)($data['member_id'] ?? 0);
+            if ($memberId > 0) {
+                return 'index.php?action=memberProfile&id=' . $memberId . '&notif=' . $notif;
+            }
+        }
+        $pt = $data['program_type'] ?? '';
+        return 'index.php?action=attendanceRecords'
+             . ($pt ? '&program_type=' . urlencode($pt) : '')
+             . '&notif=' . $notif;
     }
 
     public function updateAttendance(int $id, array $data): void {

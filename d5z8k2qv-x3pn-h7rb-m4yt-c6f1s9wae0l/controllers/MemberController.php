@@ -17,7 +17,6 @@ class MemberController {
         $filters = [];
         if (!empty($_GET['ministry']))          $filters['ministry']          = sanitizeInput($_GET['ministry']);
         if (!empty($_GET['civil_status']))      $filters['civil_status']      = sanitizeInput($_GET['civil_status']);
-        if (!empty($_GET['volunteer_status']))  $filters['volunteer_status']  = sanitizeInput($_GET['volunteer_status']);
         if (!empty($_GET['member_status']))     $filters['member_status']     = sanitizeInput($_GET['member_status']);
 
         // Dynamic discipleship step filters
@@ -88,12 +87,11 @@ class MemberController {
         $last  = trim($data['last_name']  ?? '');
         if ($last === '')  return 'Last name is required.';
         if ($first === '') return 'First name is required.';
-        foreach (['civil_status' => 'Life Stage', 'volunteer_status' => 'Volunteer Status'] as $field => $label) {
-            if (empty(trim($data[$field] ?? ''))) return $label . ' is required.';
-        }
+        if (empty(trim($data['civil_status'] ?? '')))      return 'Life Stage is required.';
         if (empty(trim($data['ministry'] ?? '')))          return 'Ministry is required (pick at least one, or "No Ministry").';
         if (empty(trim($data['service_attending'] ?? ''))) return 'Service Attending is required (pick at least one).';
-        return null;
+        // Email / Facebook link are optional, but must be well-formed if given.
+        return Member::validateContactFields($data);
     }
 
     public function editMember($id) {
@@ -179,18 +177,19 @@ class MemberController {
         $paModel     = new ProgramAttendance($this->db);
         $attendances = $paModel->getByMemberGrouped((int)$member['id']);
 
-        // Victory Groups / Leadership Groups this member belongs to
+        // Victory Groups / Leadership Groups this member belongs to.
+        // Either link slot counts: a spouse linked through slot 2 of a couple row
+        // ("Amy & Carl") belongs to that group just as much as a solo row does.
         $stmtVg = $this->db->prepare("
-            SELECT vm.role, vg.id AS group_id, vg.group_type, vg.group_category,
+            SELECT vm.role, vg.id AS group_id, vg.group_kind, vg.group_type, vg.group_category,
                    vg.day_of_week, vg.meeting_time, vg.location, vg.group_status,
-                   COALESCE(m.full_name, vm.name) AS display_name
+                   COALESCE(NULLIF(vm.display_name, ''), vm.name) AS display_name
             FROM vg_members vm
             JOIN victory_groups vg ON vg.id = vm.group_id
-            LEFT JOIN members m ON m.id = vm.member_id
-            WHERE vm.member_id = ? AND vg.is_deleted = 0
+            WHERE (vm.member_id = ? OR vm.member_id_2 = ?) AND vg.is_deleted = 0
             ORDER BY FIELD(vg.group_status,'active','inactive'), vm.role
         ");
-        $stmtVg->execute([$member['id']]);
+        $stmtVg->execute([$member['id'], $member['id']]);
         $memberGroups = $stmtVg->fetchAll();
 
         // Fetch all members of those groups, grouped by group_id then role
@@ -198,9 +197,13 @@ class MemberController {
         if (!empty($memberGroups)) {
             $groupIds = array_unique(array_column($memberGroups, 'group_id'));
             $ph = implode(',', array_fill(0, count($groupIds), '?'));
+            // display_name is the verbatim source text and wins — a couple row stays
+            // "Amy & Carl" on the roster even once both spouses are linked. linked_member_id
+            // is slot 1 (what the single "view profile" link points at); the row's second
+            // link lives on the Victory Groups page, which is where linking is done.
             $stmtGd = $this->db->prepare("
                 SELECT vm.group_id, vm.role, vm.member_id,
-                       COALESCE(m.full_name, vm.name) AS display_name,
+                       COALESCE(NULLIF(vm.display_name, ''), m.full_name, vm.name) AS display_name,
                        m.id AS linked_member_id
                 FROM vg_members vm
                 LEFT JOIN members m ON m.id = vm.member_id

@@ -658,7 +658,7 @@ if (!$isL113View) {
                         No records found.<br>
                         <small>
                             <?php if (empty($activeFilters)): ?>
-                            Run the <a href="import.php">data import</a> first.
+                            Use <strong>Add Record</strong> above to add the first one.
                             <?php else: ?>
                             Try adjusting your filters.
                             <?php endif; ?>

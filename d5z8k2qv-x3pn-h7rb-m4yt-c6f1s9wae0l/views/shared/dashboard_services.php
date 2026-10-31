@@ -53,7 +53,7 @@ $svcRow = function (array $s) use ($svcMax, $svcActive, $svcBusiest) {
     <?php return ob_get_clean();
 };
 ?>
-<div class="card mb-4">
+<div class="card mb-4" id="sundayServices">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h6 class="mb-0 text-white"><i class="bi bi-clock me-2"></i>Worship Service Attendance</h6>
         <div class="d-flex align-items-center gap-2">
