@@ -368,7 +368,8 @@
         loading.classList.remove('d-none');
         body.classList.add('d-none');
         body.innerHTML = '';
-        el('fd_history_btn').onclick = function () { window.openFacilityHistory(id, ''); };
+        // History loads in parallel into its own column beside the details.
+        loadHistory(id, el('fdh_loading'), el('fdh_list'), el('fdh_empty'));
         var act = el('fd_action_btn'), cxl = el('fd_cancel_btn'), wait = el('fd_waiting');
         act.classList.add('d-none'); act.onclick = null;
         cxl.classList.add('d-none'); cxl.onclick = null;
@@ -541,14 +542,17 @@
         cancelled: 'bi-slash-circle text-secondary', edited: 'bi-pencil text-secondary'
     };
 
-    window.openFacilityHistory = function (id, title) {
-        var loading = el('fh_loading'), list = el('fh_list'), empty = el('fh_empty');
-        el('fh_title').textContent = title || ('#' + id);
+    /**
+     * Fetch a request's history and render it as a vertical timeline into the
+     * given list. Shared by the history column inside Request Details and the
+     * standalone History window, so both always look and behave the same.
+     */
+    function loadHistory(id, loading, list, empty) {
         loading.classList.remove('d-none');
         list.classList.add('d-none');
         list.innerHTML = '';
         empty.classList.add('d-none');
-        show('facilityHistoryModal').show();
+        empty.textContent = 'No history recorded for this request yet.';
 
         fetch('index.php?action=ajaxFacilityRequestHistory&id=' + encodeURIComponent(id))
             .then(function (r) { return r.json(); })
@@ -558,7 +562,7 @@
                 if (!entries.length) { empty.classList.remove('d-none'); return; }
                 entries.forEach(function (e) {
                     var li = document.createElement('li');
-                    li.className = 'list-group-item';
+                    li.className = 'fb-tl-item' + (e.to_status === CONFIRMED ? ' fb-tl-official' : '');
                     var when = e.performed_at
                         ? new Date(e.performed_at.replace(' ', 'T')).toLocaleString('en-US',
                             { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -573,10 +577,13 @@
                           + (e.to_status === CONFIRMED ? ' fb-official' : '') + '">'
                           + esc(STATUS_LABELS[e.to_status] || e.to_status) + '</span></div>'
                         : '';
-                    li.innerHTML = '<div class="small text-muted">' + esc(when) + '</div>'
-                        + '<div><i class="bi ' + icon + ' me-1"></i><strong>' + esc(label) + '</strong> by ' + esc(who) + '</div>'
-                        + move
-                        + (e.notes ? '<div class="small fst-italic mt-1">"' + esc(e.notes) + '"</div>' : '');
+                    li.innerHTML = '<span class="fb-tl-dot" aria-hidden="true"><i class="bi ' + icon + '"></i></span>'
+                        + '<div class="fb-tl-body">'
+                        +   '<div class="fw-semibold">' + esc(label) + '</div>'
+                        +   '<div class="small text-muted">' + esc(who) + ' &middot; ' + esc(when) + '</div>'
+                        +   move
+                        +   (e.notes ? '<div class="fb-tl-note small mt-1">' + esc(e.notes) + '</div>' : '')
+                        + '</div>';
                     list.appendChild(li);
                 });
                 list.classList.remove('d-none');
@@ -586,6 +593,14 @@
                 empty.classList.remove('d-none');
                 empty.textContent = 'Could not load the approval history.';
             });
+    }
+
+    // Standalone window — opened from a table row's "More → History".
+    // Never opened from inside Request Details, so it never stacks on it.
+    window.openFacilityHistory = function (id, title) {
+        el('fh_title').textContent = title || ('#' + id);
+        show('facilityHistoryModal').show();
+        loadHistory(id, el('fh_loading'), el('fh_list'), el('fh_empty'));
     };
 })();
 </script>

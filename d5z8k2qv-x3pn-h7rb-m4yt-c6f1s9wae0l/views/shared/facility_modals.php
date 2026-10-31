@@ -518,24 +518,43 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
 
 <!-- ── Read-only detail (opened from a calendar entry) ────────────────────── -->
 <!-- No role gate: anyone who can see the page can read a request and its trail. -->
-<div class="modal fade" id="facilityDetailModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+<!-- Details on the left, the approval history beside them on the right, in ONE
+     window. History used to open as a second modal stacked on top of this one,
+     covering the details it was meant to explain. On narrow screens the two
+     columns stack, history underneath. -->
+<div class="modal fade" id="facilityDetailModal" tabindex="-1" aria-labelledby="fdTitle">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-secondary text-white">
-                <h5 class="modal-title"><i class="bi bi-file-earmark-text me-2"></i>Request Details</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="fdTitle"><i class="bi bi-file-earmark-text me-2"></i>Request Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
-                <div id="fd_loading" class="text-muted small"><i class="bi bi-hourglass-split me-1"></i>Loading…</div>
-                <div id="fd_body" class="d-none"></div>
+            <div class="modal-body p-0">
+                <div class="row g-0">
+                    <div class="col-lg-7 p-3 fd-details">
+                        <div id="fd_loading" class="text-muted small"><i class="bi bi-hourglass-split me-1"></i>Loading…</div>
+                        <div id="fd_body" class="d-none"></div>
+                    </div>
+                    <aside class="col-lg-5 p-3 fd-history" aria-labelledby="fdHistoryTitle">
+                        <h6 id="fdHistoryTitle" class="fw-semibold mb-1">
+                            <i class="bi bi-clock-history me-1" aria-hidden="true"></i>Approval History
+                        </h6>
+                        <p class="small text-muted mb-3">Newest first. Every step is recorded and never overwritten.</p>
+                        <div id="fdh_loading" class="text-muted small"><i class="bi bi-hourglass-split me-1"></i>Loading…</div>
+                        <ol id="fdh_list" class="fb-timeline d-none"></ol>
+                        <div id="fdh_empty" class="text-muted small d-none">No history recorded for this request yet.</div>
+                    </aside>
+                </div>
             </div>
             <div class="modal-footer">
                 <span id="fd_waiting" class="small text-muted me-auto"></span>
+                <!-- Narrow screens only: history sits below the details there. -->
+                <button type="button" class="btn btn-outline-secondary d-lg-none"
+                        onclick="document.getElementById('fdHistoryTitle').scrollIntoView({behavior: 'smooth', block: 'start'});">
+                    <i class="bi bi-clock-history me-1" aria-hidden="true"></i>History
+                </button>
                 <button type="button" class="btn btn-outline-danger d-none" id="fd_cancel_btn">
                     <i class="bi bi-x-circle me-1" aria-hidden="true"></i>Cancel request
-                </button>
-                <button type="button" class="btn btn-outline-secondary" id="fd_history_btn">
-                    <i class="bi bi-clock-history me-1" aria-hidden="true"></i>History
                 </button>
                 <button type="button" class="btn btn-primary d-none" id="fd_action_btn"></button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -557,7 +576,7 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
                     Append-only. Every transition is recorded; no decision is ever overwritten or removed.
                 </p>
                 <div id="fh_loading" class="text-muted small"><i class="bi bi-hourglass-split me-1"></i>Loading…</div>
-                <ul id="fh_list" class="list-group list-group-flush d-none"></ul>
+                <ol id="fh_list" class="fb-timeline d-none"></ol>
                 <div id="fh_empty" class="text-muted small d-none">No history recorded for this request yet.</div>
             </div>
             <div class="modal-footer">
@@ -567,5 +586,42 @@ $currentUserType = $currentUserType ?? ($_SESSION['user']['accounttype'] ?? null
     </div>
 </div>
 
+
+<style>
+/* Request Details: details | history, side by side on large screens. */
+#facilityDetailModal .fd-history { background: var(--bs-tertiary-bg, #f8f9fa); }
+@media (min-width: 992px) {
+    #facilityDetailModal .fd-history { border-left: 1px solid var(--bs-border-color, #dee2e6); }
+    /* Each column scrolls on its own, so a long history never pushes the
+       details (or the action buttons) out of view. */
+    #facilityDetailModal .modal-body { overflow: hidden; display: flex; }
+    #facilityDetailModal .modal-body > .row { flex: 1 1 auto; min-height: 0; width: 100%; }
+    #facilityDetailModal .fd-details,
+    #facilityDetailModal .fd-history { max-height: calc(100vh - 12rem); overflow-y: auto; }
+}
+@media (max-width: 991.98px) {
+    #facilityDetailModal .fd-history { border-top: 1px solid var(--bs-border-color, #dee2e6); }
+}
+
+/* Vertical timeline shared by the history column and the History window. */
+.fb-timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+.fb-timeline::before {
+    content: ""; position: absolute; left: 13px; top: 6px; bottom: 6px;
+    width: 2px; background: var(--bs-border-color, #dee2e6);
+}
+.fb-tl-item { position: relative; padding: 0 0 1rem 2.4rem; }
+.fb-tl-item:last-child { padding-bottom: 0; }
+.fb-tl-dot {
+    position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bs-body-bg, #fff); border: 2px solid var(--bs-border-color, #dee2e6);
+    font-size: .85rem;
+}
+.fb-tl-official .fb-tl-dot { border-color: #198754; }
+.fb-tl-note {
+    background: var(--bs-body-bg, #fff); border-left: 3px solid var(--bs-border-color, #dee2e6);
+    padding: .35rem .6rem; border-radius: .25rem; color: var(--bs-secondary-color, #6c757d);
+}
+</style>
 
 <?php include 'facility_modals_js.php'; ?>
