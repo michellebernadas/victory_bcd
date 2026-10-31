@@ -103,8 +103,11 @@ function getDB()
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
-            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"
         ]);
+        // Was PDO::MYSQL_ATTR_INIT_COMMAND, deprecated in PHP 8.5 (renamed to
+        // Pdo\Mysql::ATTR_INIT_COMMAND, which doesn't exist on 8.2/8.3).
+        // Running the same statement right after connecting works on both.
+        $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
         return $pdo;
     } catch (PDOException $e) {
         error_log("Database connection failed: " . $e->getMessage());
