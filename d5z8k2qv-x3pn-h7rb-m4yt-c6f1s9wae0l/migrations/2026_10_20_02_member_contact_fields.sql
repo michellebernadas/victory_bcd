@@ -36,8 +36,10 @@ ALTER TABLE `members`
         AFTER `email`;
 
 -- Supports the importer's exact-email duplicate check without scanning members.
+-- Prefix of 191 chars: production is MariaDB 10.1, whose default 767-byte
+-- index limit rejects a full utf8mb4 VARCHAR(255) (1020 bytes). 191 x 4 = 764.
 ALTER TABLE `members`
-    ADD INDEX IF NOT EXISTS `idx_members_email` (`email`);
+    ADD INDEX IF NOT EXISTS `idx_members_email` (`email`(191));
 
 INSERT IGNORE INTO `schema_migrations` (`filename`, `notes`)
 VALUES ('2026_10_20_02_member_contact_fields.sql', 'Members: +email, +facebook_url.');

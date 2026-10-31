@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS `service_attendances` (
     `service_name` VARCHAR(100) NOT NULL COMMENT 'Matches services.name where is_service_time = 1, e.g. "8:30 AM".',
     `adults`       INT(11)      NOT NULL DEFAULT 0,
     `kids`         INT(11)      NOT NULL DEFAULT 0,
-    `grand_total`  INT(11) AS (`adults` + `kids`) STORED
+    `grand_total`  INT(11) AS (`adults` + `kids`) PERSISTENT
         COMMENT 'Always adults + kids. Generated — never written by the app, never typed by an admin.',
     `notes`        VARCHAR(255) DEFAULT NULL COMMENT 'Optional, e.g. "Baptism Sunday", "typhoon".',
     `recorded_by`  INT(11)      DEFAULT NULL COMMENT 'accounts.id of the admin who entered this.',

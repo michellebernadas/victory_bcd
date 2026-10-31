@@ -172,23 +172,24 @@ include 'shared/header.php';
                 </div>
                 <div class="col-6 col-md-4 col-lg-2">
                     <?php
-                    // Prefers the actual recorded head count for the most recent
-                    // service day. Until the first entry exists it falls back to
-                    // the member service sign-ups, which is what this card showed
-                    // before there was anywhere to record a real count.
-                    $sundayCardValue = $sundayLatest['date']
-                        ? (int)$sundayLatest['total']
-                        : ($sundayServiceTotal > 0 ? $sundayServiceTotal : null);
+                    // Actual recorded head count for the most recent service day
+                    // only. No fallback to member service sign-ups: those count
+                    // who *usually* attends, not who came, and would show a
+                    // plausible-looking number before any Sunday was recorded.
+                    $sundayCardValue = $sundayLatest['date'] ? (int)$sundayLatest['total'] : null;
                     ?>
-                    <a href="<?php echo $sundayLatest['date'] ? 'index.php?action=serviceAttendance' : $sundayAnchor; ?>"
+                    <a href="index.php?action=serviceAttendance"
                        class="card text-center h-100 stat-card text-decoration-none text-reset"
                        title="<?php echo $sundayLatest['date']
                            ? 'Recorded head count for ' . htmlspecialchars(date('M j, Y', strtotime($sundayLatest['date'])))
-                           : 'Jump to Attendance &amp; Church Health'; ?>">
+                           : 'No Sunday attendance recorded yet — click to add the first entry'; ?>">
                         <div class="card-body py-3">
                             <i class="bi bi-heart-pulse display-5 text-success mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo $sundayCardValue !== null ? $sundayCardValue : '—'; ?></div>
                             <small class="text-muted">Sunday Service Attendance</small>
+                            <?php if ($sundayCardValue === null): ?>
+                            <div class="small text-muted">no entries yet</div>
+                            <?php endif; ?>
                         </div>
                     </a>
                 </div>
