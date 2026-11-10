@@ -365,6 +365,17 @@ function facilityNextAction($status, $role = null) {
     return null;
 }
 
+// ── Dashboard ────────────────────────────────────────────────────────────────
+
+/**
+ * The dashboard, and its Church Health Excel export. Any logged-in account
+ * sees the dashboard, so the export carries the same gate: it is the same
+ * attendance figures in a spreadsheet, not anything the page does not show.
+ */
+function canViewDashboard($role = null) {
+    return currentRole($role) !== null;
+}
+
 // ── Everything else stays admin-only ─────────────────────────────────────────
 
 /**

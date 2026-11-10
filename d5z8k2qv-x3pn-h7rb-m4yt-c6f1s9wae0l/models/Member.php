@@ -485,33 +485,9 @@ class Member {
         return $stats;
     }
 
-    /** Active-member counts per worship service, split into AM / PM. */
-    public function getServiceAttendanceStats(): array {
-        $out = [];
-        try {
-            $services = $this->db->query(
-                "SELECT name, service_period FROM services
-                  WHERE is_active = 1 AND is_deleted = 0 ORDER BY sort_order ASC, name ASC"
-            )->fetchAll();
-            // members.service_attending is a CSV ("8:30 AM, 11:00 AM") — match whole tokens.
-            $stmt = $this->db->prepare(
-                "SELECT COUNT(*) FROM members
-                  WHERE is_deleted = 0 AND member_status = 'active'
-                    AND CONCAT(', ', service_attending, ', ') LIKE CONCAT('%, ', ?, ', %')"
-            );
-            foreach ($services as $svc) {
-                $stmt->execute([$svc['name']]);
-                $out[] = [
-                    'name'   => $svc['name'],
-                    'period' => $svc['service_period'] ?? '',
-                    'count'  => (int)$stmt->fetchColumn(),
-                ];
-            }
-        } catch (PDOException $e) {
-            error_log("getServiceAttendanceStats error: " . $e->getMessage());
-        }
-        return $out;
-    }
+    // getServiceAttendanceStats() (members' preferred service sign-ups) was
+    // removed with the dashboard card it fed; the dashboard now shows recorded
+    // attendance per service time (ServiceAttendance::getServiceBreakdown).
 
     // ── Removed: former duplicate sources of truth ──────────────────────────
     // buildManualBooleans / syncManualJunction / syncMemberDiscipleship /

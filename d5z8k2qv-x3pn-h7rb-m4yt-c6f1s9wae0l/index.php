@@ -1243,6 +1243,14 @@ switch ($action) {
         $facilityController->ajaxCheckAvailability();
         break;
 
+    // Church Health (dashboard) -> Excel. Same gate as the dashboard itself.
+    case 'churchHealthExport':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canViewDashboard($currentUserType)) { header('Location: index.php'); exit(); }
+        require_once 'controllers/ChurchHealthExportController.php';
+        (new ChurchHealthExportController($db))->download($_GET, (string)($_SESSION['user']['username'] ?? ''));
+        break;
+
     // ─── Default / Dashboard ─────────────────────────────────────────
     default:
         if (isset($_SESSION['user'])) {

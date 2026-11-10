@@ -37,15 +37,64 @@ body {
   font-weight: 600;
 }
 
+/* ── Dashboard cards: clickable vs information-only ────────────────────────
+   A plain .stat-card is information only: no hover, default cursor. A card
+   that goes somewhere (an <a class="stat-card"> or .is-clickable) gets the
+   pointer, a lift + shadow + border tint on hover, a keyboard focus ring and
+   a small chevron in the corner, so "can I click this?" is never a guess. */
 .stat-card {
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
   cursor: default;
 }
-.stat-card:hover {
+a.stat-card,
+.is-clickable {
+  cursor: pointer;
+  position: relative;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+a.stat-card:hover,
+.is-clickable:hover {
   transform: translateY(-3px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  border-color: rgba(23, 66, 245, 0.55) !important;
+}
+a.stat-card:focus-visible,
+.is-clickable:focus-visible {
+  outline: 3px solid rgba(23, 66, 245, 0.6);
+  outline-offset: 2px;
+}
+a.stat-card::after,
+.is-clickable::after {
+  content: "\F285"; /* bootstrap-icons chevron-right */
+  font-family: "bootstrap-icons";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 11px;
+  line-height: 1;
+  color: #6c757d;
+  opacity: 0.45;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+a.stat-card:hover::after,
+.is-clickable:hover::after {
+  opacity: 1;
+  transform: translateX(2px);
+}
+@media (prefers-reduced-motion: reduce) {
+  a.stat-card, .is-clickable, a.stat-card::after, .is-clickable::after { transition: none; }
+  a.stat-card:hover, .is-clickable:hover { transform: none; }
+}
+/* Text links inside dashboard cards (e.g. Discipleship Journey steps). */
+.dash-link {
+  cursor: pointer;
+}
+.dash-link:hover,
+.dash-link:focus-visible {
+  text-decoration: underline !important;
+  color: #1742f5 !important;
 }
 
 /* ── Purple theme colour (Bootstrap 5 has no built-in purple) ──────────────

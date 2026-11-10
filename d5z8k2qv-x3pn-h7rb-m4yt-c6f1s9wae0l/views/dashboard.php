@@ -20,9 +20,9 @@ $paTotals = $paModel->getTotalByProgram();
 $paUnmatched = $paModel->getUnmatchedCount();
 // Distinct PEOPLE per class (not rows) — the headline figure on the class cards.
 $participantsByProgram = $paModel->getParticipantsByProgram();
-// ── Dashboard filter (Average Attendance + Church Health) ──────────────────
-// Both panels answer "how are we doing", so they share one filter rather than
-// each carrying its own controls.
+// ── Discipleship classes filter (Class / Year / trend bucket) ─────────────
+// Drives only the "Discipleship classes — average attendance" card and the
+// Leadership card's data source; Church Health has its own Sunday range.
 $dashClass  = $_GET['dash_class']  ?? '';
 $dashYear   = (int)($_GET['dash_year'] ?? 0);
 $dashBucket = in_array($_GET['dash_bucket'] ?? '', ['weekly','monthly','quarterly','annually'], true)
@@ -36,9 +36,10 @@ $attendanceSeries   = $paModel->getAttendanceSeries($dashBucket, $dashClass, $da
 $dashYearOptions    = $paModel->getAvailableYears();
 // Preserves the current filter when building a link that changes one facet.
 $dashUrl = function (array $over = []) use ($dashClass, $dashYear, $dashBucket) {
-    $q = array_merge(['dash_class' => $dashClass, 'dash_year' => $dashYear ?: '', 'dash_bucket' => $dashBucket], $over);
+    $q = array_merge(['dash_class' => $dashClass, 'dash_year' => $dashYear ?: '', 'dash_bucket' => $dashBucket,
+                      'sunday_range' => $_GET['sunday_range'] ?? ''], $over);
     $q = array_filter($q, fn($v) => $v !== '' && $v !== null);
-    return 'index.php' . ($q ? '?' . http_build_query($q) : '');
+    return 'index.php' . ($q ? '?' . http_build_query($q) : '') . '#classAttendance';
 };
 $dashFilterCount = count(array_filter([$dashClass, $dashYear]));
 // ── Sunday Service Attendance (Church Health) ─────────────────────────────
@@ -98,10 +99,10 @@ $sundayUrl = function (string $range) use ($dashClass, $dashYear, $dashBucket) {
     return 'index.php?' . http_build_query($q) . '#churchHealth';
 };
 
-// Feeds the Worship Service Attendance panel (shared/dashboard_services.php).
-// The Serve Teams roll-up, the member-sign-up Sunday total and its anchor that
-// used to sit here fed cards the church asked to remove; nothing read them.
-$serviceStats       = $memberModel->getServiceAttendanceStats();
+// Church Health "By service time": recorded head counts per service for the
+// same Sunday range. Replaces the member service SIGN-UP counts
+// (Member::getServiceAttendanceStats), which were not attendance.
+$serviceBreakdown = $saModel->getServiceBreakdown($sundayScope['filters']);
 
 // The "Volunteers & Their Discipleship Journey" roll-up was removed with the
 // volunteer_status column. It was only ever as good as a field that was blank
@@ -244,16 +245,13 @@ include 'shared/header.php';
             </div>
 
 
-            <!-- Attendance & Church Health (one section, one shared filter) -->
+            <!-- Church Health: real attendance (Sundays, per service, gatherings, monthly, export) -->
             <?php include 'shared/dashboard_health.php'; ?>
-
-            <!-- Worship Service Attendance -->
-            <?php if (!empty($serviceStats)) include 'shared/dashboard_services.php'; ?>
 
             <!-- Discipleship Journey Progress -->
             <div class="row mb-4">
                 <div class="col-md-8">
-                    <div class="card h-100">
+                    <div class="card mb-4">
                         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <h6 class="mb-0"><i class="bi bi-bar-chart-steps me-2"></i>Discipleship Journey Overview</h6>
                             <span class="badge bg-light text-muted border small" title="Auto-synced from Attendance Records — adding/removing a record updates the flag automatically.">
@@ -285,7 +283,7 @@ include 'shared/header.php';
                             ?>
                             <div class="mb-3">
                                 <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <a href="<?php echo $step['link']; ?>" class="fw-semibold small text-decoration-none text-reset" title="Open <?php echo htmlspecialchars($step['label']); ?> records">
+                                    <a href="<?php echo $step['link']; ?>" class="fw-semibold small text-decoration-none text-reset dash-link" title="Open <?php echo htmlspecialchars($step['label']); ?> records">
                                         <i class="bi <?php echo $step['icon']; ?> me-1 text-<?php echo $step['color']; ?>"></i><?php echo $step['label']; ?>
                                         <i class="bi bi-box-arrow-up-right ms-1 text-muted" style="font-size:9px;"></i>
                                     </a>
@@ -307,6 +305,9 @@ include 'shared/header.php';
                             <a href="index.php?action=members" class="btn btn-sm btn-primary"><i class="bi bi-people me-1"></i>Manage Members</a>
                         </div>
                     </div>
+                    <!-- Discipleship classes — average attendance (own Class / Year filter),
+                         beside the Journey Overview it belongs with. -->
+                    <?php include 'shared/dashboard_classes.php'; ?>
                 </div>
 
                 <!-- Quick Actions -->
@@ -391,6 +392,9 @@ include 'shared/header.php';
                     </div>
                 </div>
             </div>
+
+            <!-- Leadership ratios (plain language; one line until leaders are connected) -->
+            <?php include 'shared/dashboard_leadership.php'; ?>
 
             <!-- Program Attendance Summary -->
             <div class="row mb-4">

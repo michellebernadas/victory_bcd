@@ -309,6 +309,76 @@ class ServiceAttendance
         }
     }
 
+    /**
+     * Dashboard per-service breakdown for a range: one row per REAL service
+     * time (services.is_service_time = 1, active), in the church's order.
+     * Averages are per Sunday the service was actually held — a row exists
+     * only when it ran — so 4:30 PM (from June) is not diluted by the months
+     * before it started. Kids Church averages only the Sundays it was counted.
+     * `latest_*` is that service on the range's most recent Sunday, and
+     * `latest_share` its percentage of that day's grand total.
+     *
+     * @return array{latest_date:?string,latest_total:int,rows:array}
+     */
+    public function getServiceBreakdown(array $filters = []): array
+    {
+        $out = ['latest_date' => null, 'latest_total' => 0, 'rows' => []];
+        try {
+            [$where, $params] = $this->buildWhere($filters, 'sa');
+            $on = $where !== '' ? ' AND ' . substr($where, 6) : '';
+            $stmt = $this->db->prepare(
+                "SELECT s.name,
+                        COUNT(sa.id)                    AS sundays,
+                        AVG(sa.adults)                  AS avg_service,
+                        AVG(CASE WHEN sa.kids_recorded = 1 THEN sa.kids END) AS avg_kids,
+                        COALESCE(SUM(sa.kids_recorded = 1), 0) AS kids_days,
+                        COALESCE(SUM(sa.adults), 0)     AS total_service
+                   FROM services s
+                   LEFT JOIN service_attendances sa ON sa.service_name = s.name{$on}
+                  WHERE s.is_service_time = 1 AND s.is_active = 1 AND s.is_deleted = 0
+                  GROUP BY s.id, s.name, s.sort_order
+                  ORDER BY s.sort_order ASC, s.name ASC"
+            );
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll() ?: [];
+
+            $latestStmt = $this->db->prepare("SELECT MAX(sa.service_date) FROM service_attendances sa {$where}");
+            $latestStmt->execute($params);
+            $latest = $latestStmt->fetchColumn() ?: null;
+            $day = [];
+            if ($latest) {
+                $d = $this->db->prepare(
+                    "SELECT service_name, adults, kids, kids_recorded, grand_total
+                       FROM service_attendances WHERE service_date = ?"
+                );
+                $d->execute([$latest]);
+                foreach ($d->fetchAll() ?: [] as $r) $day[$r['service_name']] = $r;
+            }
+            $dayTotal = array_sum(array_map(fn($r) => (int)$r['grand_total'], $day));
+            $round = fn($v) => $v === null ? null : (int)round((float)$v);
+            foreach ($rows as $r) {
+                $l = $day[$r['name']] ?? null;
+                $out['rows'][] = [
+                    'name'          => $r['name'],
+                    'sundays'       => (int)$r['sundays'],
+                    'avg_service'   => $round($r['avg_service']),
+                    'avg_kids'      => $round($r['avg_kids']),
+                    'kids_days'     => (int)$r['kids_days'],
+                    'total_service' => (int)$r['total_service'],
+                    'latest_service' => $l ? (int)$l['adults'] : null,
+                    'latest_kids'    => $l && (int)$l['kids_recorded'] === 1 ? (int)$l['kids'] : null,
+                    'latest_total'   => $l ? (int)$l['grand_total'] : null,
+                    'latest_share'   => $l && $dayTotal > 0 ? (int)round((int)$l['grand_total'] / $dayTotal * 100) : null,
+                ];
+            }
+            $out['latest_date']  = $latest;
+            $out['latest_total'] = $dayTotal;
+        } catch (PDOException $e) {
+            error_log("ServiceAttendance::getServiceBreakdown error: " . $e->getMessage());
+        }
+        return $out;
+    }
+
     /** Distinct service names that actually appear in the records, for the filter. */
     public function getDistinctServiceNames(): array
     {
