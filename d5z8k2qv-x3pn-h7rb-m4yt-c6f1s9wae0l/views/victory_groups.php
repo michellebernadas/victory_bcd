@@ -254,21 +254,21 @@ function renderNameList($members, $showGender = true) {
                     $statCards = [
                         ['label' => 'Victory Groups',   'value' => $gs['vg']          ?? 0, 'color' => 'primary'],
                         ['label' => 'Active',           'value' => $gs['vg_active']   ?? 0, 'color' => 'success'],
-                        ['label' => 'VG Leaders',       'value' => $gs['vg_leaders']  ?? 0, 'color' => 'info'],
-                        ['label' => 'Interns',          'value' => $gs['vg_interns']  ?? 0, 'color' => 'warning'],
+                        ['label' => 'VG Leaders',       'value' => $gs['vg_leaders']  ?? 0, 'color' => 'info',    'to_link' => $gs['vg_leaders_to_link'] ?? 0],
+                        ['label' => 'Interns',          'value' => $gs['vg_interns']  ?? 0, 'color' => 'warning', 'to_link' => $gs['vg_interns_to_link'] ?? 0],
                     ];
                 } elseif ($currentKind === 'leadership_group') {
                     $statCards = [
                         ['label' => 'Leadership Groups', 'value' => $gs['lg']         ?? 0, 'color' => 'primary'],
                         ['label' => 'Active',            'value' => $gs['lg_active']  ?? 0, 'color' => 'success'],
-                        ['label' => 'LG Leaders',        'value' => $gs['lg_leaders'] ?? 0, 'color' => 'info'],
+                        ['label' => 'LG Leaders',        'value' => $gs['lg_leaders'] ?? 0, 'color' => 'info', 'to_link' => $gs['lg_leaders_to_link'] ?? 0],
                     ];
                 } else { // campus
                     $statCards = [
                         ['label' => 'Campus Groups',    'value' => $gs['campus']          ?? 0, 'color' => 'primary'],
                         ['label' => 'Active',           'value' => $gs['campus_active']   ?? 0, 'color' => 'success'],
-                        ['label' => 'Leaders',          'value' => $gs['campus_leaders']  ?? 0, 'color' => 'info'],
-                        ['label' => 'Interns',          'value' => $gs['campus_interns']  ?? 0, 'color' => 'warning'],
+                        ['label' => 'Leaders',          'value' => $gs['campus_leaders']  ?? 0, 'color' => 'info',    'to_link' => $gs['campus_leaders_to_link'] ?? 0],
+                        ['label' => 'Interns',          'value' => $gs['campus_interns']  ?? 0, 'color' => 'warning', 'to_link' => $gs['campus_interns_to_link'] ?? 0],
                     ];
                 }
             ?>
@@ -279,6 +279,13 @@ function renderNameList($members, $showGender = true) {
                         <div class="card-body py-2 px-1">
                             <div class="h4 fw-bold text-<?php echo $sc['color']; ?> mb-0"><?php echo (int)$sc['value']; ?></div>
                             <div style="font-size:11px;" class="text-muted"><?php echo htmlspecialchars($sc['label']); ?></div>
+                            <?php if (!empty($sc['to_link'])): ?>
+                            <!-- Counts are linked people only; say how many are waiting to be linked. -->
+                            <div style="font-size:10px;" class="text-warning-emphasis"
+                                 title="Counted once they are linked to a member record">
+                                <i class="bi bi-link-45deg" aria-hidden="true"></i><?php echo (int)$sc['to_link']; ?> to link
+                            </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>

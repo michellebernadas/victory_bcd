@@ -26,8 +26,10 @@ set "MYSQL=C:\xampp\mysql\bin\mysql.exe"
 set "MYSQLDUMP=C:\xampp\mysql\bin\mysqldump.exe"
 set "SCRIPT_DIR=%~dp0"
 set "RESET_SQL=%SCRIPT_DIR%2026_reset_foundation.sql"
-REM Backups live outside the web root so a redeploy cannot remove them.
-set "BACKUP_DIR=%SCRIPT_DIR%..\..\..\_backups"
+REM Backups are full dumps of member personal data: keep them OUTSIDE the web
+REM root and the git repository. The app's parent folder is still inside the
+REM website, so default to the user's profile folder. Override with VB_BACKUP_DIR.
+if defined VB_BACKUP_DIR (set "BACKUP_DIR=%VB_BACKUP_DIR%") else (set "BACKUP_DIR=%USERPROFILE%\victory_bacolod_backups")
 
 echo ------------------------------------------------------------
 echo   VICTORY BACOLOD - 2026 FOUNDATION RESET

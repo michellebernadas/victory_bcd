@@ -141,6 +141,11 @@ include 'shared/header.php';
                             <i class="bi bi-person-badge display-5 text-info mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['vg_leaders'] ?? 0); ?></div>
                             <small class="text-muted">Active VG Leaders</small>
+                            <?php if (!empty($groupStats['vg_leaders_to_link'])): ?>
+                            <div class="small text-warning-emphasis" title="Counted once they are linked to a member record">
+                                <i class="bi bi-link-45deg" aria-hidden="true"></i><?php echo (int)$groupStats['vg_leaders_to_link']; ?> to link
+                            </div>
+                            <?php endif; ?>
                         </div>
                     </a>
                 </div>
@@ -150,6 +155,11 @@ include 'shared/header.php';
                             <i class="bi bi-person-video2 display-5 text-warning mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['vg_interns'] ?? 0); ?></div>
                             <small class="text-muted">Active Interns</small>
+                            <?php if (!empty($groupStats['vg_interns_to_link'])): ?>
+                            <div class="small text-warning-emphasis" title="Counted once they are linked to a member record">
+                                <i class="bi bi-link-45deg" aria-hidden="true"></i><?php echo (int)$groupStats['vg_interns_to_link']; ?> to link
+                            </div>
+                            <?php endif; ?>
                         </div>
                     </a>
                 </div>

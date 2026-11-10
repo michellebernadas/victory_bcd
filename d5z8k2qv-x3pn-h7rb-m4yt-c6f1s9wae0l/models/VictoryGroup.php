@@ -126,13 +126,6 @@ class VictoryGroup {
             $g['interns']    = $byGroup[$gid]['intern']    ?? [];
             $g['attendees']  = $byGroup[$gid]['attendee']  ?? [];
             $g['lg_leaders'] = $byGroup[$gid]['lg_leader'] ?? [];
-            // Leadership Groups imported before the 'lg_leader' role existed stored their
-            // leaders as plain 'leader'. Treat those as LG leaders so the LG tab, its
-            // filter and its stat card all see the same people.
-            if (($g['group_kind'] ?? '') === 'leadership_group' && empty($g['lg_leaders'])) {
-                $g['lg_leaders'] = $g['leaders'];
-                $g['leaders']    = [];
-            }
         }
 
         return $groups;
@@ -169,6 +162,7 @@ class VictoryGroup {
                 $data['notes']             ?? '',
             ]);
             $groupId = $this->db->lastInsertId();
+            [$leaders, $lgLeaders] = $this->leadersForKind($groupKind, $leaders, $lgLeaders);
             $this->syncMembers($groupId, $leaders, $interns, $attendees, $lgLeaders);
             return $groupId;
         } catch (PDOException $e) {
@@ -202,6 +196,7 @@ class VictoryGroup {
                 $data['notes']             ?? '',
                 $id,
             ]);
+            [$leaders, $lgLeaders] = $this->leadersForKind($groupKind, $leaders, $lgLeaders);
             $this->syncMembers($id, $leaders, $interns, $attendees, $lgLeaders);
             return true;
         } catch (PDOException $e) {
@@ -277,6 +272,19 @@ class VictoryGroup {
      * is_couple is recomputed from the name with the same test the importer uses,
      * so a couple typed straight into the form gets its second slot too.
      */
+    /**
+     * A Leadership Group's leaders are always stored as role 'lg_leader'; every
+     * other kind's as 'leader'. Enforced here, when the group is SAVED, so it
+     * also holds when an admin switches a group's kind in the edit form (the
+     * hidden leader fields of the old kind still post). This replaced a
+     * read-time rule that treated a plain 'leader' inside an LG as its LG
+     * Leader, which only existed for rows imported before 'lg_leader' did.
+     */
+    private function leadersForKind(string $kind, array $leaders, array $lgLeaders): array {
+        if ($kind === 'leadership_group') return [[], array_merge($lgLeaders, $leaders)];
+        return [array_merge($leaders, $lgLeaders), []];
+    }
+
     private function syncMembers($groupId, $leaders, $interns, $attendees, $lgLeaders = []) {
         require_once 'models/GroupImport.php';
 
@@ -553,10 +561,7 @@ class VictoryGroup {
         }
         foreach ($rows as &$r) {
             $r['group_leaders'] = $leaders[(int)$r['group_id']] ?? '';
-            // Same legacy rule as attachMembers(): a plain 'leader' in a Leadership
-            // Group is that group's LG Leader.
-            $r['role_key'] = ($r['group_kind'] === 'leadership_group' && $r['role'] === 'leader')
-                ? 'lg_leader' : $r['role'];
+            $r['role_key'] = $r['role'];
         }
         unset($r);
         return $rows;
@@ -636,6 +641,10 @@ class VictoryGroup {
             'vg' => 0, 'vg_active' => 0, 'vg_leaders' => 0, 'vg_interns' => 0,
             'lg' => 0, 'lg_active' => 0, 'lg_leaders' => 0,
             'campus' => 0, 'campus_active' => 0, 'campus_leaders' => 0, 'campus_interns' => 0,
+            // People on the schedule not counted above yet because they still need
+            // linking to a member record (each spouse of a couple is one person).
+            'vg_leaders_to_link' => 0, 'vg_interns_to_link' => 0, 'lg_leaders_to_link' => 0,
+            'campus_leaders_to_link' => 0, 'campus_interns_to_link' => 0,
         ];
         try {
             $stats['total']  = (int)$this->db->query("SELECT COUNT(*) FROM victory_groups WHERE is_deleted = 0")->fetchColumn();
@@ -657,22 +666,16 @@ class VictoryGroup {
             }
 
             // Distinct linked people per (group_kind, role), counting only active groups.
-            // A plain 'leader' inside a Leadership Group is a legacy pre-'lg_leader' row —
-            // normalised here so it lands in lg_leaders, matching what the LG tab shows.
             $personRows = $this->db->query(
                 "SELECT group_kind, role, COUNT(DISTINCT member_id) AS cnt
                  FROM (
-                     SELECT vg.group_kind,
-                            IF(vg.group_kind = 'leadership_group' AND vm.role = 'leader', 'lg_leader', vm.role) AS role,
-                            vm.member_id
+                     SELECT vg.group_kind, vm.role, vm.member_id
                      FROM vg_members vm
                      JOIN victory_groups vg ON vg.id = vm.group_id
                      WHERE vg.is_deleted = 0 AND vg.group_status = 'active'
                        AND vm.link_status = 'linked' AND vm.member_id IS NOT NULL
                      UNION ALL
-                     SELECT vg.group_kind,
-                            IF(vg.group_kind = 'leadership_group' AND vm.role = 'leader', 'lg_leader', vm.role) AS role,
-                            vm.member_id_2 AS member_id
+                     SELECT vg.group_kind, vm.role, vm.member_id_2 AS member_id
                      FROM vg_members vm
                      JOIN victory_groups vg ON vg.id = vm.group_id
                      WHERE vg.is_deleted = 0 AND vg.group_status = 'active'
@@ -690,6 +693,25 @@ class VictoryGroup {
                 if ($kind === 'campus' && $row['role'] === 'intern') $stats['campus_interns'] = $cnt;
             }
 
+            // Shown beside the counts, so a freshly imported schedule doesn't
+            // read as "0 leaders" before anyone is linked.
+            $toLinkRows = $this->db->query(
+                "SELECT vg.group_kind, vm.role,
+                        SUM(vm.link_status = 'needs_link')
+                      + SUM(vm.is_couple = 1 AND (vm.link_status_2 IS NULL OR vm.link_status_2 = 'needs_link')) AS to_link
+                 FROM vg_members vm
+                 JOIN victory_groups vg ON vg.id = vm.group_id
+                 WHERE vg.is_deleted = 0 AND vg.group_status = 'active'
+                 GROUP BY vg.group_kind, vm.role"
+            )->fetchAll();
+            $prefixOf = ['victory_group' => 'vg', 'leadership_group' => 'lg', 'campus' => 'campus'];
+            $roleOf   = ['leader' => 'leaders', 'lg_leader' => 'leaders', 'intern' => 'interns'];
+            foreach ($toLinkRows as $row) {
+                if (!isset($prefixOf[$row['group_kind']], $roleOf[$row['role']])) continue;
+                $key = $prefixOf[$row['group_kind']] . '_' . $roleOf[$row['role']] . '_to_link';
+                if (array_key_exists($key, $stats)) $stats[$key] = (int)$row['to_link'];
+            }
+
             return $stats;
         } catch (PDOException $e) {
             error_log("VictoryGroup::getStats error: " . $e->getMessage());
@@ -697,15 +719,16 @@ class VictoryGroup {
         }
     }
 
-    public function getDistinctMemberNames($role) {
+    /**
+     * $kind limits the list to one tab (victory_group / leadership_group / campus),
+     * so the Campus tab's Leader filter offers only Campus leaders, and so on.
+     */
+    public function getDistinctMemberNames($role, ?string $kind = null) {
         try {
             // CRITICAL: use the SAME display-name expression as attachMembers() —
             // COALESCE(NULLIF(vm.display_name,''), m.full_name, vm.name). Otherwise the dropdown
             // shows a name that never matches what the row's data-leaders attribute carries, and
             // the filter never matches anything.
-            // Legacy Leadership Groups store their leaders as role 'leader'; attachMembers()
-            // re-buckets those into lg_leaders, so this dropdown has to do the same or the
-            // LG Leader filter would be empty while the rows show names.
             // A couple contributes ONE option — its verbatim string, "Amy & Carl" — because
             // that is the single name the table cell and its data-leaders attribute carry,
             // whether zero, one or both spouses are linked. Offering the two spouses'
@@ -716,12 +739,13 @@ class VictoryGroup {
                  FROM vg_members vm
                  JOIN victory_groups vg ON vg.id = vm.group_id
                  LEFT JOIN members m ON m.id = vm.member_id
-                 WHERE IF(vg.group_kind = 'leadership_group' AND vm.role = 'leader', 'lg_leader', vm.role) = ?
+                 WHERE vm.role = ?
                    AND TRIM(COALESCE(NULLIF(vm.display_name, ''), m.full_name, vm.name)) != ''
                    AND vg.is_deleted = 0
+                   AND (? IS NULL OR vg.group_kind = ?)
                  ORDER BY name"
             );
-            $stmt->execute([$role]);
+            $stmt->execute([$role, $kind, $kind]);
             return $stmt->fetchAll(PDO::FETCH_COLUMN);
         } catch (PDOException $e) {
             error_log("getDistinctMemberNames error: " . $e->getMessage());

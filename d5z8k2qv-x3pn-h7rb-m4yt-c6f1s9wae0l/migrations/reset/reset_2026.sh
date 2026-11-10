@@ -31,9 +31,11 @@ DRY_RUN=0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESET_SQL="$SCRIPT_DIR/2026_reset_foundation.sql"
-# Backups live OUTSIDE the app directory: the church must retain them even if
-# the application is redeployed, and .gitignore must never swallow them.
-BACKUP_DIR="${VB_BACKUP_DIR:-$SCRIPT_DIR/../../../_backups}"
+# Backups are full dumps of member personal data. They must live OUTSIDE the
+# web root (the app's parent folder is still under htdocs / the IIS site, so a
+# visitor could download a .sql from there) and outside the git repository.
+# Default: the user's home folder. Override with VB_BACKUP_DIR.
+BACKUP_DIR="${VB_BACKUP_DIR:-$HOME/victory_bacolod_backups}"
 
 # XAMPP ships its own client; prefer it, fall back to whatever is on PATH.
 MYSQL_BIN="${VB_MYSQL_BIN:-/c/xampp/mysql/bin/mysql.exe}"

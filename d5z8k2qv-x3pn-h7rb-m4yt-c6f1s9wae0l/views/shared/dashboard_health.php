@@ -234,11 +234,23 @@ $bucketLabels = ['weekly' => 'Weekly', 'monthly' => 'Monthly', 'quarterly' => 'Q
                 </div>
                 <?php endforeach; ?>
             </div>
-            <?php if ((int)$dhCh['leaders'] === 0): ?>
+            <?php if ((int)$dhCh['leaders'] === 0):
+                // Leaders on the schedule but not yet linked to a member record
+                // (e.g. straight after the VG Schedule import) vs. none at all.
+                $dhLeadersToLink = (int)(($groupStats['vg_leaders_to_link'] ?? 0) + ($groupStats['lg_leaders_to_link'] ?? 0));
+            ?>
             <div class="alert alert-warning py-2 small mt-3 mb-0">
                 <i class="bi bi-exclamation-triangle me-1"></i>
+                <?php if ($dhLeadersToLink > 0): ?>
+                <?php echo $dhLeadersToLink; ?> Victory Group / Leadership Group leader<?php echo $dhLeadersToLink === 1 ? ' is' : 's are'; ?>
+                on the schedule but not linked to a member record yet, so the ratios can't be worked out.
+                <?php if (function_exists('canAdminister') && canAdminister()): ?>
+                Link them on the <a href="index.php?action=needsLink" class="alert-link">Needs Link</a> page.
+                <?php endif; ?>
+                <?php else: ?>
                 No leaders found on active Victory Groups, so the ratios cannot be computed.
                 Assign leaders on the <a href="index.php?action=victoryGroups" class="alert-link">Victory Groups</a> page.
+                <?php endif; ?>
             </div>
             <?php else: ?>
             <div class="mt-2 small text-muted">

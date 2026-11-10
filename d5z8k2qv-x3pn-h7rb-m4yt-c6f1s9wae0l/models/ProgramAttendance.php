@@ -964,8 +964,8 @@ class ProgramAttendance {
 
     /**
      * Church health — attendance measured against the size of the leadership base.
-     * "Leaders" reuses the existing Victory Group leader relationship
-     * (vg_members.role = 'leader' on a non-deleted, active group).
+     * "Leaders" = distinct linked VG leaders + LG leaders on non-deleted, active
+     * Victory / Leadership Groups (Campus excluded), as everywhere else.
      *
      * @return array{leaders:int,interns:int,attendees:int,attendance:int,active_members:int,
      *               attendance_per_leader:float,attendees_per_leader:float,
@@ -979,25 +979,38 @@ class ProgramAttendance {
             'members_per_leader' => 0.0, 'groups_per_leader' => 0.0,
         ];
         try {
-            // Roster lines, not linked members — this ratio is "how many people are
-            // serving", and an imported name still awaiting a member link is still a
-            // person. A couple row ("Amy & Carl") is ONE row naming TWO people, so it
-            // counts 2; every other row counts 1. Without the is_couple term the
-            // leadership base would be understated by one per couple and every
-            // per-leader ratio would read high.
+            // Same rules as every other people count in the app (VictoryGroup::
+            // getStats): DISTINCT LINKED people, Victory Groups + Leadership Groups
+            // only. Campus is never folded in, a person leading three groups is one
+            // leader, and a name still waiting for a member link isn't counted yet.
+            // Both halves of a couple row are read (member_id and member_id_2).
             $roleCounts = $this->db->query(
-                "SELECT vm.role, SUM(1 + vm.is_couple) AS c
-                   FROM vg_members vm
-                   JOIN victory_groups vg ON vg.id = vm.group_id
-                  WHERE vg.is_deleted = 0 AND vg.group_status = 'active'
-                  GROUP BY vm.role"
+                "SELECT role, COUNT(DISTINCT member_id) AS c
+                   FROM (
+                       SELECT IF(vm.role = 'lg_leader', 'leader', vm.role) AS role, vm.member_id
+                         FROM vg_members vm
+                         JOIN victory_groups vg ON vg.id = vm.group_id
+                        WHERE vg.is_deleted = 0 AND vg.group_status = 'active'
+                          AND vg.group_kind IN ('victory_group', 'leadership_group')
+                          AND vm.link_status = 'linked' AND vm.member_id IS NOT NULL
+                       UNION ALL
+                       SELECT IF(vm.role = 'lg_leader', 'leader', vm.role), vm.member_id_2
+                         FROM vg_members vm
+                         JOIN victory_groups vg ON vg.id = vm.group_id
+                        WHERE vg.is_deleted = 0 AND vg.group_status = 'active'
+                          AND vg.group_kind IN ('victory_group', 'leadership_group')
+                          AND vm.link_status_2 = 'linked' AND vm.member_id_2 IS NOT NULL
+                   ) AS linked_people
+                  GROUP BY role"
             )->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
             $base['leaders']   = (int)($roleCounts['leader']   ?? 0);
             $base['interns']   = (int)($roleCounts['intern']   ?? 0);
             $base['attendees'] = (int)($roleCounts['attendee'] ?? 0);
 
             $base['groups'] = (int)$this->db->query(
-                "SELECT COUNT(*) FROM victory_groups WHERE is_deleted = 0 AND group_status = 'active'"
+                "SELECT COUNT(*) FROM victory_groups
+                  WHERE is_deleted = 0 AND group_status = 'active'
+                    AND group_kind IN ('victory_group', 'leadership_group')"
             )->fetchColumn();
 
             // Attendance respects the dashboard filter; the leadership base is

@@ -31,3 +31,8 @@ tests/_output/
 
 # Claude Code files
 .claude/
+
+# Database backups are full dumps of member personal data. The reset scripts
+# now write them outside the repo, but never let one be committed by accident.
+_backups/
+*_pre_reset_*.sql
