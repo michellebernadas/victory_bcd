@@ -53,6 +53,40 @@ $sundayScope = $saModel->rangeScope($sundayRange);
 $sundayStats  = $saModel->getStats($sundayScope['filters']);
 $sundayLatest = $saModel->getLatestSunday($sundayScope['filters']);
 $sundayTrend  = $saModel->getTrendSeries($sundayScope['filters'], $sundayScope['limit']);
+
+// ── Prayer Meeting & Students' Hangout + month-by-month view ──────────────
+// One year picker (?health_year=) drives the monthly bars for Sundays and
+// both gatherings; the Sunday range above scopes the gathering trend lines.
+require_once 'models/GatheringAttendance.php';
+$gaModel     = new GatheringAttendance($db);
+$healthYears = array_values(array_unique(array_merge($saModel->getYears(), $gaModel->getYears(), [(int)date('Y')])));
+rsort($healthYears);
+$healthYear  = (int)($_GET['health_year'] ?? 0);
+if (!in_array($healthYear, $healthYears, true)) $healthYear = (int)$healthYears[0];
+$sundayMonthly = $saModel->getMonthlyAverages($healthYear);
+$gaMonthly     = $gaModel->getMonthlyAverages($healthYear);
+// Gatherings: "Last 4" means the last 4 events; the date ranges reuse the
+// Sunday range's dates so the whole section describes one period.
+$gaScopeFilters = $sundayRange === 'last4' ? [] : $sundayScope['filters'];
+$gaScopeLimit   = $sundayRange === 'last4' ? 4 : 60;
+$gaStatsAll     = $gaModel->getStatsByType($gaScopeFilters);
+$gaSeries       = [];
+$gaRangeStats   = [];
+foreach (array_keys(GatheringAttendance::TYPES) as $gaT) {
+    $gaSeries[$gaT] = $gaModel->getSeries($gaT, $gaScopeFilters, $gaScopeLimit);
+    $vals = $gaSeries[$gaT]['values'];
+    $gaRangeStats[$gaT] = [
+        'events'  => count($vals),
+        'average' => $vals ? (int)round(array_sum($vals) / count($vals)) : 0,
+        'latest'  => $gaStatsAll[$gaT]['latest'],
+        'latest_date' => $gaStatsAll[$gaT]['latest_date'],
+    ];
+}
+$healthYearUrl = function (int $y) use ($dashClass, $dashYear, $dashBucket, $sundayRange) {
+    $q = array_filter(['dash_class' => $dashClass, 'dash_year' => $dashYear ?: '', 'dash_bucket' => $dashBucket,
+                       'sunday_range' => $sundayRange, 'health_year' => $y], fn($v) => $v !== '' && $v !== null);
+    return 'index.php?' . http_build_query($q) . '#monthlyHealth';
+};
 // Preserves the rest of the dashboard filter when switching the Sunday range.
 $sundayUrl = function (string $range) use ($dashClass, $dashYear, $dashBucket) {
     $q = array_filter([
@@ -116,63 +150,72 @@ include 'shared/header.php';
             <div class="row mb-2">
                 <div class="col-12"><h5 class="text-muted fw-bold" style="font-size:12px; letter-spacing:1px;">MEMBERSHIP</h5></div>
             </div>
-            <div class="row mb-4 g-3">
-                <div class="col-6 col-md-4 col-lg-2">
+            <div class="row mb-4 g-3 dash-top-row">
+                <div class="col-6 col-md-3 col-xl">
                     <a href="index.php?action=members&member_status=active" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open active members">
                         <div class="card-body py-3">
-                            <i class="bi bi-person-check display-5 text-success mb-2"></i>
+                            <i class="bi bi-person-check display-6 text-success mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo (int)($memberStats['active'] ?? 0); ?></div>
                             <small class="text-muted">Active Members</small>
                         </div>
                     </a>
                 </div>
-                <div class="col-6 col-md-4 col-lg-2">
+                <div class="col-6 col-md-3 col-xl">
                     <a href="index.php?action=victoryGroups&tab=vg" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Victory Groups">
                         <div class="card-body py-3">
-                            <i class="bi bi-people-fill display-5 text-primary mb-2"></i>
+                            <i class="bi bi-people-fill display-6 text-primary mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['vg_active'] ?? 0); ?></div>
                             <small class="text-muted">Active Victory Groups</small>
                         </div>
                     </a>
                 </div>
-                <div class="col-6 col-md-4 col-lg-2">
-                    <a href="index.php?action=victoryGroups&tab=vg" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Victory Group Leaders">
+                <div class="col-6 col-md-3 col-xl">
+                    <a href="index.php?action=victoryGroups&amp;tab=lg" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Leadership Groups">
                         <div class="card-body py-3">
-                            <i class="bi bi-person-badge display-5 text-info mb-2"></i>
+                            <i class="bi bi-diagram-3 display-6 text-secondary mb-2"></i>
+                            <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['lg_active'] ?? 0); ?></div>
+                            <small class="text-muted">Active Leadership Groups</small>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-6 col-md-3 col-xl">
+                    <a href="index.php?action=victoryGroups&tab=campus" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Campus groups">
+                        <div class="card-body py-3">
+                            <i class="bi bi-building display-6 text-danger mb-2"></i>
+                            <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['campus_active'] ?? 0); ?></div>
+                            <small class="text-muted">Active Campus Groups</small>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-6 col-md-3 col-xl">
+                    <a href="index.php?action=groupLeaders&amp;role=vg_leader" class="card text-center h-100 stat-card text-decoration-none text-reset" title="See the Victory Group leaders">
+                        <div class="card-body py-3">
+                            <i class="bi bi-person-badge display-6 text-info mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['vg_leaders'] ?? 0); ?></div>
                             <small class="text-muted">Active VG Leaders</small>
                             <?php if (!empty($groupStats['vg_leaders_to_link'])): ?>
-                            <div class="small text-warning-emphasis" title="Counted once they are linked to a member record">
-                                <i class="bi bi-link-45deg" aria-hidden="true"></i><?php echo (int)$groupStats['vg_leaders_to_link']; ?> to link
+                            <div class="small text-warning-emphasis" title="Counted once they are connected to a member profile">
+                                <i class="bi bi-person" aria-hidden="true"></i> <?php echo (int)$groupStats['vg_leaders_to_link']; ?> to connect
                             </div>
                             <?php endif; ?>
                         </div>
                     </a>
                 </div>
-                <div class="col-6 col-md-4 col-lg-2">
-                    <a href="index.php?action=victoryGroups&tab=vg" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Victory Group Interns">
+                <div class="col-6 col-md-3 col-xl">
+                    <a href="index.php?action=groupLeaders&amp;role=vg_intern" class="card text-center h-100 stat-card text-decoration-none text-reset" title="See the Victory Group interns">
                         <div class="card-body py-3">
-                            <i class="bi bi-person-video2 display-5 text-warning mb-2"></i>
+                            <i class="bi bi-person-video2 display-6 text-warning mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['vg_interns'] ?? 0); ?></div>
                             <small class="text-muted">Active Interns</small>
                             <?php if (!empty($groupStats['vg_interns_to_link'])): ?>
-                            <div class="small text-warning-emphasis" title="Counted once they are linked to a member record">
-                                <i class="bi bi-link-45deg" aria-hidden="true"></i><?php echo (int)$groupStats['vg_interns_to_link']; ?> to link
+                            <div class="small text-warning-emphasis" title="Counted once they are connected to a member profile">
+                                <i class="bi bi-person" aria-hidden="true"></i> <?php echo (int)$groupStats['vg_interns_to_link']; ?> to connect
                             </div>
                             <?php endif; ?>
                         </div>
                     </a>
                 </div>
-                <div class="col-6 col-md-4 col-lg-2">
-                    <a href="index.php?action=victoryGroups&tab=campus" class="card text-center h-100 stat-card text-decoration-none text-reset" title="Open Campus groups">
-                        <div class="card-body py-3">
-                            <i class="bi bi-building display-5 text-danger mb-2"></i>
-                            <div class="h3 mb-0 fw-bold"><?php echo (int)($groupStats['campus_active'] ?? 0); ?></div>
-                            <small class="text-muted">Campus</small>
-                        </div>
-                    </a>
-                </div>
-                <div class="col-6 col-md-4 col-lg-2">
+                <div class="col-6 col-md-3 col-xl">
                     <?php
                     // Actual recorded head count for the most recent service day
                     // only. No fallback to member service sign-ups: those count
@@ -186,9 +229,12 @@ include 'shared/header.php';
                            ? 'Recorded head count for ' . htmlspecialchars(date('M j, Y', strtotime($sundayLatest['date'])))
                            : 'No Sunday attendance recorded yet — click to add the first entry'; ?>">
                         <div class="card-body py-3">
-                            <i class="bi bi-heart-pulse display-5 text-success mb-2"></i>
+                            <i class="bi bi-heart-pulse display-6 text-success mb-2"></i>
                             <div class="h3 mb-0 fw-bold"><?php echo $sundayCardValue !== null ? $sundayCardValue : '—'; ?></div>
                             <small class="text-muted">Sunday Service Attendance</small>
+                            <?php if ($sundayCardValue !== null): ?>
+                            <div class="small text-muted" style="font-size:10px;">grand total &middot; <?php echo htmlspecialchars(date('M j', strtotime($sundayLatest['date']))); ?></div>
+                            <?php endif; ?>
                             <?php if ($sundayCardValue === null): ?>
                             <div class="small text-muted">no entries yet</div>
                             <?php endif; ?>
@@ -540,62 +586,67 @@ include 'shared/header.php';
     });
 })();
 
-// Sunday Service Attendance trend. Same bounded .chart-box container and the
-// same options shape as the chart above. The series is already scoped by the
-// Last 4 Sundays / Last 3 Months / This Year filter server-side, so the chart
-// and the Average card always describe the same rows. No labels (which is the
-// empty-table case) means no canvas is rendered at all, so this returns early.
+// Church Health charts. Same bounded .chart-box containers and options shape
+// as the chart above. Each returns early when its canvas was not rendered
+// (the empty-data case), so an empty database draws nothing and logs nothing.
 (function () {
     if (typeof Chart === 'undefined') return;
-    var el = document.getElementById('sundayTrendChart');
-    if (!el) return;
-    var labels = <?php echo json_encode($sundayTrend['labels'] ?? []); ?>;
-    var totals = <?php echo json_encode($sundayTrend['totals'] ?? []); ?>;
-    var adults = <?php echo json_encode($sundayTrend['adults'] ?? []); ?>;
-    var kids   = <?php echo json_encode($sundayTrend['kids']   ?? []); ?>;
-    if (!labels.length) return;
-    new Chart(el, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Grand Total',
-                    data: totals,
-                    borderColor: 'rgba(23,66,245,.9)',
-                    backgroundColor: 'rgba(23,66,245,.12)',
-                    borderWidth: 2, pointRadius: 3, pointHoverRadius: 5,
-                    fill: true, tension: .3
-                },
-                {
-                    label: 'Adults',
-                    data: adults,
-                    borderColor: 'rgba(25,135,84,.85)',
-                    backgroundColor: 'rgba(25,135,84,.08)',
-                    borderWidth: 1.5, pointRadius: 2, pointHoverRadius: 4,
-                    fill: false, tension: .3
-                },
-                {
-                    label: 'Kids',
-                    data: kids,
-                    borderColor: 'rgba(13,202,240,.85)',
-                    backgroundColor: 'rgba(13,202,240,.08)',
-                    borderWidth: 1.5, pointRadius: 2, pointHoverRadius: 4,
-                    fill: false, tension: .3
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            resizeDelay: 120,
+    var baseOpts = function (legend) {
+        return {
+            responsive: true, maintainAspectRatio: false, resizeDelay: 120,
             interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } },
+            plugins: { legend: { display: legend, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } },
             scales: {
                 x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 0, autoSkipPadding: 8 } },
                 y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } }
             }
-        }
+        };
+    };
+    var GREEN = 'rgba(25,135,84,.9)', CYAN = 'rgba(13,150,190,.9)', RED = 'rgba(220,53,69,.85)';
+    function line(label, data, color, fill) {
+        return { label: label, data: data, borderColor: color, backgroundColor: color.replace(/[\d.]+\)$/, '.12)'),
+                 borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, fill: !!fill, tension: .3, spanGaps: false };
+    }
+    function bar(label, data, color) {
+        return { label: label, data: data, backgroundColor: color.replace(/[\d.]+\)$/, '.75)'), borderRadius: 3, maxBarThickness: 22 };
+    }
+
+    // Sunday trend: Sunday Service and Kids Church as two separate series.
+    // A Sunday with no Kids Church count is null -> a gap, not a dip to 0.
+    var el = document.getElementById('sundayTrendChart');
+    var sLabels = <?php echo json_encode($sundayTrend['labels'] ?? []); ?>;
+    if (el && sLabels.length) {
+        new Chart(el, { type: 'line', data: { labels: sLabels, datasets: [
+            line('Sunday Service', <?php echo json_encode($sundayTrend['adults'] ?? []); ?>, GREEN, true),
+            line('Kids Church',    <?php echo json_encode($sundayTrend['kids']   ?? []); ?>, CYAN, false)
+        ] }, options: baseOpts(true) });
+    }
+
+    // Prayer Meeting / Students' Hangout trend lines.
+    var gaSeries = <?php echo json_encode($gaSeries ?? (object)[]); ?>;
+    var gaColors = { prayer_meeting: RED, students_hangout: GREEN };
+    var gaLabels = <?php echo json_encode(array_map(fn($d) => $d['label'], GatheringAttendance::TYPES)); ?>;
+    Object.keys(gaSeries).forEach(function (t) {
+        var c = document.getElementById('gaChart_' + t), s = gaSeries[t];
+        if (!c || !s || !s.labels || !s.labels.length) return;
+        new Chart(c, { type: 'line', data: { labels: s.labels, datasets: [line(gaLabels[t] || t, s.values, gaColors[t] || CYAN, true)] },
+                       options: baseOpts(false) });
     });
+
+    // Month by month (one year): grouped bars, null months left empty.
+    var ms = document.getElementById('monthlySundayChart');
+    if (ms) {
+        new Chart(ms, { type: 'bar', data: { labels: <?php echo json_encode($sundayMonthly['labels'] ?? []); ?>, datasets: [
+            bar('Sunday Service', <?php echo json_encode($sundayMonthly['service'] ?? []); ?>, GREEN),
+            bar('Kids Church',    <?php echo json_encode($sundayMonthly['kids'] ?? []); ?>, CYAN)
+        ] }, options: baseOpts(true) });
+    }
+    var mg = document.getElementById('monthlyGatheringChart');
+    if (mg) {
+        var gm = <?php echo json_encode($gaMonthly['series'] ?? (object)[]); ?>;
+        new Chart(mg, { type: 'bar', data: { labels: <?php echo json_encode($gaMonthly['labels'] ?? []); ?>,
+            datasets: Object.keys(gm).map(function (t) { return bar(gaLabels[t] || t, gm[t], gaColors[t] || CYAN); }) },
+            options: baseOpts(true) });
+    }
 })();
 </script>

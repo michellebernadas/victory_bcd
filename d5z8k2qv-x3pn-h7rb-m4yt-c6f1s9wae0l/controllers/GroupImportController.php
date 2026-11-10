@@ -31,6 +31,7 @@ class GroupImportController {
         }
         $error  = $_GET['msg']  ?? '';
         $notice = $_GET['done'] ?? '';
+        $memberCount = (int)$this->db->query("SELECT COUNT(*) FROM members WHERE is_deleted = 0")->fetchColumn();
         include 'views/group_import.php';
     }
 
@@ -79,16 +80,25 @@ class GroupImportController {
 
         $result = $this->model->commit($batchId, $skip);
 
-        $msg = $result['created'] . ' group' . ($result['created'] === 1 ? '' : 's') . ' created with '
-             . $result['people'] . ' ' . ($result['people'] === 1 ? 'person' : 'people') . '.';
+        // Nothing created (all failed or all unticked): stay on the preview and say why.
+        if ($result['created'] === 0) {
+            $why = !empty($result['errors']) ? implode(' ', $result['errors']) : 'No groups were created. Tick at least one card to import.';
+            header('Location: index.php?action=groupImport&batch=' . urlencode($batchId) . '&msg=' . urlencode($why));
+            exit();
+        }
+
+        $msg = $result['created'] . ' group' . ($result['created'] === 1 ? '' : 's') . ' created.';
         if ($result['needs_link'] > 0) {
-            $msg .= ' ' . $result['needs_link'] . ' still need linking to a member — no members were created.';
+            $msg .= ' Next: add your members, then connect the people on these groups.';
         }
         if ($result['skipped'] > 0)     $msg .= ' ' . $result['skipped'] . ' card(s) skipped.';
         if (!empty($result['errors']))  $msg .= ' ' . count($result['errors']) . ' card(s) failed.';
 
-        header('Location: index.php?action=groupImport&batch=' . urlencode($batchId)
-             . '&done=' . urlencode($msg));
+        // Land on the list for the kind that got the most new groups.
+        $byKind = $result['by_kind'] ?? [];
+        arsort($byKind);
+        $tab = ['victory_group' => 'vg', 'leadership_group' => 'lg', 'campus' => 'campus'][array_key_first($byKind) ?? ''] ?? 'vg';
+        header('Location: index.php?action=victoryGroups&tab=' . $tab . '&notif=link&msg=' . urlencode($msg));
         exit();
     }
 
@@ -96,18 +106,6 @@ class GroupImportController {
         $batchId = trim($_GET['batch'] ?? '');
         if ($batchId !== '') $this->model->discardBatch($batchId);
         header('Location: index.php?action=groupImport');
-        exit();
-    }
-
-    /** Downloadable CSV of every name that will land as Needs Link. */
-    public function downloadReview(): void {
-        $batchId = trim($_GET['batch'] ?? '');
-        if ($batchId === '') { header('Location: index.php?action=groupImport'); exit(); }
-        $csv = $this->model->buildReviewCsv($batchId);
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="vg-schedule-needs-link.csv"');
-        header('Content-Length: ' . strlen($csv));
-        echo $csv;
         exit();
     }
 

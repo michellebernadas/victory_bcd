@@ -422,6 +422,20 @@ class MemberImport {
         return ['created' => $created, 'skipped' => $skipped, 'errors' => $errors];
     }
 
+    /** members.id of every row this batch created — for the "connect them" suggestions. */
+    public function getCreatedMemberIds(string $batchId): array {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT created_member_id FROM member_imports WHERE batch_id = ? AND created_member_id IS NOT NULL"
+            );
+            $stmt->execute([$batchId]);
+            return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+        } catch (PDOException $e) {
+            error_log('MemberImport::getCreatedMemberIds: ' . $e->getMessage());
+            return [];
+        }
+    }
+
     public function discardBatch(string $batchId): void {
         $this->db->prepare("DELETE FROM member_imports WHERE batch_id = ? AND created_member_id IS NULL")
                  ->execute([$batchId]);

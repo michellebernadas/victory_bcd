@@ -92,17 +92,40 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                             </div>
                         </div>
                         <div class="col-12 border-top pt-3 d-flex flex-wrap gap-2">
-                            <a href="index.php?action=editMember&id=<?php echo $member['id']; ?>" class="btn btn-sm btn-outline-primary">
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    onclick="openEditModal(<?php echo htmlspecialchars(json_encode($member)); ?>)">
                                 <i class="bi bi-pencil me-1"></i>Edit Member
-                            </a>
+                            </button>
                             <button type="button" class="btn btn-sm btn-primary"
                                     data-bs-toggle="modal" data-bs-target="#addClassRecordModal">
                                 <i class="bi bi-journal-plus me-1"></i>Add Class Record
                             </button>
+                            <span class="small text-muted align-self-center ms-md-auto">
+                                <i class="bi bi-info-circle me-1"></i>Everything about this person is managed here. Changes also show on the class, group and team pages.
+                            </span>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <?php
+            $pfNotif = (string)($_GET['notif'] ?? '');
+            $pfIsErr = isset($_GET['error']) || $pfNotif === 'error';
+            $pfMsgs  = ['add' => 'Class record added.', 'update' => 'Saved.', 'delete' => 'Class record removed.',
+                        'error' => 'Something went wrong. Nothing was changed.'];
+            $pfText  = (string)($_GET['msg'] ?? ($pfMsgs[$pfNotif] ?? ''));
+            if (($pfNotif !== '' || $pfIsErr) && $pfText !== ''): ?>
+            <div class="alert alert-<?php echo $pfIsErr ? 'danger' : 'success'; ?> alert-dismissible fade show">
+                <i class="bi bi-<?php echo $pfIsErr ? 'exclamation-triangle-fill' : 'check-circle-fill'; ?> me-2"></i>
+                <?php echo htmlspecialchars($pfText); ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            <?php endif; ?>
+            <?php
+            // Names on the group schedules that look like this member (suggestions only).
+            $connectReturn = ['return_to' => 'profile'];
+            include 'shared/connect_suggestions.php';
+            ?>
 
             <div class="row align-items-stretch">
                 <!-- Left Column -->
@@ -180,11 +203,6 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                         <div class="card-body text-muted small text-center py-3">
                             <i class="bi bi-people display-6 d-block mb-2 opacity-25"></i>
                             Not in a group yet.
-                            <div class="mt-2">
-                                <a href="index.php?action=victoryGroups" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-plus-circle me-1"></i>Add to Group
-                                </a>
-                            </div>
                         </div>
                         <?php else: ?>
                         <div class="accordion accordion-flush" id="vgAccordion">
@@ -346,13 +364,9 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                 </div>
                             </div>
                             <?php endforeach; ?>
-                            <div class="card-body pt-2">
-                                <a href="index.php?action=victoryGroups" class="btn btn-sm btn-outline-primary w-100">
-                                    <i class="bi bi-plus-circle me-1"></i>Add to Another Group
-                                </a>
-                            </div>
                         </div>
                         <?php endif; ?>
+                        <?php include 'shared/profile_groups_manage.php'; ?>
                     </div>
 
                     <!-- Counselors -->
@@ -574,41 +588,7 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                             <h6 class="mb-0"><i class="bi bi-hand-thumbs-up me-2"></i>Serve Teams</h6>
                             <span class="badge bg-light text-dark border"><?php echo count($serveTeams); ?></span>
                         </div>
-                        <?php if (empty($serveTeams)): ?>
-                        <div class="card-body text-muted small text-center py-3">
-                            <i class="bi bi-hand-thumbs-up display-6 d-block mb-2 opacity-25"></i>
-                            Not on any serve team yet.
-                            <div class="mt-2">
-                                <a href="index.php?action=serveTeams" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-plus-circle me-1"></i>Add to a Serve Team
-                                </a>
-                            </div>
-                            <div class="mt-2" style="font-size:10px;">
-                                Serve team membership is managed on the Serve Teams page
-                                and appears here automatically.
-                            </div>
-                        </div>
-                        <?php else: ?>
-                        <div class="card-body py-2">
-                            <?php foreach ($serveTeams as $st): ?>
-                            <div class="d-flex align-items-center justify-content-between border-bottom py-2">
-                                <div>
-                                    <div class="small fw-semibold"><?php echo htmlspecialchars($st['name']); ?></div>
-                                    <div class="text-muted" style="font-size:10px;">
-                                        <?php echo $st['ministry'] ? htmlspecialchars($st['ministry']) : 'No ministry'; ?>
-                                        <?php if ($st['service_time']): ?> · <?php echo htmlspecialchars($st['service_time']); ?><?php endif; ?>
-                                    </div>
-                                </div>
-                                <span class="badge bg-<?php echo $st['role'] === 'leader' ? 'primary' : 'secondary'; ?>" style="font-size:10px;">
-                                    <?php echo ucfirst($st['role']); ?>
-                                </span>
-                            </div>
-                            <?php endforeach; ?>
-                            <a href="index.php?action=serveTeams" class="btn btn-sm btn-outline-secondary w-100 mt-2">
-                                <i class="bi bi-pencil me-1"></i>Manage Serve Teams
-                            </a>
-                        </div>
-                        <?php endif; ?>
+                        <?php include 'shared/profile_teams_manage.php'; ?>
                     </div>
 
                     <!-- Notes -->
@@ -823,9 +803,34 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                         <div class="badge bg-<?php echo htmlspecialchars($step['color']); ?> px-3 py-2" style="font-size:14px;"><?php echo $year; ?></div>
                                     </div>
                                     <div class="flex-grow-1">
+                                        <div class="d-flex align-items-start gap-2 mb-1">
                                         <?php if ($rec['program_label']): ?>
-                                        <div class="fw-semibold mb-1"><?php echo htmlspecialchars($rec['program_label']); ?></div>
+                                        <div class="fw-semibold me-auto"><?php echo htmlspecialchars($rec['program_label']); ?></div>
+                                        <?php else: ?><div class="me-auto"></div><?php endif; ?>
+                                        <?php
+                                        // Same routes as the class pages: updateAttendance / deleteAttendance
+                                        // (signed-in users), which recalculate discipleship progress.
+                                        // L113 / SF are edited in their own per-session module.
+                                        $pfDedicated = ['leadership_113' => 'leadership113', 'spiritual_foundations' => 'spiritualFoundations'][$pType] ?? null;
+                                        if ($pfDedicated): ?>
+                                        <a class="btn btn-sm btn-outline-secondary py-0" href="index.php?action=<?php echo $pfDedicated; ?>&back_member=<?php echo (int)$member['id']; ?>">
+                                            <i class="bi bi-box-arrow-up-right me-1"></i>Open
+                                        </a>
+                                        <?php else:
+                                            $pfEdit = array_intersect_key($rec, array_flip(['id','program_type','program_year','event_date','batch_label','counselor_name','notes','water_baptism','water_baptism_remarks','counselor_contact','contact_number','md_part1','md_part2']));
+                                        ?>
+                                        <button type="button" class="btn btn-sm btn-outline-primary py-0"
+                                                data-bs-toggle="modal" data-bs-target="#addClassRecordModal"
+                                                data-class-edit="<?php echo htmlspecialchars(json_encode($pfEdit)); ?>">
+                                            <i class="bi bi-pencil me-1"></i>Edit
+                                        </button>
+                                        <a class="btn btn-sm btn-outline-danger py-0"
+                                           href="index.php?action=deleteAttendance&id=<?php echo (int)$rec['id']; ?>&return=profile"
+                                           data-confirm="Remove this <?php echo htmlspecialchars($step['name']); ?> record (<?php echo (int)$year; ?>)? The member's journey will update to match.">
+                                            <i class="bi bi-trash me-1"></i>Remove
+                                        </a>
                                         <?php endif; ?>
+                                        </div>
 
                                         <div class="d-flex flex-wrap gap-3 small text-muted">
                                             <?php if ($rec['full_name_display']): ?>
@@ -954,18 +959,16 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
 </style>
 
 <?php include 'shared/member_class_modal.php'; ?>
+<?php
+// The same Edit Member form the Members page uses; saving returns here.
+$memberEditReturn = 'profile';
+include 'shared/member_edit_modal.php';
+?>
 
 <script>
-// A per-step "Add" button preselects its own class, so the admin confirms the
-// class rather than picking it again from scratch.
-document.addEventListener('click', function (e) {
-    var btn = e.target.closest('[data-preselect]');
-    if (!btn) return;
-    var sel = document.getElementById('mcProgramType');
-    if (!sel) return;
-    sel.value = btn.dataset.preselect || '';
-    sel.dispatchEvent(new Event('change'));
-});
+// A per-step "Add" button preselects its own class (data-preselect); an Edit
+// button fills the same modal (data-class-edit). Both are handled in
+// shared/member_class_modal.php on show.bs.modal.
 
 // Initialize Bootstrap tooltips for the inactive-value warning icons.
 document.addEventListener('DOMContentLoaded', function() {

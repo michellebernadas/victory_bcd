@@ -44,6 +44,12 @@ $miStatus = [
                 <i class="bi bi-check-circle-fill me-2"></i><?php echo htmlspecialchars($notice); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
+            <?php
+            // Just imported: offer the matching names on the group schedules.
+            $connectReturn = ['return_to' => 'memberImport', 'batch' => $batchId];
+            $connectMax    = 15;
+            include 'shared/connect_suggestions.php';
+            ?>
             <?php endif; ?>
 
             <!-- The four steps, so it is obvious nothing is saved yet. -->

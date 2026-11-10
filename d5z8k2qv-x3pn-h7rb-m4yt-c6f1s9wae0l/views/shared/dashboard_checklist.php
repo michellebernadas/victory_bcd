@@ -34,10 +34,10 @@ $gsSteps = [
      'detail' => $gsGroups > 0 ? number_format($gsGroups) . ' groups on record' : 'Victory Groups, Leadership Groups and Campus',
      'href' => 'index.php?action=groupImport', 'cta' => 'Import schedule'],
     // Linking only means something once there is a schedule to link.
-    ['done' => $gsGroups > 0 && $gsUnlinked === 0, 'label' => 'Link imported names',
+    ['done' => $gsGroups > 0 && $gsUnlinked === 0, 'label' => 'Connect people on the groups to their profiles',
      'detail' => $gsGroups === 0 ? 'After the schedule is imported'
-               : ($gsUnlinked > 0 ? number_format($gsUnlinked) . ' still to link' : 'Everyone is linked'),
-     'href' => 'index.php?action=needsLink', 'cta' => 'Open Needs Link'],
+               : ($gsUnlinked > 0 ? number_format($gsUnlinked) . ' not connected yet' : 'Everyone is connected'),
+     'href' => 'index.php?action=needsLink', 'cta' => 'Connect people'],
     ['done' => $gsFacility > 0, 'label' => 'Add a Facilities Personnel account',
      'detail' => 'Reviews and confirms facility requests',
      'href' => 'index.php?action=users', 'cta' => 'Open Users'],
@@ -45,7 +45,7 @@ $gsSteps = [
      'detail' => 'Gives the Minister approval on facility requests',
      'href' => 'index.php?action=users', 'cta' => 'Open Users'],
     ['done' => $gsSundays > 0, 'label' => 'Record the first Sunday attendance',
-     'detail' => 'Head counts per service feed Church Health',
+     'detail' => 'Sunday Service and Kids Church counts per service time feed Church Health',
      'href' => 'index.php?action=serviceAttendance&enterDay=1', 'cta' => 'Enter a Sunday'],
     ['done' => $gsServe > 0, 'label' => 'Set up Serve Teams',
      'detail' => $gsServe > 0 ? number_format($gsServe) . ($gsServe === 1 ? ' team' : ' teams') : 'Who serves where',

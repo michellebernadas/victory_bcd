@@ -148,6 +148,20 @@ switch ($action) {
         $memberController->memberProfile($_GET['id']);
         break;
 
+    // Group / Serve Team membership from the member profile. Same gate as the
+    // group and team pages (updateGroup / updateServeTeam): signed in.
+    case 'memberGroupSave':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: index.php?action=members'); exit(); }
+        $memberController->memberGroupSave();
+        break;
+
+    case 'memberTeamSave':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: index.php?action=members'); exit(); }
+        $memberController->memberTeamSave();
+        break;
+
     // ─── Member import: UPLOAD → PREVIEW → CONFIRM → IMPORT ──────────────
     // Replaces the old top-level import.php, which required no login and
     // deleted whole tables before inserting. Admin-only: a bad import is
@@ -235,13 +249,6 @@ switch ($action) {
         (new GroupImportController($db))->discard();
         break;
 
-    case 'groupImportReview':
-        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
-        if ($currentUserType !== 'admin') { header('Location: index.php?action=victoryGroups'); exit(); }
-        require_once 'controllers/GroupImportController.php';
-        (new GroupImportController($db))->downloadReview();
-        break;
-
     // ─── Facilities Request Form import ──────────────────────────────────
     // Same staged shape again. Every imported request lands at Submitted; the
     // importer has no path to approved or confirmed (see
@@ -294,6 +301,12 @@ switch ($action) {
     case 'victoryGroups':
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
         $groupController->listGroups();
+        break;
+
+    // Read-only list, same gate as the group lists it is built from.
+    case 'groupLeaders':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        $groupController->groupLeaders();
         break;
 
     case 'addGroup':
@@ -550,6 +563,50 @@ switch ($action) {
         if (!isset($_SESSION['user'])) { http_response_code(401); exit(); }
         require_once 'controllers/ServiceAttendanceController.php';
         (new ServiceAttendanceController($db))->ajaxDay();
+        break;
+
+    // ─── Prayer Meeting & Students' Hangout attendance ───────────────
+    // Same gate as Sunday attendance: any logged-in account.
+    case 'gatheringAttendance':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/GatheringAttendanceController.php';
+        (new GatheringAttendanceController($db))->listRecords();
+        break;
+    case 'addGatheringAttendance':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/GatheringAttendanceController.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') (new GatheringAttendanceController($db))->addRecord($_POST);
+        else { header('Location: index.php?action=gatheringAttendance'); exit(); }
+        break;
+    case 'updateGatheringAttendance':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/GatheringAttendanceController.php';
+        $gaId = (int)($_GET['id'] ?? 0);
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && $gaId) (new GatheringAttendanceController($db))->updateRecord($gaId, $_POST);
+        else { header('Location: index.php?action=gatheringAttendance'); exit(); }
+        break;
+    case 'deleteGatheringAttendance':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/GatheringAttendanceController.php';
+        $gaId = (int)($_GET['id'] ?? 0);
+        if ($gaId) (new GatheringAttendanceController($db))->deleteRecord($gaId);
+        else { header('Location: index.php?action=gatheringAttendance'); exit(); }
+        break;
+
+    // ─── Worship Service Annual Attendance import (staged, admin-only) ─
+    case 'attendanceImport':
+    case 'attendanceImportUpload':
+    case 'attendanceImportCommit':
+    case 'attendanceImportDiscard':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canAdminister($currentUserType)) { header('Location: index.php?action=serviceAttendance'); exit(); }
+        require_once 'controllers/AttendanceImportController.php';
+        $aiCtl = new AttendanceImportController($db);
+        if ($action === 'attendanceImport') $aiCtl->showUpload();
+        elseif ($action === 'attendanceImportDiscard') $aiCtl->discard();
+        elseif ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: index.php?action=attendanceImport'); exit(); }
+        elseif ($action === 'attendanceImportUpload') $aiCtl->upload();
+        else $aiCtl->commit();
         break;
 
     // ─── AJAX: member search for Select2 ─────────────────────────────

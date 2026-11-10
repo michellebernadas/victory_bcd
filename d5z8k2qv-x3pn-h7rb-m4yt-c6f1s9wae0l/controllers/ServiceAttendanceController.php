@@ -73,9 +73,10 @@ class ServiceAttendanceController
                  . '&enterDay=' . urlencode($date));
             exit();
         }
-        $msg = sprintf('Saved %d service%s for %s · %s total',
+        $msg = sprintf('Saved %d service time%s for %s · Sunday Service %s · Kids Church %s · Grand Total %s',
             $result['saved'], $result['saved'] === 1 ? '' : 's',
-            date('D, M j', strtotime($date)), number_format($result['day_total']));
+            date('D, M j', strtotime($date)), number_format($result['day_service'] ?? 0),
+            number_format($result['day_kids'] ?? 0), number_format($result['day_total']));
         if ($result['deleted'] > 0) $msg .= ' · deleted ' . $result['deleted'] . ' cleared entr' . ($result['deleted'] === 1 ? 'y' : 'ies');
         if ($result['saved'] === 0) $msg = 'Deleted ' . $result['deleted'] . ' entr' . ($result['deleted'] === 1 ? 'y' : 'ies')
             . ' for ' . date('D, M j', strtotime($date)) . ' · ' . number_format($result['day_total']) . ' total';

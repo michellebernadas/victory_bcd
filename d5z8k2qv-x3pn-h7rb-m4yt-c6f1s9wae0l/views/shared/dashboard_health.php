@@ -158,16 +158,23 @@ $bucketLabels = ['weekly' => 'Weekly', 'monthly' => 'Monthly', 'quarterly' => 'Q
                 <?php
                 // Latest Sunday is the whole most recent service DAY (all its
                 // services summed), not whichever row was entered last.
+                // adults = Sunday Service, kids = Kids Church (models/ServiceAttendance.php).
+                $saHasL  = !empty($sundayLatest['date']);
+                $saLDate = $saHasL ? date('M j, Y', strtotime($sundayLatest['date'])) : 'no entries yet';
                 $saCards = [
-                    ['label' => 'Latest Sunday', 'value' => $sundayLatest['date'] ? (int)$sundayLatest['total'] : null,
-                     'sub'   => $sundayLatest['date'] ? date('M j, Y', strtotime($sundayLatest['date'])) . ' · ' . (int)$sundayLatest['services'] . ' service' . ((int)$sundayLatest['services'] === 1 ? '' : 's') : 'no entries yet',
+                    ['label' => 'Total Sunday Service', 'value' => $saHasL ? (int)$sundayLatest['adults'] : null,
+                     'sub'   => 'latest Sunday · ' . $saLDate, 'color' => 'success', 'icon' => 'bi-people'],
+                    ['label' => 'Total Kids Church', 'value' => $saHasL && (int)$sundayLatest['kids_missing'] < (int)$sundayLatest['services'] ? (int)$sundayLatest['kids'] : null,
+                     'sub'   => $saHasL ? ((int)$sundayLatest['kids_missing'] > 0 ? ((int)$sundayLatest['kids_missing'] >= (int)$sundayLatest['services'] ? 'not recorded · ' . $saLDate : 'not recorded at ' . (int)$sundayLatest['kids_missing'] . ' of ' . (int)$sundayLatest['services'] . ' times') : 'latest Sunday · ' . $saLDate) : 'no entries yet',
+                     'color' => 'info', 'icon' => 'bi-balloon'],
+                    ['label' => 'Grand Total', 'value' => $saHasL ? (int)$sundayLatest['total'] : null,
+                     'sub'   => $saHasL ? (int)$sundayLatest['services'] . ' service time' . ((int)$sundayLatest['services'] === 1 ? '' : 's') . ' · ' . $saLDate : 'no entries yet',
                      'color' => 'primary', 'icon' => 'bi-calendar-event'],
-                    ['label' => 'Adults', 'value' => $saEmpty ? null : (int)$sundayStats['adults'],
-                     'sub'   => 'in range', 'color' => 'success', 'icon' => 'bi-person'],
-                    ['label' => 'Kids', 'value' => $saEmpty ? null : (int)$sundayStats['kids'],
-                     'sub'   => 'in range', 'color' => 'info', 'icon' => 'bi-balloon'],
-                    ['label' => 'Average Attendance', 'value' => $saEmpty ? null : (int)$sundayStats['average'],
-                     'sub'   => $saEmpty ? 'no entries yet' : 'per service · ' . (int)$sundayStats['records'] . ' entries',
+                    ['label' => 'Average per Sunday', 'value' => $saEmpty ? null : (int)$sundayStats['avg_total_day'],
+                     'sub'   => $saEmpty ? 'no entries yet'
+                              : number_format($sundayStats['avg_service_day']) . ' Sunday Service · '
+                                . ($sundayStats['kids_days'] ? number_format($sundayStats['avg_kids_day']) : '—') . ' Kids Church (where recorded) · '
+                                . (int)$sundayStats['sundays'] . ' Sunday' . ((int)$sundayStats['sundays'] === 1 ? '' : 's'),
                      'color' => 'warning', 'icon' => 'bi-calculator'],
                 ];
                 foreach ($saCards as $saCard): ?>
@@ -195,9 +202,8 @@ $bucketLabels = ['weekly' => 'Weekly', 'monthly' => 'Monthly', 'quarterly' => 'Q
                 <div class="chart-box chart-box-sm"><canvas id="sundayTrendChart"></canvas></div>
                 <div class="mt-2 small text-muted">
                     <i class="bi bi-calculator me-1"></i>
-                    <?php echo (int)$sundayStats['total']; ?> people &divide; <?php echo (int)$sundayStats['records']; ?> entries
-                    = <strong class="text-warning"><?php echo (int)$sundayStats['average']; ?></strong> average per service.
-                    Computed from the records each time &mdash; no stored average, no stored total.
+                    Per Sunday, all service times added together. Kids Church averages use only the Sundays where it was recorded
+                    <?php if ($sundayStats['kids_missing']): ?>(not recorded at <?php echo (int)$sundayStats['kids_missing']; ?> service time<?php echo (int)$sundayStats['kids_missing'] === 1 ? '' : 's'; ?> in this range; the chart shows a gap there, not a zero)<?php endif; ?>.
                 </div>
             </div>
             <?php else: ?>
@@ -207,6 +213,68 @@ $bucketLabels = ['weekly' => 'Weekly', 'monthly' => 'Monthly', 'quarterly' => 'Q
                 Add them on the <a href="index.php?action=serviceAttendance" class="alert-link">Sunday Service Attendance</a> page
                 and the totals, average and trend will appear here.
             </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- ── Prayer Meeting & Students' Hangout (same range as Sunday) ── -->
+        <div class="border-top pt-3 mb-4" id="gatheringHealth">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <span class="small fw-bold text-muted text-uppercase" style="letter-spacing:.05em">
+                    <i class="bi bi-fire me-1"></i>Prayer Meeting &amp; Students&rsquo; Hangout
+                    <span class="fw-normal text-lowercase">&mdash; <?php echo htmlspecialchars($sundayRange === 'last4' ? 'last 4 of each' : strtolower($sundayScope['label'])); ?></span>
+                </span>
+                <a href="index.php?action=gatheringAttendance" class="btn btn-sm btn-outline-secondary"><i class="bi bi-plus-circle me-1"></i>Record</a>
+            </div>
+            <div class="row g-3">
+                <?php foreach (GatheringAttendance::TYPES as $gdT => $gdDef):
+                    $gdS = $gaRangeStats[$gdT]; $gdSer = $gaSeries[$gdT]; ?>
+                <div class="col-lg-6">
+                    <div class="border rounded p-2 h-100">
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-1 mb-1">
+                            <span class="fw-semibold small"><i class="bi <?php echo $gdDef['icon']; ?> text-<?php echo $gdDef['color']; ?> me-1"></i><?php echo htmlspecialchars($gdDef['label']); ?></span>
+                            <span class="small text-muted text-end">
+                                Latest <strong class="text-<?php echo $gdDef['color']; ?>"><?php echo $gdS['latest'] === null ? '&mdash;' : (int)$gdS['latest']; ?></strong><?php echo $gdS['latest_date'] ? ' (' . date('M j', strtotime($gdS['latest_date'])) . ')' : ''; ?>
+                                &middot; Avg <strong><?php echo $gdS['events'] ? (int)$gdS['average'] : '&mdash;'; ?></strong>
+                                <span style="font-size:10px">(<?php echo (int)$gdS['events']; ?>)</span>
+                            </span>
+                        </div>
+                        <?php if ($gdSer['labels']): ?>
+                        <div class="chart-box chart-box-xs" style="height:150px"><canvas id="gaChart_<?php echo $gdT; ?>" aria-label="<?php echo htmlspecialchars($gdDef['label']); ?> trend"></canvas></div>
+                        <?php else: ?>
+                        <div class="text-muted small py-3 text-center">No <?php echo htmlspecialchars($gdDef['label']); ?> counts in this range yet.</div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- ── Month by month (one year) ── -->
+        <?php
+        $mhAny = array_filter($sundayMonthly['sundays']) || array_filter(array_map('array_filter', $gaMonthly['events']));
+        ?>
+        <div class="border-top pt-3 mb-4" id="monthlyHealth">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <span class="small fw-bold text-muted text-uppercase" style="letter-spacing:.05em">
+                    <i class="bi bi-bar-chart me-1"></i>Month by Month &mdash; Average per Event
+                    <span class="fw-normal text-lowercase">&mdash; <?php echo (int)$healthYear; ?></span>
+                </span>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Year">
+                    <?php foreach ($healthYears as $hy): ?>
+                    <a href="<?php echo htmlspecialchars($healthYearUrl((int)$hy)); ?>" class="btn btn-sm <?php echo (int)$hy === $healthYear ? 'btn-primary' : 'btn-outline-primary'; ?>"><?php echo (int)$hy; ?></a>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php if ($mhAny): ?>
+            <div class="row g-3">
+                <div class="col-lg-6"><div class="small fw-semibold mb-1">Sunday (average per Sunday)</div>
+                    <div class="chart-box" style="height:200px"><canvas id="monthlySundayChart" aria-label="Sunday monthly averages"></canvas></div></div>
+                <div class="col-lg-6"><div class="small fw-semibold mb-1">Prayer Meeting &amp; Students&rsquo; Hangout (average per gathering)</div>
+                    <div class="chart-box" style="height:200px"><canvas id="monthlyGatheringChart" aria-label="Gathering monthly averages"></canvas></div></div>
+            </div>
+            <div class="small text-muted mt-1">Months with nothing recorded are left empty rather than drawn as zero.</div>
+            <?php else: ?>
+            <div class="alert alert-light border py-2 small mb-0"><i class="bi bi-info-circle me-1"></i>Nothing recorded for <?php echo (int)$healthYear; ?> yet.</div>
             <?php endif; ?>
         </div>
 
@@ -243,9 +311,9 @@ $bucketLabels = ['weekly' => 'Weekly', 'monthly' => 'Monthly', 'quarterly' => 'Q
                 <i class="bi bi-exclamation-triangle me-1"></i>
                 <?php if ($dhLeadersToLink > 0): ?>
                 <?php echo $dhLeadersToLink; ?> Victory Group / Leadership Group leader<?php echo $dhLeadersToLink === 1 ? ' is' : 's are'; ?>
-                on the schedule but not linked to a member record yet, so the ratios can't be worked out.
+                on the schedule but not connected to a member profile yet, so the ratios can't be worked out.
                 <?php if (function_exists('canAdminister') && canAdminister()): ?>
-                Link them on the <a href="index.php?action=needsLink" class="alert-link">Needs Link</a> page.
+                <a href="index.php?action=needsLink" class="alert-link">Connect them to their profiles</a>.
                 <?php endif; ?>
                 <?php else: ?>
                 No leaders found on active Victory Groups, so the ratios cannot be computed.

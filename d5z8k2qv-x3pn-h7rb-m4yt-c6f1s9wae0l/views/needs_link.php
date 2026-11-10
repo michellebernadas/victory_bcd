@@ -17,8 +17,8 @@ include 'shared/header.php';
 
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <div>
-                    <h1 class="h3 mb-0"><i class="bi bi-link-45deg me-2 text-warning"></i>Needs Link</h1>
-                    <p class="text-muted mb-0">Match each imported name to its member record. Names are never changed, and nothing links on its own.</p>
+                    <h1 class="h3 mb-0"><i class="bi bi-person-check me-2 text-primary"></i>Connect people to profiles</h1>
+                    <p class="text-muted mb-0">These names aren't connected to a member profile yet. Connect them so the group shows on their profile and they're counted. Names are never changed, and nothing connects on its own.</p>
                 </div>
                 <a href="index.php?action=victoryGroups" class="btn btn-outline-secondary">
                     <i class="bi bi-diagram-3 me-1"></i>Victory Groups
@@ -48,13 +48,13 @@ include 'shared/header.php';
                 <div class="card-body py-3">
                     <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2 mb-2">
                         <div class="fw-semibold" id="nlProgressText" aria-live="polite">
-                            <?php echo (int)$nlProgress['linked']; ?> of <?php echo (int)$nlProgress['total']; ?> linked
+                            <?php echo (int)$nlProgress['linked']; ?> of <?php echo (int)$nlProgress['total']; ?> connected
                             &middot; <?php echo (int)$nlProgress['to_go']; ?> to go<?php if ($nlProgress['not_a_member'] > 0): ?>
                             &middot; <?php echo (int)$nlProgress['not_a_member']; ?> <?php echo (int)$nlProgress['not_a_member'] === 1 ? 'not a church member' : 'not church members'; ?><?php endif; ?>
                         </div>
-                        <small class="text-muted">A couple counts as two people. Each spouse is linked separately.</small>
+                        <small class="text-muted">A couple counts as two people. Connect each one separately.</small>
                     </div>
-                    <div class="progress" style="height:10px" role="progressbar" aria-label="Linking progress">
+                    <div class="progress" style="height:10px" role="progressbar" aria-label="Connecting progress">
                         <div class="progress-bar bg-success" id="nlBarLinked" style="width:<?php echo $pLinkedPct; ?>%"></div>
                         <div class="progress-bar bg-secondary" id="nlBarNam" style="width:<?php echo $pNamPct; ?>%"></div>
                     </div>
@@ -65,12 +65,12 @@ include 'shared/header.php';
             <div class="card">
                 <div class="card-body text-center py-5">
                     <i class="bi bi-emoji-smile display-4 text-success d-block mb-3"></i>
-                    <h2 class="h5 mb-1">Everyone is linked</h2>
+                    <h2 class="h5 mb-1">Everyone is connected</h2>
                     <p class="text-muted mb-3">
                         <?php if ((int)$nlProgress['total'] === 0): ?>
-                        There are no imported names yet. Import the Staff VG Schedule and any names that need a member will appear here.
+                        There are no imported names yet. Import the Staff VG Schedule and any names that need connecting will appear here.
                         <?php else: ?>
-                        Every name on the group schedules is linked to a member or marked as not a church member.
+                        Every name on the group schedules is connected to a member profile or marked as not a church member.
                         <?php endif; ?>
                     </p>
                     <a href="index.php?action=victoryGroups" class="btn btn-sm btn-primary"><i class="bi bi-diagram-3 me-1"></i>Back to Victory Groups</a>
@@ -134,7 +134,7 @@ include 'shared/header.php';
                                     <th style="width:18%">Name as written</th>
                                     <th style="width:24%">Group</th>
                                     <th style="width:8%">Role</th>
-                                    <th>Link to a member</th>
+                                    <th>Connect to a member</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -247,7 +247,7 @@ include 'shared/header.php';
         if (window.bootstrap) bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 3500 }).show();
     }
     function renderProgress(p) {
-        var txt = p.linked + ' of ' + p.total + ' linked · ' + p.to_go + ' to go'
+        var txt = p.linked + ' of ' + p.total + ' connected · ' + p.to_go + ' to go'
                 + (p.not_a_member > 0 ? ' · ' + p.not_a_member + (p.not_a_member === 1 ? ' not a church member' : ' not church members') : '');
         document.getElementById('nlProgressText').textContent = txt;
         var tot = Math.max(1, p.total);

@@ -149,6 +149,10 @@ class AttendanceController {
             }
             $this->syncMemberDiscipleship((int)($data['member_id'] ?? 0), $data);
         }
+        if (($data['return_to'] ?? '') === 'profile' && (int)($data['member_id'] ?? 0) > 0) {
+            header('Location: ' . $this->redirectAfterSave($data, $result ? 'update' : 'error'));
+            exit();
+        }
         $pt = $data['program_type'] ?? '';
         $redir = 'index.php?action=attendanceRecords' . ($pt ? '&program_type=' . urlencode($pt) : '');
         header('Location: ' . $redir . '&notif=' . ($result ? 'update' : 'error'));
@@ -224,6 +228,11 @@ class AttendanceController {
         $result = $this->paModel->hardDelete($id);
         if ($result && $row) {
             $this->paModel->syncMemberFlag((int)($row['member_id'] ?? 0), (string)($row['program_type'] ?? ''));
+        }
+        // Removed from the member profile: back to that profile (the row's own member, numeric).
+        if (($_GET['return'] ?? '') === 'profile' && $row && (int)$row['member_id'] > 0) {
+            header('Location: index.php?action=memberProfile&id=' . (int)$row['member_id'] . '&notif=' . ($result ? 'delete' : 'error'));
+            exit();
         }
         $pt = $_GET['program_type'] ?? '';
         $redir = 'index.php?action=attendanceRecords' . ($pt ? '&program_type=' . urlencode($pt) : '');

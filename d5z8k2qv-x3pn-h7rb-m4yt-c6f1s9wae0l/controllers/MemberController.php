@@ -35,6 +35,7 @@ class MemberController {
         $ministries = $this->memberModel->getAllMinistries();
         $services   = $this->memberModel->getAllServices();
         $activeFilters = $filters;
+        $connectSuggestions = $this->connectSuggestions([(int)($_GET['connect'] ?? 0)]);
         include 'views/members.php';
     }
 
@@ -54,7 +55,7 @@ class MemberController {
         }
         $result = $this->memberModel->addMember($data);
         if ($result) {
-            header('Location: index.php?action=members&notif=add');
+            header('Location: index.php?action=members&notif=add&connect=' . (int)$result);
         } else {
             header('Location: index.php?action=members&error=add&msg=' . urlencode('Failed to add member'));
         }
@@ -108,15 +109,20 @@ class MemberController {
     public function updateMember($id, $data) {
         $data = $this->normalizeMemberData($data);
         $err  = $this->validateMember($data);
+        // Saved from the profile's Edit button: go back to that profile. Only the
+        // known value is honoured and the id is numeric, so no open redirect.
+        $base = (($data['return_to'] ?? '') === 'profile')
+            ? 'index.php?action=memberProfile&id=' . (int)$id
+            : 'index.php?action=members';
         if ($err) {
-            header('Location: index.php?action=members&error=update&msg=' . urlencode($err));
+            header('Location: ' . $base . '&error=update&msg=' . urlencode($err));
             exit();
         }
         $result = $this->memberModel->updateMember($id, $data);
         if ($result) {
-            header('Location: index.php?action=members&notif=update');
+            header('Location: ' . $base . '&notif=update');
         } else {
-            header('Location: index.php?action=members&error=update&msg=' . urlencode('Failed to update member'));
+            header('Location: ' . $base . '&error=update&msg=' . urlencode('Failed to update member'));
         }
         exit();
     }
@@ -155,6 +161,69 @@ class MemberController {
         exit();
     }
 
+    /**
+     * "Is this the X in Y group? [Connect]" for these members. Only admins can
+     * connect (linkVgMember is canAdminister() in index.php), so nobody else
+     * pays for the lookup or sees the card.
+     */
+    private function connectSuggestions(array $memberIds): array {
+        $memberIds = array_filter(array_map('intval', $memberIds));
+        if (!$memberIds || !canAdminister()) return [];
+        require_once 'models/VictoryGroup.php';
+        return (new VictoryGroup($this->db))->suggestConnectionsForMembers($memberIds);
+    }
+
+    /** Profile: add to a group / change role / remove (POST op=add|role|remove). */
+    public function memberGroupSave(): void {
+        require_once 'models/VictoryGroup.php';
+        $vg       = new VictoryGroup($this->db);
+        $memberId = (int)($_POST['member_id'] ?? 0);
+        $op       = (string)($_POST['op'] ?? '');
+        $role     = (string)($_POST['role'] ?? '');
+        $vgmId    = (int)($_POST['vg_member_id'] ?? 0);
+        if ($op === 'add') {
+            $res = $vg->addMemberToGroup((int)($_POST['group_id'] ?? 0), $memberId, $role);
+        } elseif ($op === 'role') {
+            $res = $vg->changeMemberRole($vgmId, $memberId, $role);
+        } elseif ($op === 'remove') {
+            // Clearing one half of a couple line is an unlink, which is admin-only
+            // on the group pages too (index.php: unlinkVgMember).
+            $cq = $this->db->prepare("SELECT is_couple FROM vg_members WHERE id = ?");
+            $cq->execute([$vgmId]);
+            $isCouple = (int)$cq->fetchColumn();
+            $res = ($isCouple && !canAdminister())
+                ? ['ok' => false, 'msg' => 'Only an administrator can take one person off a couple line.']
+                : $vg->removeMemberFromGroup($vgmId, $memberId);
+        } else {
+            $res = ['ok' => false, 'msg' => 'Unknown action.'];
+        }
+        $this->backToProfile($memberId, $res, '#profileGroups');
+    }
+
+    /** Profile: add to a team / change team role / remove (POST op=add|role|remove). */
+    public function memberTeamSave(): void {
+        require_once 'models/ServeTeam.php';
+        $st       = new ServeTeam($this->db);
+        $memberId = (int)($_POST['member_id'] ?? 0);
+        $teamId   = (int)($_POST['team_id'] ?? 0);
+        $op       = (string)($_POST['op'] ?? '');
+        if ($op === 'add' || $op === 'role') {
+            $res = $st->setMemberOnTeam($teamId, $memberId, (string)($_POST['role'] ?? 'member'));
+        } elseif ($op === 'remove') {
+            $res = $st->removeMemberFromTeam($teamId, $memberId);
+        } else {
+            $res = ['ok' => false, 'msg' => 'Unknown action.'];
+        }
+        $this->backToProfile($memberId, $res, '#profileTeams');
+    }
+
+    private function backToProfile(int $memberId, array $res, string $anchor = ''): void {
+        if ($memberId <= 0) { header('Location: index.php?action=members'); exit(); }
+        header('Location: index.php?action=memberProfile&id=' . $memberId
+             . ($res['ok'] ? '&notif=saved' : '&error=saved') . '&msg=' . urlencode($res['msg']) . $anchor);
+        exit();
+    }
+
     public function memberProfile($id) {
         $member = $this->memberModel->getMemberById($id);
         if (!$member) {
@@ -181,7 +250,8 @@ class MemberController {
         // Either link slot counts: a spouse linked through slot 2 of a couple row
         // ("Amy & Carl") belongs to that group just as much as a solo row does.
         $stmtVg = $this->db->prepare("
-            SELECT vm.role, vg.id AS group_id, vg.group_kind, vg.group_type, vg.group_category,
+            SELECT vm.id AS vg_member_id, vm.is_couple, vm.member_id_2, vg.name AS group_name,
+                   vm.role, vg.id AS group_id, vg.group_kind, vg.group_type, vg.group_category,
                    vg.day_of_week, vg.meeting_time, vg.location, vg.group_status,
                    COALESCE(NULLIF(vm.display_name, ''), vm.name) AS display_name
             FROM vg_members vm
@@ -238,6 +308,14 @@ class MemberController {
             }
         }
 
+        $connectSuggestions = $this->connectSuggestions([(int)$member['id']]);
+        // Edit-in-place + manage groups/teams from the profile (views/shared/profile_manage.php).
+        $ministries = $this->memberModel->getAllMinistries();
+        $services   = $this->memberModel->getAllServices();
+        require_once 'models/VictoryGroup.php';
+        $groupOptions = (new VictoryGroup($this->db))->getAllGroups(['group_status' => 'active']);
+        $teamOptions  = [];
+        try { $teamOptions = (new ServeTeam($this->db))->getAll(['team_status' => 'active']); } catch (Exception $e) {}
         include 'views/member_profile.php';
     }
 }

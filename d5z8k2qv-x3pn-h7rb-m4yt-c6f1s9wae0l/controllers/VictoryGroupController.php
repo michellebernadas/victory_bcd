@@ -56,7 +56,8 @@ class VictoryGroupController {
         $allMembers        = $this->groupModel->getAllMembersList();
         $distinctLocations = $this->groupModel->getDistinctLocations();
         $groupStats        = $this->groupModel->getStats();
-        $needsLinkCount    = canAdminister() ? $this->groupModel->countUnresolvedSlots() : 0;
+        $kindUnresolved    = canAdminister() ? $this->groupModel->countUnresolvedSlotsForKind($filters['group_kind'] ?? 'victory_group') : 0;
+        $memberCount       = $this->groupModel->countMembers();
         include 'views/victory_groups.php';
     }
 
@@ -115,7 +116,8 @@ class VictoryGroupController {
         $allMembers        = $this->groupModel->getAllMembersList();
         $distinctLocations = $this->groupModel->getDistinctLocations();
         $groupStats        = $this->groupModel->getStats();
-        $needsLinkCount    = canAdminister() ? $this->groupModel->countUnresolvedSlots() : 0;
+        $kindUnresolved    = canAdminister() ? $this->groupModel->countUnresolvedSlotsForKind($filters['group_kind'] ?? 'victory_group') : 0;
+        $memberCount       = $this->groupModel->countMembers();
         include 'views/victory_groups.php';
     }
 
@@ -152,6 +154,23 @@ class VictoryGroupController {
         exit();
     }
 
+    /** Leaders page: VG + LG + Campus leaders and interns, one row per line. */
+    public function groupLeaders() {
+        $leaderRows = $this->groupModel->getLeaderRows();
+        // Unique people per role: connected people once (by member id, even
+        // across groups); unconnected names once by name — labelled as such.
+        $leaderSummary = [];
+        foreach ($leaderRows as $r) {
+            $s = &$leaderSummary[$r['role_label']];
+            $s = $s ?? ['connected' => [], 'names' => []];
+            foreach (['member_id', 'member_id_2'] as $c) if (!empty($r[$c])) $s['connected'][(int)$r[$c]] = true;
+            $open = $r['people'] - $r['connected'];
+            if ($open > 0) $s['names'][mb_strtolower(trim($r['written_name']), 'UTF-8')] = $open;
+            unset($s);
+        }
+        include 'views/group_leaders.php';
+    }
+
     // ── Manual person linking ────────────────────────────────────────────────
 
     /**
@@ -169,9 +188,29 @@ class VictoryGroupController {
         $tab      = $this->tabForKind($this->groupModel->getGroupKindForVgMember($vgmId));
 
         if ($vgmId <= 0 || $memberId <= 0) {
-            $this->redirectLink($tab, false, 'Choose a member to link this name to.');
+            $this->redirectLink($tab, false, 'Choose a member to connect this name to.');
         }
         $res = $this->groupModel->linkVgMember($vgmId, $slot, $memberId);
+
+        // Member-side suggestions (views/shared/connect_suggestions.php) send the
+        // admin back to where they clicked. Only known targets, numeric ids:
+        // never free text in the Location header.
+        $back = (string)($_POST['return_to'] ?? '');
+        $q    = ($res['ok'] ? '&notif=link&msg=' : '&error=link&msg=') . urlencode($res['msg']);
+        if ($back === 'profile') {
+            header('Location: index.php?action=memberProfile&id=' . $memberId . $q . '#connectSuggestions');
+            exit();
+        }
+        if ($back === 'members') {
+            header('Location: index.php?action=members&connect=' . $memberId . $q);
+            exit();
+        }
+        if ($back === 'memberImport') {
+            $batch = preg_replace('/[^A-Za-z0-9\-]/', '', (string)($_POST['batch'] ?? ''));
+            $q2 = ($res['ok'] ? '&done=' : '&msg=') . urlencode($res['msg']);
+            header('Location: index.php?action=memberImport' . ($batch !== '' ? '&batch=' . $batch : '') . $q2 . '#connectSuggestions');
+            exit();
+        }
         $this->redirectLink($tab, $res['ok'], $res['msg']);
     }
 
@@ -217,12 +256,12 @@ class VictoryGroupController {
         } elseif ($op === 'link') {
             $res = $memberId > 0
                 ? $this->groupModel->linkVgMember($vgmId, $slot, $memberId)
-                : ['ok' => false, 'msg' => 'Choose a member to link this name to.'];
+                : ['ok' => false, 'msg' => 'Choose a member to connect this name to.'];
         } elseif ($op === 'not_member') {
             $res = $this->groupModel->markVgMemberNotAMember($vgmId, $slot);
         } elseif ($op === 'unlink' || $op === 'restore') {
             $res = $this->groupModel->unlinkVgMember($vgmId, $slot);
-            if ($res['ok'] && $op === 'restore') $res['msg'] = 'Back on Needs Link.';
+            if ($res['ok'] && $op === 'restore') $res['msg'] = 'Back on the not-connected list.';
         } else {
             $res = ['ok' => false, 'msg' => 'Unknown action.'];
         }

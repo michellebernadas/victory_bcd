@@ -207,6 +207,48 @@ class ServeTeam {
         }
     }
 
+    // ── One person's teams, managed from the member profile ────────────────
+
+    /** Add (or, if already on it, re-role) a member on a team. */
+    public function setMemberOnTeam(int $teamId, int $memberId, string $role): array {
+        if (!isset(self::ROLES[$role])) return ['ok' => false, 'msg' => 'Unknown team role.'];
+        try {
+            if (!$this->getById($teamId)) return ['ok' => false, 'msg' => 'That team could not be found.'];
+            $m = $this->db->prepare("SELECT full_name FROM members WHERE id = ? AND is_deleted = 0");
+            $m->execute([$memberId]);
+            $name = $m->fetchColumn();
+            if ($name === false) return ['ok' => false, 'msg' => 'That member could not be found.'];
+
+            $upd = $this->db->prepare("UPDATE serve_team_members SET role = ? WHERE team_id = ? AND member_id = ?");
+            $upd->execute([$role, $teamId, $memberId]);
+            if ($upd->rowCount() > 0) return ['ok' => true, 'msg' => 'Team role changed to ' . self::ROLES[$role] . '.'];
+
+            $chk = $this->db->prepare("SELECT COUNT(*) FROM serve_team_members WHERE team_id = ? AND member_id = ?");
+            $chk->execute([$teamId, $memberId]);
+            if ((int)$chk->fetchColumn() > 0) return ['ok' => true, 'msg' => $name . ' is already on this team.'];
+
+            $sort = $this->db->prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM serve_team_members WHERE team_id = ? AND role = ?");
+            $sort->execute([$teamId, $role]);
+            $this->db->prepare("INSERT INTO serve_team_members (team_id, member_id, name, role, sort_order) VALUES (?,?,?,?,?)")
+                     ->execute([$teamId, $memberId, $name, $role, (int)$sort->fetchColumn()]);
+            return ['ok' => true, 'msg' => $name . ' was added to the team.'];
+        } catch (PDOException $e) {
+            error_log("ServeTeam::setMemberOnTeam error: " . $e->getMessage());
+            return ['ok' => false, 'msg' => 'The team could not be saved.'];
+        }
+    }
+
+    public function removeMemberFromTeam(int $teamId, int $memberId): array {
+        try {
+            $this->db->prepare("DELETE FROM serve_team_members WHERE team_id = ? AND member_id = ?")
+                     ->execute([$teamId, $memberId]);
+            return ['ok' => true, 'msg' => 'Removed from the team.'];
+        } catch (PDOException $e) {
+            error_log("ServeTeam::removeMemberFromTeam error: " . $e->getMessage());
+            return ['ok' => false, 'msg' => 'The team could not be updated.'];
+        }
+    }
+
     public function getDistinctMeetingPlaces(): array {
         try {
             return $this->db->query(

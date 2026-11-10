@@ -31,6 +31,13 @@ class MemberImportController {
         }
         $error  = $_GET['msg']  ?? '';
         $notice = $_GET['done'] ?? '';
+        // After an import: names on the group schedules that look like the new members.
+        $connectSuggestions = [];
+        if ($batchId !== '' && $notice !== '') {
+            require_once 'models/VictoryGroup.php';
+            $newIds = $this->model->getCreatedMemberIds($batchId);
+            $connectSuggestions = (new VictoryGroup($this->db))->suggestConnectionsForMembers($newIds);
+        }
         include 'views/member_import.php';
     }
 

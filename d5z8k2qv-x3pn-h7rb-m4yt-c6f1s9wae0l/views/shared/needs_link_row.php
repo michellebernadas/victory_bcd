@@ -49,12 +49,12 @@ function nl_render_slot(array $r, int $slot, array $suggestions): string {
     if ($isCouple) $out .= '<span class="fw-semibold small">Person ' . $slot . '</span>';
 
     if ($state === 'linked') {
-        $out .= '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Linked</span>'
+        $out .= '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Connected</span>'
               . '<a href="index.php?action=memberProfile&amp;id=' . $mid . '" class="small text-decoration-none" target="_blank" rel="noopener">'
               . '<i class="bi bi-person-fill text-success me-1"></i>' . htmlspecialchars($mName) . '</a>'
               . nl_form_open($vgmId, $slot, 'unlink', 'd-inline')
-              . '<button type="submit" class="btn btn-link btn-sm p-0 text-danger text-decoration-none small" title="Unlink. The name stays exactly as written.">'
-              . '<i class="bi bi-x-circle me-1"></i>Unlink</button></form>';
+              . '<button type="submit" class="btn btn-link btn-sm p-0 text-danger text-decoration-none small" title="Disconnect. The name stays exactly as written.">'
+              . '<i class="bi bi-x-circle me-1"></i>Disconnect</button></form>';
         return $out . '</div></div>';
     }
     if ($state === 'not_a_member') {
@@ -65,15 +65,15 @@ function nl_render_slot(array $r, int $slot, array $suggestions): string {
         return $out . '</div></div>';
     }
 
-    $out .= '<span class="badge bg-warning text-dark"><i class="bi bi-link-45deg me-1"></i>Needs Link</span></div>';
+    $out .= '<span class="badge bg-light text-secondary border"><i class="bi bi-person me-1"></i>Not connected yet</span></div>';
 
     if ($suggestions) {
         $out .= '<div class="d-flex flex-wrap gap-1 mb-1 align-items-center"><span class="text-muted small me-1">Suggested:</span>';
         foreach ($suggestions as $s) {
             $out .= nl_form_open($vgmId, $slot, 'link', 'd-inline')
                   . '<input type="hidden" name="member_id" value="' . (int)$s['id'] . '">'
-                  . '<button type="submit" class="btn btn-sm btn-outline-success nl-chip" title="Link this name to ' . htmlspecialchars($s['full_name']) . '">'
-                  . 'Link to ' . htmlspecialchars($s['full_name']) . '?</button></form>';
+                  . '<button type="submit" class="btn btn-sm btn-outline-success nl-chip" title="Connect this name to ' . htmlspecialchars($s['full_name']) . '">'
+                  . 'Connect to ' . htmlspecialchars($s['full_name']) . '?</button></form>';
         }
         $out .= '</div>';
     }
@@ -82,11 +82,11 @@ function nl_render_slot(array $r, int $slot, array $suggestions): string {
           . nl_form_open($vgmId, $slot, 'link', 'd-flex gap-1 align-items-center flex-grow-1 nl-search-form')
           . '<div class="flex-grow-1" style="min-width:180px;max-width:320px">'
           . '<select name="member_id" class="form-select form-select-sm nl-member-search" required'
-          . ' aria-label="Search members to link ' . htmlspecialchars($isCouple ? 'Person ' . $slot : $r['written_name']) . '">'
+          . ' aria-label="Search members to connect ' . htmlspecialchars($isCouple ? 'Person ' . $slot : $r['written_name']) . '">'
           . '<option value="">Search members…</option></select></div>'
-          . '<button type="submit" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-link-45deg me-1"></i>Link</button></form>'
+          . '<button type="submit" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-person-check me-1"></i>Connect</button></form>'
           . nl_form_open($vgmId, $slot, 'not_member', 'd-inline')
-          . '<button type="submit" class="btn btn-sm btn-outline-secondary text-nowrap" title="This person will never have a member record (e.g. a guest). You can undo this.">'
+          . '<button type="submit" class="btn btn-sm btn-link text-secondary text-decoration-none text-nowrap small" title="This person will never have a member record (e.g. a guest). You can undo this.">'
           . '<i class="bi bi-person-dash me-1"></i>Not a church member</button></form>'
           . '</div>';
     return $out . '</div>';
@@ -127,7 +127,7 @@ function nl_render_row(array $r, array $sugg): string {
     $out .= '<td class="nl-name"><div class="fw-semibold">' . htmlspecialchars($r['written_name']) . '</div>';
     if ($isCouple) {
         $out .= '<span class="badge ' . ($linked === 2 ? 'bg-success' : 'bg-light text-dark border') . ' mt-1">'
-              . '<i class="bi bi-people-fill me-1"></i>Couple &middot; ' . $linked . ' of 2 linked</span>';
+              . '<i class="bi bi-people-fill me-1"></i>Couple &middot; ' . $linked . ' of 2 connected</span>';
     }
     if ($open === 0) {
         $out .= '<div class="small text-success mt-1"><i class="bi bi-check2-all me-1"></i>All set</div>';

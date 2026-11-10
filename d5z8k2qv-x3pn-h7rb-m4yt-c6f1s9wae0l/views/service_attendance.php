@@ -5,8 +5,8 @@ require_once 'models/ServiceAttendance.php';
 // Defaults so the page renders standalone and, more importantly, renders
 // cleanly against a completely empty service_attendances table.
 $records       = $records       ?? [];
-$saStats       = $saStats       ?? ['records'=>0,'sundays'=>0,'adults'=>0,'kids'=>0,'total'=>0,'average'=>0,'first_date'=>null,'last_date'=>null];
-$saLatest      = $saLatest      ?? ['date'=>null,'adults'=>0,'kids'=>0,'total'=>0,'services'=>0,'average'=>0];
+$saStats       = $saStats       ?? ['records'=>0,'sundays'=>0,'adults'=>0,'kids'=>0,'total'=>0,'average'=>0,'first_date'=>null,'last_date'=>null,'kids_missing'=>0,'kids_days'=>0,'avg_service_day'=>0,'avg_kids_day'=>0,'avg_total_day'=>0];
+$saLatest      = $saLatest      ?? ['date'=>null,'adults'=>0,'kids'=>0,'total'=>0,'services'=>0,'average'=>0,'kids_missing'=>0];
 $saByService   = $saByService   ?? [];
 $serviceTimes  = $serviceTimes  ?? [];
 $recordedTimes = $recordedTimes ?? [];
@@ -26,9 +26,12 @@ include 'shared/header.php';
             <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
                 <div>
                     <h1 class="h3 mb-0"><i class="bi bi-heart-pulse me-2 text-primary"></i>Sunday Service Attendance</h1>
-                    <p class="text-muted mb-0">Head counts per service &mdash; Adults + Kids = Grand Total</p>
+                    <p class="text-muted mb-0">Head counts per service time &mdash; Sunday Service + Kids Church = Total</p>
                 </div>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 flex-wrap">
+                    <?php if (function_exists('canAdminister') && canAdminister()): ?>
+                    <a href="index.php?action=attendanceImport" class="btn btn-outline-success"><i class="bi bi-upload me-1"></i>Import spreadsheet</a>
+                    <?php endif; ?>
                     <a href="index.php#churchHealth" class="btn btn-outline-secondary">
                         <i class="bi bi-graph-up me-1"></i>Church Health
                     </a>
@@ -81,33 +84,25 @@ include 'shared/header.php';
             <?php endif; ?>
 
             <!-- Summary — every figure computed from the filtered rows, never stored. -->
+            <?php $saHasLatest = !empty($saLatest['date']); $saAny = $saStats['records'] > 0; ?>
             <div class="row mb-3 g-2">
-                <div class="col-6 col-md-3">
-                    <div class="card text-center h-100 border-primary border-2"><div class="card-body py-2">
-                        <div class="h4 fw-bold text-primary mb-0"><?php echo $saLatest['date'] ? (int)$saLatest['total'] : '—'; ?></div>
-                        <div style="font-size:11px;" class="text-muted">
-                            Latest Service Day<?php echo $saLatest['date'] ? ' &middot; ' . date('M j, Y', strtotime($saLatest['date'])) : ''; ?>
+                <div class="col-12 col-lg-6">
+                    <div class="card h-100 border-primary border-2"><div class="card-body py-2">
+                        <div class="small fw-semibold text-muted mb-1">Latest Sunday<?php echo $saHasLatest ? ' &middot; ' . date('M j, Y', strtotime($saLatest['date'])) . ' &middot; ' . (int)$saLatest['services'] . ' service time' . ((int)$saLatest['services'] === 1 ? '' : 's') : ''; ?></div>
+                        <div class="row text-center g-1">
+                            <div class="col-4"><div class="h4 fw-bold text-success mb-0"><?php echo $saHasLatest ? number_format($saLatest['adults']) : '—'; ?></div><div style="font-size:11px;" class="text-muted">Total Sunday Service</div></div>
+                            <div class="col-4"><div class="h4 fw-bold text-info mb-0"><?php echo $saHasLatest && $saLatest['kids_missing'] < $saLatest['services'] ? number_format($saLatest['kids']) : '—'; ?></div><div style="font-size:11px;" class="text-muted">Total Kids Church<?php echo $saHasLatest && $saLatest['kids_missing'] ? '<br><span class="text-warning-emphasis">' . (int)$saLatest['kids_missing'] . ' not recorded</span>' : ''; ?></div></div>
+                            <div class="col-4"><div class="h4 fw-bold text-primary mb-0"><?php echo $saHasLatest ? number_format($saLatest['total']) : '—'; ?></div><div style="font-size:11px;" class="text-muted">Grand Total</div></div>
                         </div>
                     </div></div>
                 </div>
-                <div class="col-6 col-md-3">
-                    <div class="card text-center h-100"><div class="card-body py-2">
-                        <div class="h4 fw-bold text-success mb-0"><?php echo (int)$saStats['adults']; ?></div>
-                        <div style="font-size:11px;" class="text-muted">Adults (filtered)</div>
-                    </div></div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="card text-center h-100"><div class="card-body py-2">
-                        <div class="h4 fw-bold text-info mb-0"><?php echo (int)$saStats['kids']; ?></div>
-                        <div style="font-size:11px;" class="text-muted">Kids (filtered)</div>
-                    </div></div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="card text-center h-100"><div class="card-body py-2">
-                        <div class="h4 fw-bold text-warning mb-0"><?php echo $saStats['records'] > 0 ? (int)$saStats['average'] : '—'; ?></div>
-                        <div style="font-size:11px;" class="text-muted"
-                             title="AVG(grand_total) across the <?php echo (int)$saStats['records']; ?> filtered entries — calculated, never stored.">
-                            Average per Service
+                <div class="col-12 col-lg-6">
+                    <div class="card h-100"><div class="card-body py-2">
+                        <div class="small fw-semibold text-muted mb-1">Average per Sunday (filtered &middot; <?php echo (int)$saStats['sundays']; ?> Sunday<?php echo (int)$saStats['sundays'] === 1 ? '' : 's'; ?>)</div>
+                        <div class="row text-center g-1">
+                            <div class="col-4"><div class="h4 fw-bold text-success mb-0"><?php echo $saAny ? number_format($saStats['avg_service_day']) : '—'; ?></div><div style="font-size:11px;" class="text-muted">Sunday Service</div></div>
+                            <div class="col-4"><div class="h4 fw-bold text-info mb-0"><?php echo $saAny && $saStats['kids_days'] ? number_format($saStats['avg_kids_day']) : '—'; ?></div><div style="font-size:11px;" class="text-muted" title="Only Sundays where Kids Church was recorded">Kids Church<?php echo $saAny ? ' (' . (int)$saStats['kids_days'] . ' Sun.)' : ''; ?></div></div>
+                            <div class="col-4"><div class="h4 fw-bold text-warning mb-0"><?php echo $saAny ? number_format($saStats['avg_total_day']) : '—'; ?></div><div style="font-size:11px;" class="text-muted">Grand Total</div></div>
                         </div>
                     </div></div>
                 </div>
@@ -122,8 +117,8 @@ include 'shared/header.php';
                     <?php foreach ($saByService as $sv): ?>
                     <span class="badge bg-light text-dark border">
                         <?php echo htmlspecialchars($sv['service_name']); ?>:
-                        <strong><?php echo (int)$sv['average']; ?></strong>
-                        <span class="text-muted">avg &middot; <?php echo (int)$sv['records']; ?> entries</span>
+                        <strong><?php echo (int)$sv['avg_service']; ?></strong> <span class="text-muted">Sunday Service</span>
+                        + <strong><?php echo $sv['avg_kids'] === null ? '—' : (int)$sv['avg_kids']; ?></strong> <span class="text-muted">Kids Church avg &middot; <?php echo (int)$sv['records']; ?> entries</span>
                     </span>
                     <?php endforeach; ?>
                 </div>
@@ -235,9 +230,9 @@ include 'shared/header.php';
                                     <th>#</th>
                                     <th>Date</th>
                                     <th>Service Time</th>
-                                    <th class="text-end">Adults</th>
-                                    <th class="text-end">Kids</th>
-                                    <th class="text-end" title="Adults + Kids — a generated column in the database, never typed and never written by the app.">Grand Total</th>
+                                    <th class="text-end">Sunday Service</th>
+                                    <th class="text-end">Kids Church</th>
+                                    <th class="text-end" title="Sunday Service + Kids Church — a generated column in the database, never typed.">Total</th>
                                     <th>Notes</th>
                                     <th class="text-center">Actions</th>
                                 </tr>
@@ -249,7 +244,8 @@ include 'shared/header.php';
                                         'service_date' => $r['service_date'],
                                         'service_name' => $r['service_name'],
                                         'adults'       => (int)$r['adults'],
-                                        'kids'         => (int)$r['kids'],
+                                        // null = Kids Church not recorded for this service.
+                                        'kids'         => (int)$r['kids_recorded'] === 1 ? (int)$r['kids'] : null,
                                         'notes'        => (string)($r['notes'] ?? ''),
                                     ];
                                 ?>
@@ -261,7 +257,7 @@ include 'shared/header.php';
                                     </td>
                                     <td><span class="badge bg-info text-dark"><i class="bi bi-clock me-1"></i><?php echo htmlspecialchars($r['service_name']); ?></span></td>
                                     <td class="text-end"><?php echo (int)$r['adults']; ?></td>
-                                    <td class="text-end"><?php echo (int)$r['kids']; ?></td>
+                                    <td class="text-end"><?php echo (int)$r['kids_recorded'] === 1 ? (int)$r['kids'] : '<span class="text-muted small" title="Kids Church was not counted at this service">not recorded</span>'; ?></td>
                                     <td class="text-end fw-bold text-primary"><?php echo (int)$r['grand_total']; ?></td>
                                     <td class="small">
                                         <?php echo !empty($r['notes']) ? htmlspecialchars($r['notes']) : '<span class="text-muted">—</span>'; ?>
@@ -290,9 +286,9 @@ include 'shared/header.php';
                                     <td class="text-end"><?php echo (int)$saStats['kids']; ?></td>
                                     <td class="text-end text-primary"><?php echo (int)$saStats['total']; ?></td>
                                     <td colspan="2" class="small fw-normal text-muted">
-                                        Average <strong><?php echo (int)$saStats['average']; ?></strong> per entry
-                                        across <?php echo (int)$saStats['records']; ?> entries
-                                        / <?php echo (int)$saStats['sundays']; ?> service day<?php echo (int)$saStats['sundays'] === 1 ? '' : 's'; ?>
+                                        Average <strong><?php echo (int)$saStats['average']; ?></strong> per Sunday
+                                        across <?php echo (int)$saStats['sundays']; ?> Sunday<?php echo (int)$saStats['sundays'] === 1 ? '' : 's'; ?>
+                                        / <?php echo (int)$saStats['records']; ?> entries<?php echo $saStats['kids_missing'] ? ' &middot; Kids Church not recorded for ' . (int)$saStats['kids_missing'] : ''; ?>
                                     </td>
                                 </tr>
                             </tfoot>
@@ -344,24 +340,26 @@ include 'shared/header.php';
                                         </div>
                                     </div>
                                     <div class="col-6">
-                                        <label class="form-label fw-semibold">Adults <span class="text-danger">*</span></label>
+                                        <label class="form-label fw-semibold" for="<?php echo $p; ?>_adults">Sunday Service <span class="text-danger">*</span></label>
                                         <input type="number" name="adults" id="<?php echo $p; ?>_adults" class="form-control sa-count"
                                                min="0" step="1" value="0" required>
+                                        <div class="form-text" style="font-size:11px;">Everyone in the main service</div>
                                     </div>
                                     <div class="col-6">
-                                        <label class="form-label fw-semibold">Kids <span class="text-danger">*</span></label>
+                                        <label class="form-label fw-semibold" for="<?php echo $p; ?>_kids">Kids Church</label>
                                         <input type="number" name="kids" id="<?php echo $p; ?>_kids" class="form-control sa-count"
-                                               min="0" step="1" value="0" required>
+                                               min="0" step="1" value="" placeholder="not recorded">
+                                        <div class="form-text" style="font-size:11px;">Leave blank if Kids Church wasn&rsquo;t counted</div>
                                     </div>
                                     <div class="col-12">
                                         <div class="border rounded p-2 d-flex justify-content-between align-items-center bg-light">
                                             <span class="small fw-bold text-muted text-uppercase" style="letter-spacing:.05em">
-                                                <i class="bi bi-calculator me-1"></i>Grand Total
+                                                <i class="bi bi-calculator me-1"></i>Total
                                             </span>
                                             <span class="h4 fw-bold text-primary mb-0" id="<?php echo $p; ?>_total">0</span>
                                         </div>
                                         <div class="form-text" style="font-size:11px;">
-                                            Adults + Kids. Calculated automatically &mdash; it is never typed and is stored as a generated column.
+                                            Sunday Service + Kids Church. Calculated automatically &mdash; it is never typed.
                                         </div>
                                     </div>
                                     <div class="col-12">
@@ -414,7 +412,7 @@ include 'shared/header.php';
                                 <div class="table-responsive">
                                     <table class="table table-sm align-middle mb-1" id="saDayTable">
                                         <thead class="table-light">
-                                            <tr><th>Service</th><th style="width:22%">Adults</th><th style="width:22%">Kids</th><th class="text-end" style="width:16%">Total</th></tr>
+                                            <tr><th>Service</th><th style="width:22%">Sunday Service</th><th style="width:22%">Kids Church</th><th class="text-end" style="width:16%">Total</th></tr>
                                         </thead>
                                         <tbody>
                                             <?php foreach ($serviceTimes as $i => $st): $sn = (string)$st['name']; ?>
@@ -425,9 +423,9 @@ include 'shared/header.php';
                                                     <span class="badge bg-success-subtle text-success border border-success-subtle ms-1 d-none sa-day-saved">saved</span>
                                                 </td>
                                                 <td><input type="number" class="form-control form-control-sm sa-day-in" name="svc[<?php echo (int)$i; ?>][adults]"
-                                                           min="0" step="1" inputmode="numeric" placeholder="—" aria-label="Adults at <?php echo htmlspecialchars($sn); ?>"></td>
+                                                           min="0" step="1" inputmode="numeric" placeholder="—" aria-label="Sunday Service at <?php echo htmlspecialchars($sn); ?>"></td>
                                                 <td><input type="number" class="form-control form-control-sm sa-day-in" name="svc[<?php echo (int)$i; ?>][kids]"
-                                                           min="0" step="1" inputmode="numeric" placeholder="—" aria-label="Kids at <?php echo htmlspecialchars($sn); ?>"></td>
+                                                           min="0" step="1" inputmode="numeric" placeholder="—" aria-label="Kids Church at <?php echo htmlspecialchars($sn); ?>"></td>
                                                 <td class="text-end fw-bold text-primary sa-day-total">—</td>
                                             </tr>
                                             <tr class="sa-day-del d-none">
@@ -454,7 +452,7 @@ include 'shared/header.php';
                                 </div>
                                 <div id="sa_day_other" class="small text-muted d-none"></div>
                                 <div id="sa_day_error" class="alert alert-danger py-2 small d-none mb-0 mt-2" role="alert"></div>
-                                <div class="form-text">Leave a service blank to skip it &mdash; blanks are not saved as zeros. If only one box is filled, the other counts as 0.</div>
+                                <div class="form-text">Leave a service blank to skip it &mdash; blanks are not saved as zeros. A blank Sunday Service counts as 0; a blank Kids Church is saved as <em>not recorded</em>, not 0.</div>
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -510,7 +508,7 @@ function saOpenEditModal(row) {
              + '<?php echo htmlspecialchars(str_replace('&', '&amp;', http_build_query(array_filter($activeFilters)) ? '&' . http_build_query(array_filter($activeFilters)) : ''), ENT_QUOTES); ?>';
     document.getElementById('sa_edit_date').value    = row.service_date || '';
     document.getElementById('sa_edit_adults').value  = row.adults;
-    document.getElementById('sa_edit_kids').value    = row.kids;
+    document.getElementById('sa_edit_kids').value    = row.kids === null ? '' : row.kids;
     document.getElementById('sa_edit_notes').value   = row.notes || '';
     var sel = document.getElementById('sa_edit_service');
     sel.value = row.service_name || '';
@@ -607,10 +605,10 @@ document.querySelectorAll('form.sa-form').forEach(function (f) {
                     if (!e) return;
                     configured++;
                     var ins = tr.querySelectorAll('input.sa-day-in');
-                    ins[0].value = e.adults; ins[1].value = e.kids;
+                    ins[0].value = e.adults; ins[1].value = e.kids === null ? '' : e.kids;
                     tr.querySelector('.sa-day-saved').classList.remove('d-none');
                     tr.nextElementSibling.querySelector('.sa-day-was').textContent =
-                        e.adults + ' adults + ' + e.kids + ' kids';
+                        e.adults + ' Sunday Service + ' + (e.kids === null ? 'Kids Church not recorded' : e.kids + ' Kids Church');
                 });
                 hint.innerHTML = '';
                 hint.appendChild(document.createTextNode(dayNote + (configured
@@ -642,11 +640,11 @@ document.querySelectorAll('form.sa-form').forEach(function (f) {
         if (!dateEl.value) problems.push('Choose a date.');
         rows.forEach(function (tr) {
             var ins = tr.querySelectorAll('input.sa-day-in'), a = val(ins[0]), k = val(ins[1]);
-            if (!isWhole(a) || !isWhole(k)) problems.push(tr.dataset.name + ': Adults and Kids must be whole numbers of zero or more.');
+            if (!isWhole(a) || !isWhole(k)) problems.push(tr.dataset.name + ': Sunday Service and Kids Church must be whole numbers of zero or more.');
             if (a !== '' || k !== '') filled++;
             if (tr.nextElementSibling.querySelector('input[type=checkbox]').checked) deleting++;
         });
-        if (!problems.length && !filled && !deleting) problems.push('Enter Adults or Kids for at least one service.');
+        if (!problems.length && !filled && !deleting) problems.push('Enter Sunday Service or Kids Church for at least one service.');
         if (problems.length) {
             e.preventDefault();
             errBox.textContent = problems.join(' ');

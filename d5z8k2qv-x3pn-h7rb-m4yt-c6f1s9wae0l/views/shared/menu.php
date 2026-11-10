@@ -31,24 +31,30 @@
                 <i class="bi bi-calendar-check me-2"></i>Attendance Records
             </a>
         </li>
+        <?php
+        // Three group lists, one sidebar item each (same victoryGroups route, tab=vg|lg|campus).
+        // editGroup sets $_GET['tab'] from the group's kind, so its item stays lit too.
+        $grpAction = $_GET['action'] ?? '';
+        $grpTab    = $_GET['tab'] ?? 'vg';
+        $onGroups  = in_array($grpAction, ['victoryGroups', 'editGroup', 'addGroup'], true);
+        if (!in_array($grpTab, ['vg', 'lg', 'campus'], true)) $grpTab = 'vg';
+        $grpItems  = [
+            'vg'     => ['Victory Groups',    'bi-people-fill'],
+            'lg'     => ['Leadership Groups', 'bi-diagram-3'],
+            'campus' => ['Campus',            'bi-building'],
+        ];
+        foreach ($grpItems as $gTab => [$gLabel, $gIcon]): ?>
         <li class="nav-item">
-            <a href="index.php?action=victoryGroups" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'victoryGroups') ? 'active' : ''; ?>">
-                <i class="bi bi-diagram-3 me-2"></i>Victory Groups / LG
+            <a href="index.php?action=victoryGroups&amp;tab=<?php echo $gTab; ?>" class="nav-link <?php echo ($onGroups && $grpTab === $gTab) ? 'active' : ''; ?>">
+                <i class="bi <?php echo $gIcon; ?> me-2"></i><?php echo $gLabel; ?>
             </a>
         </li>
-        <?php if (canAdminister()) {
-            // Unresolved imported names: one COUNT (VictoryGroup::countUnresolvedSlots). 0 hides the badge.
-            $nlOpen = (class_exists('VictoryGroup') && isset($GLOBALS['db']) && $GLOBALS['db'] instanceof PDO)
-                ? (new VictoryGroup($GLOBALS['db']))->countUnresolvedSlots() : 0;
-        ?>
+        <?php endforeach; ?>
         <li class="nav-item">
-            <a href="index.php?action=needsLink" class="nav-link d-flex align-items-center <?php echo (($_GET['action'] ?? '') === 'needsLink') ? 'active' : ''; ?>">
-                <i class="bi bi-link-45deg me-2"></i>Needs Link
-                <span id="nlMenuBadge" class="badge rounded-pill bg-warning text-dark ms-auto<?php echo $nlOpen > 0 ? '' : ' d-none'; ?>"
-                      title="Imported names still waiting to be linked"><?php echo (int)$nlOpen; ?></span>
+            <a href="index.php?action=groupLeaders" class="nav-link <?php echo $grpAction === 'groupLeaders' ? 'active' : ''; ?>">
+                <i class="bi bi-star me-2"></i>Leaders
             </a>
         </li>
-        <?php } ?>
         <li class="nav-item">
             <a href="index.php?action=serveTeams" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'serveTeams') ? 'active' : ''; ?>">
                 <i class="bi bi-hand-thumbs-up me-2"></i>Serve Teams
@@ -57,6 +63,11 @@
         <li class="nav-item">
             <a href="index.php?action=serviceAttendance" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'serviceAttendance') ? 'active' : ''; ?>">
                 <i class="bi bi-heart-pulse me-2"></i>Sunday Attendance
+            </a>
+        </li>
+        <li class="nav-item">
+            <a href="index.php?action=gatheringAttendance" class="nav-link <?php echo (($_GET['action'] ?? '') === 'gatheringAttendance') ? 'active' : ''; ?>">
+                <i class="bi bi-fire me-2"></i>Prayer &amp; Students
             </a>
         </li>
         <li class="mt-2 mb-1">

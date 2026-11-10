@@ -367,7 +367,7 @@ class VictoryGroup {
             if (!$row) return ['ok' => false, 'msg' => 'That name is no longer on this group.'];
 
             if ($slot === 2 && !(int)$row['is_couple']) {
-                return ['ok' => false, 'msg' => 'This name is only one person, so it has a single link.'];
+                return ['ok' => false, 'msg' => 'This name is only one person, so it connects to one profile.'];
             }
 
             $stmt = $this->db->prepare("SELECT full_name FROM members WHERE id = ? AND is_deleted = 0");
@@ -380,17 +380,17 @@ class VictoryGroup {
             if ($other !== null && (int)$other === $memberId) {
                 // Plain text: every display site escapes msg itself (escaping here too
                 // showed "O&amp;apos;Brien" on screen).
-                return ['ok' => false, 'msg' => $fullName . ' is already linked to the other half of this name.'];
+                return ['ok' => false, 'msg' => $fullName . ' is already connected to the other half of this name.'];
             }
 
             $col  = $slot === 1 ? 'member_id'   : 'member_id_2';
             $stat = $slot === 1 ? 'link_status' : 'link_status_2';
             $this->db->prepare("UPDATE vg_members SET `$col` = ?, `$stat` = 'linked' WHERE id = ?")
                      ->execute([$memberId, $vgMemberId]);
-            return ['ok' => true, 'msg' => 'Linked to ' . $fullName . '.'];
+            return ['ok' => true, 'msg' => 'Connected to ' . $fullName . '.'];
         } catch (PDOException $e) {
             error_log("VictoryGroup::linkVgMember error: " . $e->getMessage());
-            return ['ok' => false, 'msg' => 'The link could not be saved.'];
+            return ['ok' => false, 'msg' => 'The connection could not be saved.'];
         }
     }
 
@@ -409,11 +409,11 @@ class VictoryGroup {
                 "UPDATE vg_members SET `$col` = NULL, `$stat` = 'needs_link' WHERE id = ?"
             );
             $stmt->execute([$vgMemberId]);
-            if ($stmt->rowCount() === 0) return ['ok' => false, 'msg' => 'Nothing to unlink.'];
-            return ['ok' => true, 'msg' => 'Unlinked. The name is back on Needs Link.'];
+            if ($stmt->rowCount() === 0) return ['ok' => false, 'msg' => 'Nothing to disconnect.'];
+            return ['ok' => true, 'msg' => 'Disconnected. The name is back on the not-connected list.'];
         } catch (PDOException $e) {
             error_log("VictoryGroup::unlinkVgMember error: " . $e->getMessage());
-            return ['ok' => false, 'msg' => 'The link could not be removed.'];
+            return ['ok' => false, 'msg' => 'The connection could not be removed.'];
         }
     }
 
@@ -460,6 +460,227 @@ class VictoryGroup {
             )->fetchColumn();
         } catch (PDOException $e) {
             error_log("VictoryGroup::countUnresolvedSlots error: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /** Same count as countUnresolvedSlots(), limited to one group_kind (the list banner). */
+    public function countUnresolvedSlotsForKind(string $kind): int {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT COALESCE(SUM(" . self::SLOT1_OPEN . ") + SUM(" . self::SLOT2_OPEN . "), 0)
+                   FROM vg_members vm
+                   JOIN victory_groups vg ON vg.id = vm.group_id
+                  WHERE vg.is_deleted = 0 AND vg.group_kind = ?"
+            );
+            $stmt->execute([$kind]);
+            return (int)$stmt->fetchColumn();
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::countUnresolvedSlotsForKind error: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Member-side suggestions: which not-yet-connected names on the group
+     * schedules look like these members. Exact / near name matches only
+     * (LinkSuggester score >= $minScore: 100 same name, 80 same surname and
+     * first name starting the same). SUGGESTIONS ONLY — nothing is written.
+     *
+     * @return array[] one entry per (row, slot, member): vg_member_id, slot,
+     *                 member_id, member_name, score + the row's group fields.
+     */
+    public function suggestConnectionsForMembers(array $memberIds, int $minScore = 80): array {
+        $memberIds = array_values(array_unique(array_filter(array_map('intval', $memberIds))));
+        if (!$memberIds) return [];
+        require_once 'models/LinkSuggester.php';
+        try {
+            $ph   = implode(',', array_fill(0, count($memberIds), '?'));
+            $stmt = $this->db->prepare(
+                "SELECT id, full_name, first_name, last_name FROM members WHERE is_deleted = 0 AND id IN ($ph)"
+            );
+            $stmt->execute($memberIds);
+            $members = $stmt->fetchAll();
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::suggestConnectionsForMembers error: " . $e->getMessage());
+            return [];
+        }
+        if (!$members) return [];
+        $suggester = new LinkSuggester($members);
+        $out = [];
+        foreach ($this->getUnresolvedRows() as $r) {
+            foreach ($suggester->suggestForRow($r) as $slot => $list) {
+                if (!$this->slotIsOpen($r, (int)$slot)) continue;
+                foreach ($list as $s) {
+                    if ((int)$s['score'] < $minScore) continue;
+                    $out[] = $r + ['slot' => (int)$slot, 'suggest_id' => (int)$s['id'],
+                                   'suggest_name' => $s['full_name'], 'score' => (int)$s['score']];
+                }
+            }
+        }
+        usort($out, fn($a, $b) => $b['score'] <=> $a['score']);
+        return $out;
+    }
+
+    /** PHP mirror of SLOT1_OPEN / SLOT2_OPEN for one row. */
+    private function slotIsOpen(array $r, int $slot): bool {
+        if ($slot === 2 && empty($r['is_couple'])) return false;
+        $stat = $slot === 1 ? ($r['link_status'] ?? '') : ($r['link_status_2'] ?? '');
+        $mid  = $slot === 1 ? ($r['member_id'] ?? null) : ($r['member_id_2'] ?? null);
+        if ($stat === 'not_a_member') return false;
+        return !($stat === 'linked' && !empty($mid));
+    }
+
+    // ── Leaders page ────────────────────────────────────────────────────────
+
+    /**
+     * Every leader / intern / LG leader line on non-deleted groups, one row per
+     * line as written ("Amy & Carl" stays one row, people = 2). Connected people
+     * are listed with their member ids so the page can count each person once,
+     * and mark anyone who leads 2+ groups.
+     */
+    public function getLeaderRows(): array {
+        require_once 'models/LinkSuggester.php';
+        try {
+            $rows = $this->db->query(
+                "SELECT vm.id AS vg_member_id, vm.role, vm.is_couple,
+                        COALESCE(NULLIF(vm.display_name, ''), vm.name) AS written_name,
+                        IF(vm.link_status = 'linked', vm.member_id, NULL)   AS member_id,
+                        IF(vm.is_couple = 1 AND vm.link_status_2 = 'linked', vm.member_id_2, NULL) AS member_id_2,
+                        m.full_name AS member_name, m2.full_name AS member2_name,
+                        vg.id AS group_id, vg.group_kind, vg.name AS group_name, vg.day_of_week,
+                        vg.meeting_time, vg.location, vg.group_status
+                   FROM vg_members vm
+                   JOIN victory_groups vg ON vg.id = vm.group_id AND vg.is_deleted = 0
+                   LEFT JOIN members m  ON m.id  = vm.member_id   AND vm.link_status = 'linked'
+                   LEFT JOIN members m2 ON m2.id = vm.member_id_2 AND vm.link_status_2 = 'linked'
+                  WHERE vm.role IN ('leader', 'intern', 'lg_leader')
+                  ORDER BY FIELD(vg.group_kind, 'victory_group', 'leadership_group', 'campus'),
+                           FIELD(vm.role, 'leader', 'lg_leader', 'intern'), written_name, vg.id"
+            )->fetchAll();
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::getLeaderRows error: " . $e->getMessage());
+            return [];
+        }
+        $labels = ['victory_group' => ['leader' => 'VG Leader', 'intern' => 'VG Intern'],
+                   'campus'        => ['leader' => 'Campus Leader', 'intern' => 'Campus Intern'],
+                   'leadership_group' => ['lg_leader' => 'LG Leader', 'leader' => 'LG Leader']];
+        $kinds  = ['victory_group' => 'Victory Group', 'leadership_group' => 'Leadership Group', 'campus' => 'Campus'];
+        // Who leads more than one group: connected people by member id, others by written name.
+        $groupsBy = [];
+        foreach ($rows as $r) {
+            $keys = array_filter([$r['member_id'] ? 'm' . $r['member_id'] : null, $r['member_id_2'] ? 'm' . $r['member_id_2'] : null]);
+            if (!$keys) $keys = ['n' . LinkSuggester::norm((string)$r['written_name'])];
+            foreach ($keys as $k) $groupsBy[$k][(int)$r['group_id']] = true;
+        }
+        foreach ($rows as &$r) {
+            $r['role_label'] = $labels[$r['group_kind']][$r['role']] ?? ucfirst($r['role']);
+            $r['kind_label'] = $kinds[$r['group_kind']] ?? $r['group_kind'];
+            $r['people']     = (int)$r['is_couple'] === 1 ? 2 : 1;
+            $r['connected']  = (int)!empty($r['member_id']) + (int)!empty($r['member_id_2']);
+            $keys = array_filter([$r['member_id'] ? 'm' . $r['member_id'] : null, $r['member_id_2'] ? 'm' . $r['member_id_2'] : null]);
+            if (!$keys) $keys = ['n' . LinkSuggester::norm((string)$r['written_name'])];
+            $r['multi'] = max(array_map(fn($k) => count($groupsBy[$k]), $keys)) >= 2;
+        }
+        unset($r);
+        return $rows;
+    }
+
+    // ── One person's memberships, managed from the member profile ──────────
+
+    /** Roles a group of this kind can hold. LG has no interns or attendees. */
+    public static function rolesForKind(string $kind): array {
+        return $kind === 'leadership_group'
+            ? ['lg_leader' => 'LG Leader', 'attendee' => 'Member']
+            : ['leader' => 'Leader', 'intern' => 'Intern', 'attendee' => 'Member'];
+    }
+
+    /**
+     * Add a member to a group, already connected (link_status='linked',
+     * display_name = their name). One person may be in many groups, but only
+     * once per group: if they are already on it, say so instead of adding.
+     */
+    public function addMemberToGroup(int $groupId, int $memberId, string $role): array {
+        try {
+            $g = $this->db->prepare("SELECT group_kind FROM victory_groups WHERE id = ? AND is_deleted = 0");
+            $g->execute([$groupId]);
+            $kind = $g->fetchColumn();
+            if ($kind === false) return ['ok' => false, 'msg' => 'That group could not be found.'];
+            if (!isset(self::rolesForKind($kind)[$role])) return ['ok' => false, 'msg' => 'That role is not used on this kind of group.'];
+
+            $m = $this->db->prepare("SELECT full_name FROM members WHERE id = ? AND is_deleted = 0");
+            $m->execute([$memberId]);
+            $name = $m->fetchColumn();
+            if ($name === false) return ['ok' => false, 'msg' => 'That member could not be found.'];
+
+            $dup = $this->db->prepare("SELECT COUNT(*) FROM vg_members WHERE group_id = ? AND (member_id = ? OR member_id_2 = ?)");
+            $dup->execute([$groupId, $memberId, $memberId]);
+            if ((int)$dup->fetchColumn() > 0) return ['ok' => false, 'msg' => $name . ' is already on this group. Use Change role instead.'];
+
+            $sort = $this->db->prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM vg_members WHERE group_id = ? AND role = ?");
+            $sort->execute([$groupId, $role]);
+            $this->db->prepare(
+                "INSERT INTO vg_members (group_id, member_id, link_status, is_couple, name, display_name, role, sort_order)
+                 VALUES (?, ?, 'linked', 0, ?, ?, ?, ?)"
+            )->execute([$groupId, $memberId, $name, $name, $role, (int)$sort->fetchColumn()]);
+            return ['ok' => true, 'msg' => $name . ' was added to the group.'];
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::addMemberToGroup error: " . $e->getMessage());
+            return ['ok' => false, 'msg' => 'The group could not be saved.'];
+        }
+    }
+
+    /** The vg_members row, if this member fills either slot of it. */
+    private function rowForMember(int $vgMemberId, int $memberId) {
+        $s = $this->db->prepare(
+            "SELECT vm.*, vg.group_kind FROM vg_members vm JOIN victory_groups vg ON vg.id = vm.group_id
+              WHERE vm.id = ? AND (vm.member_id = ? OR vm.member_id_2 = ?)"
+        );
+        $s->execute([$vgMemberId, $memberId, $memberId]);
+        return $s->fetch();
+    }
+
+    /** Change the role of one line. A couple line changes for both people on it. */
+    public function changeMemberRole(int $vgMemberId, int $memberId, string $role): array {
+        try {
+            $row = $this->rowForMember($vgMemberId, $memberId);
+            if (!$row) return ['ok' => false, 'msg' => 'That group line could not be found.'];
+            if (!isset(self::rolesForKind($row['group_kind'])[$role])) return ['ok' => false, 'msg' => 'That role is not used on this kind of group.'];
+            $this->db->prepare("UPDATE vg_members SET role = ? WHERE id = ?")->execute([$role, $vgMemberId]);
+            return ['ok' => true, 'msg' => 'Role changed to ' . self::rolesForKind($row['group_kind'])[$role] . '.'];
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::changeMemberRole error: " . $e->getMessage());
+            return ['ok' => false, 'msg' => 'The role could not be changed.'];
+        }
+    }
+
+    /**
+     * Take this member off a group. A solo line is deleted. On a couple line
+     * ("Amy & Carl") the other spouse stays: only this person's slot is
+     * cleared, and the written name is left as it is.
+     */
+    public function removeMemberFromGroup(int $vgMemberId, int $memberId): array {
+        try {
+            $row = $this->rowForMember($vgMemberId, $memberId);
+            if (!$row) return ['ok' => false, 'msg' => 'That group line could not be found.'];
+            if ((int)$row['is_couple'] === 1) {
+                $slot = (int)$row['member_id'] === $memberId ? 1 : 2;
+                $res  = $this->unlinkVgMember($vgMemberId, $slot);
+                return $res['ok'] ? ['ok' => true, 'msg' => 'Disconnected from the couple line. The other person stays on the group.'] : $res;
+            }
+            $this->db->prepare("DELETE FROM vg_members WHERE id = ?")->execute([$vgMemberId]);
+            return ['ok' => true, 'msg' => 'Removed from the group.'];
+        } catch (PDOException $e) {
+            error_log("VictoryGroup::removeMemberFromGroup error: " . $e->getMessage());
+            return ['ok' => false, 'msg' => 'The group could not be updated.'];
+        }
+    }
+
+    /** Non-deleted members on record — the banner says "add members first" at 0. */
+    public function countMembers(): int {
+        try {
+            return (int)$this->db->query("SELECT COUNT(*) FROM members WHERE is_deleted = 0")->fetchColumn();
+        } catch (PDOException $e) {
             return 0;
         }
     }
@@ -581,7 +802,7 @@ class VictoryGroup {
             $isCouple = $stmt->fetchColumn();
             if ($isCouple === false) return ['ok' => false, 'msg' => 'That name is no longer on this group.'];
             if ($slot === 2 && !(int)$isCouple) {
-                return ['ok' => false, 'msg' => 'This name is only one person, so it has a single link.'];
+                return ['ok' => false, 'msg' => 'This name is only one person, so it connects to one profile.'];
             }
             $col  = $slot === 1 ? 'member_id'   : 'member_id_2';
             $stat = $slot === 1 ? 'link_status' : 'link_status_2';

@@ -67,10 +67,10 @@ function vg_link_slot(array $m, int $slot): string {
         $out .= '<a href="index.php?action=memberProfile&id=' . $memberId . '"'
               . ' class="text-primary text-decoration-none" title="View member profile">'
               . '<i class="bi bi-person-fill me-1 text-success"></i>'
-              . htmlspecialchars($memberNm !== '' ? $memberNm : 'Linked member') . '</a>'
+              . htmlspecialchars($memberNm !== '' ? $memberNm : 'Connected member') . '</a>'
               . ' <a href="index.php?action=unlinkVgMember&vgm=' . $vgmId . '&slot=' . $slot . '"'
-              . ' class="text-danger text-decoration-none" title="Unlink this person. The name stays as written."'
-              . ' data-confirm="Unlink this person? The name stays exactly as written and goes back to Needs Link.">'
+              . ' class="text-danger text-decoration-none" title="Disconnect this person. The name stays as written."'
+              . ' data-confirm="Disconnect this person from their profile? The name stays exactly as written.">'
               . '<i class="bi bi-x-circle"></i></a>';
     } else {
         if ((($slot === 1 ? $m['link_status'] : $m['link_status_2']) ?? '') === 'not_a_member') {
@@ -80,7 +80,7 @@ function vg_link_slot(array $m, int $slot): string {
               . ' style="font-size:.7rem"'
               . ' onclick="openLinkPersonModal(' . $vgmId . ',' . $slot . ','
               . htmlspecialchars(json_encode((string)$m['name']), ENT_QUOTES) . ')">'
-              . '<i class="bi bi-link-45deg me-1"></i>Link</button>';
+              . '<i class="bi bi-person-check me-1"></i>Connect</button>';
     }
     return $out . '</div>';
 }
@@ -114,12 +114,12 @@ function renderNameList($members, $showGender = true) {
                + (int)(!empty($m['member_id_2']) && ($m['link_status_2'] ?? '') === 'linked');
             if ($n === 2) {
                 $out .= ' <span class="badge bg-success" style="font-size:.65rem"'
-                      . ' title="Both people in this name are linked to their own member record.">'
-                      . '<i class="bi bi-people-fill me-1"></i>Both linked</span>';
+                      . ' title="Both people in this name are connected to their own member profile.">'
+                      . '<i class="bi bi-people-fill me-1"></i>Both connected</span>';
             } else {
-                $out .= ' <span class="badge bg-warning text-dark" style="font-size:.65rem"'
-                      . ' title="Written as a couple — two people, two links. Link each one separately.">'
-                      . '<i class="bi bi-link-45deg me-1"></i>' . $n . ' of 2 linked</span>';
+                $out .= ' <span class="badge bg-light text-secondary border" style="font-size:.65rem"'
+                      . ' title="Written as a couple: two people. Connect each one separately.">'
+                      . '<i class="bi bi-link-45deg me-1"></i>' . $n . ' of 2 connected</span>';
             }
             if ($canLink) {
                 $out .= '<div class="ms-3 mt-1">' . vg_link_slot($m, 1) . vg_link_slot($m, 2) . '</div>';
@@ -127,19 +127,19 @@ function renderNameList($members, $showGender = true) {
         } elseif (empty($m['member_id']) && ($m['link_status'] ?? '') === 'not_a_member') {
             // Resolved on the Needs Link page: a person who will never have a member
             // record. Not a prompt to link, and never counted as a linked person.
-            $out .= ' <span class="badge bg-secondary" style="font-size:.65rem" title="Marked on the Needs Link page. Undo it there.">'
+            $out .= ' <span class="badge bg-secondary" style="font-size:.65rem" title="Marked on the Connect people page. Undo it there.">'
                   . '<i class="bi bi-person-dash me-1"></i>Not a church member</span>';
         } elseif (empty($m['member_id'])) {
-            $out .= ' <span class="badge bg-warning text-dark" style="font-size:.65rem">'
-                  . '<i class="bi bi-link-45deg me-1"></i>Needs Link</span>';
+            $out .= ' <span class="badge bg-light text-secondary border" style="font-size:.65rem" title="This name is not connected to a member profile yet.">'
+                  . 'Not connected</span>';
             if ($canLink) {
                 $out .= ' <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" style="font-size:.7rem"'
                       . ' onclick="openLinkPersonModal(' . (int)($m['vg_member_id'] ?? 0) . ',1,'
                       . htmlspecialchars(json_encode((string)$m['name']), ENT_QUOTES) . ')">'
-                      . 'Link</button>';
+                      . 'Connect</button>';
             } else {
                 $out .= ' <a href="index.php?action=members&openAdd=1" class="text-decoration-none small"'
-                      . ' title="Not linked to a member record">Add as member</a>';
+                      . ' title="Not connected to a member profile">Add as member</a>';
             }
         }
         $out .= '</div>';
@@ -155,19 +155,22 @@ function renderNameList($members, $showGender = true) {
 
             <!-- Header -->
             <div class="d-flex justify-content-between align-items-center mb-4">
+                <?php
+                // One sidebar item per kind, so the title follows the kind (no tab strip).
+                $kindTitles = [
+                    'vg'     => ['Victory Groups',    'bi-people-fill', 'Victory Group schedules, leaders and meeting details'],
+                    'lg'     => ['Leadership Groups', 'bi-diagram-3',   'Leadership Group schedules, leaders and meeting details'],
+                    'campus' => ['Campus Groups',     'bi-building',    'Campus group schedules, leaders and meeting details'],
+                ];
+                [$pageTitle, $pageIcon, $pageSub] = $kindTitles[$activeTab] ?? ['Victory Groups', 'bi-diagram-3', 'Group statistics'];
+                ?>
                 <div>
-                    <h1 class="h3 mb-0"><i class="bi bi-diagram-3 me-2 text-info"></i>Victory Groups / Leadership Groups</h1>
-                    <p class="text-muted mb-0">Manage VG and LG schedules, leaders, and meeting details</p>
+                    <h1 class="h3 mb-0"><i class="bi <?php echo $pageIcon; ?> me-2 text-info"></i><?php echo $pageTitle; ?></h1>
+                    <p class="text-muted mb-0"><?php echo $pageSub; ?></p>
                 </div>
                 <?php if ($isGroupsTab): ?>
                 <div class="d-flex gap-2">
                     <?php if (($_SESSION['user']['accounttype'] ?? '') === 'admin'): ?>
-                    <a href="index.php?action=needsLink" class="btn btn-outline-warning text-dark" title="Link every imported name on one page">
-                        <i class="bi bi-link-45deg me-1"></i> Needs Link
-                        <?php if (($needsLinkCount ?? 0) > 0): ?>
-                        <span class="badge rounded-pill bg-warning text-dark ms-1"><?php echo (int)$needsLinkCount; ?></span>
-                        <?php endif; ?>
-                    </a>
                     <a href="index.php?action=groupImport" class="btn btn-outline-primary">
                         <i class="bi bi-upload me-1"></i> Import VG Schedule
                     </a>
@@ -183,28 +186,29 @@ function renderNameList($members, $showGender = true) {
                 <?php endif; ?>
             </div>
 
-            <!-- Tabs — Victory Groups / Leadership Groups / Campus are the three real
-                 categories (group_kind), each with its own stat cards, filters, and table.
-                 "VG Statistics" / "Stat Definitions" are hidden from nav (deprecated in favor
-                 of the stat cards on these tabs) but remain reachable at ?tab=stats /
-                 ?tab=statDefs and their underlying code is untouched. -->
-            <ul class="nav nav-tabs mb-4">
-                <li class="nav-item">
-                    <a class="nav-link <?php echo $activeTab === 'vg' ? 'active' : ''; ?>" href="index.php?action=victoryGroups&tab=vg">
-                        <i class="bi bi-people-fill me-1"></i>Victory Groups
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link <?php echo $activeTab === 'lg' ? 'active' : ''; ?>" href="index.php?action=victoryGroups&tab=lg">
-                        <i class="bi bi-diagram-3 me-1"></i>Leadership Groups
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link <?php echo $activeTab === 'campus' ? 'active' : ''; ?>" href="index.php?action=victoryGroups&tab=campus">
-                        <i class="bi bi-building me-1"></i>Campus
-                    </a>
-                </li>
-            </ul>
+            <!-- No tab strip: Victory Groups / Leadership Groups / Campus are three
+                 separate sidebar items (views/shared/menu.php), same ?tab= routing.
+                 ?tab=stats / ?tab=statDefs stay reachable by URL, untouched. -->
+
+            <?php if ($isGroupsTab && canAdminister()):
+                // One friendly banner instead of a Needs Link button + badge.
+                $kindOpen = (int)($kindUnresolved ?? 0);
+                if ((int)($memberCount ?? 0) === 0 && $kindOpen > 0): ?>
+            <div class="alert alert-info d-flex align-items-center gap-2 flex-wrap" id="connectBanner">
+                <i class="bi bi-info-circle-fill"></i>
+                <span class="me-auto">Add your 2026 members first, then connect the people on these groups.</span>
+                <a href="index.php?action=memberImport" class="btn btn-sm btn-primary"><i class="bi bi-upload me-1"></i>Import members</a>
+            </div>
+                <?php elseif ($kindOpen > 0): ?>
+            <div class="alert alert-warning d-flex align-items-center gap-2 flex-wrap" id="connectBanner">
+                <i class="bi bi-person-exclamation"></i>
+                <span class="me-auto"><strong><?php echo $kindOpen; ?></strong>
+                    <?php echo $kindOpen === 1 ? 'person on these groups isn&rsquo;t' : 'people on these groups aren&rsquo;t'; ?>
+                    connected to a member profile yet. Connect them so the group shows on their profile and they're counted.</span>
+                <a href="index.php?action=needsLink&amp;kind=<?php echo htmlspecialchars($currentKind); ?>" class="btn btn-sm btn-primary"><i class="bi bi-person-check me-1"></i>Connect them</a>
+            </div>
+                <?php endif; ?>
+            <?php endif; ?>
 
             <!-- Notifications -->
             <?php if (isset($_GET['notif'])): ?>
@@ -282,8 +286,8 @@ function renderNameList($members, $showGender = true) {
                             <?php if (!empty($sc['to_link'])): ?>
                             <!-- Counts are linked people only; say how many are waiting to be linked. -->
                             <div style="font-size:10px;" class="text-warning-emphasis"
-                                 title="Counted once they are linked to a member record">
-                                <i class="bi bi-link-45deg" aria-hidden="true"></i><?php echo (int)$sc['to_link']; ?> to link
+                                 title="Counted once they are connected to a member profile">
+                                <i class="bi bi-person" aria-hidden="true"></i> <?php echo (int)$sc['to_link']; ?> not connected yet
                             </div>
                             <?php endif; ?>
                         </div>
@@ -487,8 +491,8 @@ function renderNameList($members, $showGender = true) {
                                 <button type="button" id="filterUnregistered"
                                         class="btn btn-sm btn-outline-warning"
                                         onclick="toggleUnregisteredFilter()"
-                                        title="Show only groups that have at least one unregistered member">
-                                    <i class="bi bi-link-45deg me-1"></i> Needs Link
+                                        title="Show only groups with someone not connected to a member profile yet">
+                                    <i class="bi bi-person me-1"></i> Not connected
                                 </button>
                             </div>
                         </div>
@@ -1587,7 +1591,7 @@ function renderNameList($members, $showGender = true) {
             <div class="modal-content">
                 <form method="POST" action="index.php?action=linkVgMember">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-link-45deg me-2"></i>Link to a member</h5>
+                    <h5 class="modal-title"><i class="bi bi-person-check me-2"></i>Connect to a member profile</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
@@ -1607,14 +1611,14 @@ function renderNameList($members, $showGender = true) {
                         <?php endforeach; ?>
                     </select>
                     <div class="form-text">
-                        The name above is never changed by linking — it stays exactly as the
+                        The name above is never changed by connecting. It stays exactly as the
                         schedule spelled it. If this person is not in the list yet,
                         <a href="index.php?action=members&openAdd=1">add them as a member</a> first.
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-link-45deg me-1"></i>Link</button>
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-person-check me-1"></i>Connect</button>
                 </div>
                 </form>
             </div>
@@ -1784,7 +1788,7 @@ function renderNameList($members, $showGender = true) {
                 chips.push('<span class="badge bg-light text-dark border">Search: "' + esc(txtSearch) + '"</span>');
             }
             if (showOnlyUnreg) {
-                chips.push('<span class="badge bg-warning text-dark"><i class="bi bi-link-45deg me-1"></i>Needs Link only</span>');
+                chips.push('<span class="badge bg-warning text-dark"><i class="bi bi-person me-1"></i>Not connected only</span>');
             }
             // Cap at 4 chips for header; overflow \u2192 "+N more" pill
             var shown    = chips.slice(0, 4).join(' ');
@@ -1871,12 +1875,12 @@ function renderNameList($members, $showGender = true) {
         var removeBtn = '<button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0"'
             + ' onclick="this.closest(\'.member-row\').remove()"><i class="bi bi-x"></i></button>';
         var unreg = (name && !memberId)
-            ? '<span class="badge bg-warning text-dark flex-shrink-0 unregistered-badge" style="font-size:.65rem;cursor:pointer"'
-              + ' title="Not linked to a member record — link this person from the Members page">'
-              + '<i class="bi bi-link-45deg me-1"></i>Needs Link</span>'
-            : '<span class="badge bg-warning text-dark flex-shrink-0 unregistered-badge d-none" style="font-size:.65rem;cursor:pointer"'
-              + ' title="Not linked to a member record — link this person from the Members page">'
-              + '<i class="bi bi-link-45deg me-1"></i>Needs Link</span>';
+            ? '<span class="badge bg-light text-secondary border flex-shrink-0 unregistered-badge" style="font-size:.65rem;cursor:pointer"'
+              + ' title="Not connected to a member profile yet">'
+              + 'Not connected</span>'
+            : '<span class="badge bg-light text-secondary border flex-shrink-0 unregistered-badge d-none" style="font-size:.65rem;cursor:pointer"'
+              + ' title="Not connected to a member profile yet">'
+              + 'Not connected</span>';
         if (type === 'attendee') {
             div.innerHTML = nameInput + unreg + removeBtn;
         } else {
@@ -1982,8 +1986,8 @@ function renderNameList($members, $showGender = true) {
                     var n = (m.member_id && m.link_status === 'linked' ? 1 : 0)
                           + (m.member_id_2 && m.link_status_2 === 'linked' ? 1 : 0);
                     var cls = n === 2 ? 'bg-success' : 'bg-warning text-dark';
-                    var txt = n === 2 ? '<i class="bi bi-people-fill me-1"></i>Both linked'
-                                      : '<i class="bi bi-link-45deg me-1"></i>' + n + ' of 2 linked';
+                    var txt = n === 2 ? '<i class="bi bi-people-fill me-1"></i>Both connected'
+                                      : '<i class="bi bi-link-45deg me-1"></i>' + n + ' of 2 connected';
                     return '<div>' + name + ' <span class="badge ' + cls + '" style="font-size:.65rem">'
                          + txt + '</span></div>';
                 }
@@ -1991,8 +1995,8 @@ function renderNameList($members, $showGender = true) {
                     return '<div><a href="index.php?action=memberProfile&id=' + (parseInt(m.member_id, 10) || 0) + '"'
                          + ' class="text-primary text-decoration-none">' + name + '</a></div>';
                 }
-                return '<div>' + name + ' <span class="badge bg-warning text-dark" style="font-size:.65rem">'
-                     + '<i class="bi bi-link-45deg me-1"></i>Needs Link</span></div>';
+                return '<div>' + name + ' <span class="badge bg-light text-secondary border" style="font-size:.65rem" title="This name is not connected to a member profile yet.">'
+                     + 'Not connected</span></div>';
             }).join('');
         }
         function row(label, value) {
@@ -2054,8 +2058,8 @@ function renderNameList($members, $showGender = true) {
         document.getElementById('lp_slot').value = slot;
         document.getElementById('lp_name').textContent = writtenName || '';
         document.getElementById('lp_hint').textContent = (slot === 2 || slot === '2')
-            ? 'This name was written as a couple. You are linking the SECOND person. '
-            + 'Link the first separately — each spouse keeps their own member record.'
+            ? 'This name was written as a couple. You are connecting the SECOND person. '
+            + 'Connect the first separately. Each spouse keeps their own member profile.'
             : 'Choose the member this name refers to. Nothing is created.';
         var sel = document.getElementById('lp_member');
         sel.value = '';
@@ -2834,7 +2838,7 @@ function renderNameList($members, $showGender = true) {
         var rows = getExportRows();
         var doc  = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
         doc.setFontSize(13);
-        doc.text('Victory Groups / Leadership Groups', 40, 36);
+        doc.text(<?php echo json_encode($pageTitle); ?>, 40, 36);
         doc.setFontSize(9);
         doc.setTextColor(120);
         doc.text('Exported: ' + new Date().toLocaleDateString(), 40, 52);
@@ -2878,7 +2882,7 @@ function renderNameList($members, $showGender = true) {
             + 'tr:nth-child(even){background:#f5f7fa}'
             + '@media print{@page{size:landscape}}'
             + '</style></head><body>'
-            + '<h2>Victory Groups / Leadership Groups</h2>'
+            + '<h2>' + <?php echo json_encode(htmlspecialchars($pageTitle)); ?> + '</h2>'
             + '<p>Printed: ' + new Date().toLocaleDateString() + ' &nbsp;|&nbsp; ' + rows.length + ' group(s)</p>'
             + '<table><thead>' + thead + '</thead><tbody>' + tbody + '</tbody></table>'
             + '</body></html>';

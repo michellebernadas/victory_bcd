@@ -2,8 +2,27 @@
 /**
  * Sunday Service Attendance — "Church Health" head counts.
  *
- * One row per (service_date, service_name). Four numbers per service:
- *   Date + Service Time -> Adults + Kids = Grand Total
+ * One row per (service_date, service_name). Per service time:
+ *   Date + Service Time -> Sunday Service + Kids Church = Total
+ *
+ * COLUMN NAMES vs WHAT THE CHURCH CALLS THEM (read this first)
+ *   adults        = the SUNDAY SERVICE count: everyone in the main service
+ *                   listening to the sermon (not adults only). Labelled
+ *                   "Sunday Service" everywhere a user sees it.
+ *   kids          = the KIDS CHURCH count. Labelled "Kids Church".
+ *   kids_recorded = 0 when Kids Church was NOT counted at that service
+ *                   (migrations/2026_10_20_15). kids is then stored as 0 only
+ *                   because the column is NOT NULL; every Kids Church figure
+ *                   below filters on kids_recorded = 1 so a missing count is
+ *                   ignored, never averaged in as a zero.
+ * The columns were relabelled rather than renamed: grand_total is a generated
+ * column over both, and altering columns it depends on is the riskiest change
+ * on MariaDB 10.1. grand_total = adults + kids, i.e. everyone COUNTED at that
+ * service (just the Sunday Service count when Kids Church was not recorded).
+ *
+ * Day totals: "Total Sunday Service" = SUM(adults) across the day's service
+ * times; "Total Kids Church" = SUM(kids) over the times where it was recorded;
+ * Grand Total = both.
  *
  * TWO THINGS THE DATABASE OWNS, NOT THIS CLASS
  *
@@ -101,16 +120,19 @@ class ServiceAttendance
         $base = [
             'records' => 0, 'sundays' => 0, 'adults' => 0, 'kids' => 0,
             'total' => 0, 'average' => 0, 'first_date' => null, 'last_date' => null,
+            'kids_missing' => 0, 'kids_days' => 0,
+            'avg_service_day' => 0, 'avg_kids_day' => 0, 'avg_total_day' => 0,
         ];
         try {
             [$where, $params] = $this->buildWhere($filters, 'sa');
+            // adults = Sunday Service, kids = Kids Church (see the class doc).
             $stmt = $this->db->prepare(
                 "SELECT COUNT(*)                       AS records,
                         COUNT(DISTINCT sa.service_date) AS sundays,
                         COALESCE(SUM(sa.adults), 0)     AS adults,
-                        COALESCE(SUM(sa.kids), 0)       AS kids,
+                        COALESCE(SUM(CASE WHEN sa.kids_recorded = 1 THEN sa.kids END), 0) AS kids,
                         COALESCE(SUM(sa.grand_total), 0) AS total,
-                        AVG(sa.grand_total)             AS average,
+                        COALESCE(SUM(sa.kids_recorded = 0), 0) AS kids_missing,
                         MIN(sa.service_date)            AS first_date,
                         MAX(sa.service_date)            AS last_date
                    FROM service_attendances sa
@@ -118,18 +140,41 @@ class ServiceAttendance
             );
             $stmt->execute($params);
             $row = $stmt->fetch();
-            if (!$row) return $base;
+            if (!$row || (int)$row['records'] === 0) return $base;
+
+            // Averages are PER SUNDAY (whole service day, every time summed).
+            // A day with no Kids Church count at any service has a NULL kids
+            // sum, which AVG() skips — so it does not pull the average down.
+            $dayStmt = $this->db->prepare(
+                "SELECT AVG(d.svc) AS avg_svc, AVG(d.kids) AS avg_kids, AVG(d.tot) AS avg_tot,
+                        COUNT(d.kids) AS kids_days
+                   FROM (SELECT sa.service_date,
+                                SUM(sa.adults) AS svc,
+                                SUM(CASE WHEN sa.kids_recorded = 1 THEN sa.kids END) AS kids,
+                                SUM(sa.grand_total) AS tot
+                           FROM service_attendances sa
+                          {$where}
+                          GROUP BY sa.service_date) d"
+            );
+            $dayStmt->execute($params);
+            $day = $dayStmt->fetch() ?: [];
+            $r = fn($v) => $v === null ? 0 : (int)round((float)$v);
+            $sundays = (int)$row['sundays'];
             return [
                 'records'    => (int)$row['records'],
-                'sundays'    => (int)$row['sundays'],
+                'sundays'    => $sundays,
                 'adults'     => (int)$row['adults'],
                 'kids'       => (int)$row['kids'],
                 'total'      => (int)$row['total'],
-                // AVG() is NULL on an empty set — cast only after the null check
-                // so an empty table reports 0 rather than an empty string.
-                'average'    => $row['average'] === null ? 0 : (int)round((float)$row['average']),
+                // Grand total per Sunday. Guarded: no days, no division.
+                'average'    => $sundays > 0 ? (int)round((int)$row['total'] / $sundays) : 0,
                 'first_date' => $row['first_date'] ?: null,
                 'last_date'  => $row['last_date']  ?: null,
+                'kids_missing'    => (int)$row['kids_missing'],
+                'kids_days'       => (int)($day['kids_days'] ?? 0),
+                'avg_service_day' => $r($day['avg_svc']  ?? null),
+                'avg_kids_day'    => $r($day['avg_kids'] ?? null),
+                'avg_total_day'   => $r($day['avg_tot']  ?? null),
             ];
         } catch (PDOException $e) {
             error_log("ServiceAttendance::getStats error: " . $e->getMessage());
@@ -146,7 +191,7 @@ class ServiceAttendance
      */
     public function getLatestSunday(array $filters = []): array
     {
-        $base = ['date' => null, 'adults' => 0, 'kids' => 0, 'total' => 0, 'services' => 0, 'average' => 0];
+        $base = ['date' => null, 'adults' => 0, 'kids' => 0, 'total' => 0, 'services' => 0, 'average' => 0, 'kids_missing' => 0];
         try {
             [$where, $params] = $this->buildWhere($filters, 'sa');
             $dateStmt = $this->db->prepare("SELECT MAX(sa.service_date) FROM service_attendances sa {$where}");
@@ -156,9 +201,10 @@ class ServiceAttendance
 
             $stmt = $this->db->prepare(
                 "SELECT COALESCE(SUM(adults), 0)      AS adults,
-                        COALESCE(SUM(kids), 0)        AS kids,
+                        COALESCE(SUM(CASE WHEN kids_recorded = 1 THEN kids END), 0) AS kids,
                         COALESCE(SUM(grand_total), 0) AS total,
                         COUNT(*)                      AS services,
+                        COALESCE(SUM(kids_recorded = 0), 0) AS kids_missing,
                         AVG(grand_total)              AS average
                    FROM service_attendances
                   WHERE service_date = ?"
@@ -173,6 +219,7 @@ class ServiceAttendance
                 'total'    => (int)$row['total'],
                 'services' => (int)$row['services'],
                 'average'  => $row['average'] === null ? 0 : (int)round((float)$row['average']),
+                'kids_missing' => (int)$row['kids_missing'],
             ];
         } catch (PDOException $e) {
             error_log("ServiceAttendance::getLatestSunday error: " . $e->getMessage());
@@ -200,7 +247,7 @@ class ServiceAttendance
             $stmt = $this->db->prepare(
                 "SELECT sa.service_date                 AS d,
                         COALESCE(SUM(sa.adults), 0)      AS adults,
-                        COALESCE(SUM(sa.kids), 0)        AS kids,
+                        SUM(CASE WHEN sa.kids_recorded = 1 THEN sa.kids END) AS kids,
                         COALESCE(SUM(sa.grand_total), 0) AS total
                    FROM service_attendances sa
                   {$where}
@@ -215,7 +262,9 @@ class ServiceAttendance
                 'labels' => array_map(fn($r) => date('M j', strtotime($r['d'])), $rows),
                 'totals' => array_map(fn($r) => (int)$r['total'],  $rows),
                 'adults' => array_map(fn($r) => (int)$r['adults'], $rows),
-                'kids'   => array_map(fn($r) => (int)$r['kids'],   $rows),
+                // null (not 0) on a Sunday with no Kids Church count, so the
+                // chart shows a gap instead of a false dip to zero.
+                'kids'   => array_map(fn($r) => $r['kids'] === null ? null : (int)$r['kids'], $rows),
             ];
         } catch (PDOException $e) {
             error_log("ServiceAttendance::getTrendSeries error: " . $e->getMessage());
@@ -232,7 +281,9 @@ class ServiceAttendance
                 "SELECT sa.service_name,
                         COUNT(*)                        AS records,
                         COALESCE(SUM(sa.grand_total),0) AS total,
-                        AVG(sa.grand_total)             AS average
+                        AVG(sa.grand_total)             AS average,
+                        AVG(sa.adults)                  AS avg_service,
+                        AVG(CASE WHEN sa.kids_recorded = 1 THEN sa.kids END) AS avg_kids
                    FROM service_attendances sa
                   {$where}
                   GROUP BY sa.service_name
@@ -246,6 +297,9 @@ class ServiceAttendance
                     'records'      => (int)$r['records'],
                     'total'        => (int)$r['total'],
                     'average'      => $r['average'] === null ? 0 : (int)round((float)$r['average']),
+                    'avg_service'  => $r['avg_service'] === null ? 0 : (int)round((float)$r['avg_service']),
+                    // null = Kids Church never recorded at this time in range.
+                    'avg_kids'     => $r['avg_kids'] === null ? null : (int)round((float)$r['avg_kids']),
                 ];
             }
             return $out;
@@ -285,6 +339,57 @@ class ServiceAttendance
             )->fetchAll() ?: [];
         } catch (PDOException $e) {
             error_log("ServiceAttendance::getServiceTimeOptions error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Month-by-month AVERAGE PER SUNDAY for one calendar year: Sunday Service
+     * and Kids Church separately. A month's Kids Church average only counts
+     * Sundays where Kids Church was recorded; null when none were.
+     * Always 12 points (Jan..Dec) so years line up; months without data are null.
+     *
+     * @return array{labels:array,service:array,kids:array,sundays:array}
+     */
+    public function getMonthlyAverages(int $year): array
+    {
+        $labels = []; $service = array_fill(0, 12, null); $kids = array_fill(0, 12, null); $sundays = array_fill(0, 12, 0);
+        for ($m = 1; $m <= 12; $m++) $labels[] = date('M', mktime(0, 0, 0, $m, 1, 2000));
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT MONTH(d.service_date) AS m, COUNT(*) AS sundays,
+                        AVG(d.svc) AS avg_svc, AVG(d.kids) AS avg_kids
+                   FROM (SELECT service_date,
+                                SUM(adults) AS svc,
+                                SUM(CASE WHEN kids_recorded = 1 THEN kids END) AS kids
+                           FROM service_attendances
+                          WHERE service_date BETWEEN ? AND ?
+                          GROUP BY service_date) d
+                  GROUP BY MONTH(d.service_date)"
+            );
+            $stmt->execute([$year . '-01-01', $year . '-12-31']);
+            foreach ($stmt->fetchAll() ?: [] as $r) {
+                $i = (int)$r['m'] - 1;
+                if ($i < 0 || $i > 11) continue;
+                $sundays[$i] = (int)$r['sundays'];
+                $service[$i] = $r['avg_svc']  === null ? null : (int)round((float)$r['avg_svc']);
+                $kids[$i]    = $r['avg_kids'] === null ? null : (int)round((float)$r['avg_kids']);
+            }
+        } catch (PDOException $e) {
+            error_log("ServiceAttendance::getMonthlyAverages error: " . $e->getMessage());
+        }
+        return ['labels' => $labels, 'service' => $service, 'kids' => $kids, 'sundays' => $sundays];
+    }
+
+    /** Years that have Sunday records, newest first. */
+    public function getYears(): array
+    {
+        try {
+            return array_map('intval', $this->db->query(
+                "SELECT DISTINCT YEAR(service_date) FROM service_attendances ORDER BY 1 DESC"
+            )->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        } catch (PDOException $e) {
+            error_log("ServiceAttendance::getYears error: " . $e->getMessage());
             return [];
         }
     }
@@ -367,14 +472,15 @@ class ServiceAttendance
             // STORED GENERATED column and naming it is an error.
             $stmt = $this->db->prepare(
                 "INSERT INTO service_attendances
-                     (service_date, service_name, adults, kids, notes, recorded_by)
-                 VALUES (?, ?, ?, ?, ?, ?)"
+                     (service_date, service_name, adults, kids, kids_recorded, notes, recorded_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $clean['service_date'],
                 $clean['service_name'],
                 $clean['adults'],
                 $clean['kids'],
+                $clean['kids_recorded'],
                 $clean['notes'],
                 $recordedBy ?: null,
             ]);
@@ -408,7 +514,7 @@ class ServiceAttendance
             // grand_total deliberately absent — see add().
             $stmt = $this->db->prepare(
                 "UPDATE service_attendances
-                    SET service_date = ?, service_name = ?, adults = ?, kids = ?, notes = ?
+                    SET service_date = ?, service_name = ?, adults = ?, kids = ?, kids_recorded = ?, notes = ?
                   WHERE id = ?"
             );
             $stmt->execute([
@@ -416,6 +522,7 @@ class ServiceAttendance
                 $clean['service_name'],
                 $clean['adults'],
                 $clean['kids'],
+                $clean['kids_recorded'],
                 $clean['notes'],
                 $id,
             ]);
@@ -457,14 +564,17 @@ class ServiceAttendance
         if (!$d || $d->format('Y-m-d') !== $date) return [];
         try {
             $stmt = $this->db->prepare(
-                "SELECT id, service_name, adults, kids, grand_total, notes
+                "SELECT id, service_name, adults, kids, kids_recorded, grand_total, notes
                    FROM service_attendances WHERE service_date = ? ORDER BY service_name"
             );
             $stmt->execute([$date]);
             $out = [];
             foreach ($stmt->fetchAll() as $r) {
+                $kr = (int)$r['kids_recorded'] === 1;
                 $out[$r['service_name']] = [
-                    'id' => (int)$r['id'], 'adults' => (int)$r['adults'], 'kids' => (int)$r['kids'],
+                    'id' => (int)$r['id'], 'adults' => (int)$r['adults'],
+                    // null = Kids Church not recorded for this service.
+                    'kids' => $kr ? (int)$r['kids'] : null,
                     'total' => (int)$r['grand_total'], 'notes' => (string)($r['notes'] ?? ''),
                 ];
             }
@@ -482,8 +592,10 @@ class ServiceAttendance
      *   - both counts blank          -> skipped, never saved as zeros
      *   - blank + a saved entry      -> deleted only when 'delete' is set (the form
      *                                   asks first); otherwise the entry is kept
-     *   - one count blank            -> that count is 0
+     *   - Sunday Service blank only  -> Sunday Service is 0
+     *   - Kids Church blank only     -> Kids Church "not recorded" (kids_recorded = 0)
      *   - filled + a saved entry     -> UPDATE adults/kids (notes left untouched)
+     * ('adults' = Sunday Service, 'kids' = Kids Church — see the class doc.)
      *   - filled + no entry          -> INSERT
      * grand_total is never named: it is a generated column. Every row is
      * validated before the transaction opens, so a bad value saves nothing.
@@ -516,9 +628,9 @@ class ServiceAttendance
             $adults = $this->toCount($a);
             $kids   = $this->toCount($k);
             if ($adults === null || $kids === null) {
-                return ['ok' => false, 'error' => 'Adults and Kids for ' . $name . ' must be whole numbers of zero or more.'];
+                return ['ok' => false, 'error' => 'Sunday Service and Kids Church for ' . $name . ' must be whole numbers of zero or more.'];
             }
-            $plan[$name] = ['blank' => false, 'adults' => $adults, 'kids' => $kids];
+            $plan[$name] = ['blank' => false, 'adults' => $adults, 'kids' => $kids, 'kr' => $k === '' ? 0 : 1];
         }
 
         $saved = 0; $deleted = 0; $kept = 0;
@@ -534,10 +646,10 @@ class ServiceAttendance
             foreach ($stmt->fetchAll() as $e) $existing[$e['service_name']] = (int)$e['id'];
 
             $ins = $this->db->prepare(
-                "INSERT INTO service_attendances (service_date, service_name, adults, kids, recorded_by)
-                 VALUES (?, ?, ?, ?, ?)"
+                "INSERT INTO service_attendances (service_date, service_name, adults, kids, kids_recorded, recorded_by)
+                 VALUES (?, ?, ?, ?, ?, ?)"
             );
-            $upd = $this->db->prepare("UPDATE service_attendances SET adults = ?, kids = ? WHERE id = ?");
+            $upd = $this->db->prepare("UPDATE service_attendances SET adults = ?, kids = ?, kids_recorded = ? WHERE id = ?");
             $del = $this->db->prepare("DELETE FROM service_attendances WHERE id = ?");
 
             foreach ($plan as $name => $p) {
@@ -547,14 +659,14 @@ class ServiceAttendance
                     elseif ($id)             { $kept++; }
                     continue;
                 }
-                if ($id) $upd->execute([$p['adults'], $p['kids'], $id]);
-                else     $ins->execute([$date, $name, $p['adults'], $p['kids'], $recordedBy ?: null]);
+                if ($id) $upd->execute([$p['adults'], $p['kids'], $p['kr'], $id]);
+                else     $ins->execute([$date, $name, $p['adults'], $p['kids'], $p['kr'], $recordedBy ?: null]);
                 $saved++;
             }
 
             if ($saved === 0 && $deleted === 0) {
                 $this->db->rollBack();
-                return ['ok' => false, 'error' => 'Nothing to save. Enter Adults or Kids for at least one service.'];
+                return ['ok' => false, 'error' => 'Nothing to save. Enter Sunday Service or Kids Church for at least one service.'];
             }
             $this->db->commit();
         } catch (PDOException $e) {
@@ -570,6 +682,7 @@ class ServiceAttendance
         return [
             'ok' => true, 'saved' => $saved, 'deleted' => $deleted, 'kept' => $kept,
             'day_total' => array_sum(array_column($day, 'total')), 'day_services' => count($day),
+            'day_service' => array_sum(array_column($day, 'adults')), 'day_kids' => array_sum(array_map(fn($e) => (int)$e['kids'], $day)),
         ];
     }
 
@@ -592,12 +705,17 @@ class ServiceAttendance
             return ['error' => 'That Service Time is not one of the configured service times.'];
         }
 
-        // chk_sa_counts rejects negatives at the database; clamping here turns
-        // a typo into a friendly validation message instead of a 500.
+        // chk_sa_counts rejects negatives at the database (not on MariaDB 10.1,
+        // which parses CHECK but ignores it), so PHP validates too.
+        // adults = Sunday Service, kids = Kids Church.
         $adults = $this->toCount($data['adults'] ?? 0);
-        $kids   = $this->toCount($data['kids']   ?? 0);
+        // A blank Kids Church box (or the "not recorded" tick) means the count
+        // was not taken — stored as kids_recorded = 0, never as a real 0.
+        $kidsRaw = trim((string)($data['kids'] ?? ''));
+        $kidsRecorded = empty($data['kids_not_recorded']) && $kidsRaw !== '' ? 1 : 0;
+        $kids   = $kidsRecorded ? $this->toCount($kidsRaw) : 0;
         if ($adults === null || $kids === null) {
-            return ['error' => 'Adults and Kids must be whole numbers of zero or more.'];
+            return ['error' => 'Sunday Service and Kids Church must be whole numbers of zero or more.'];
         }
 
         $notes = trim((string)($data['notes'] ?? ''));
@@ -609,6 +727,7 @@ class ServiceAttendance
             'service_name' => $name,
             'adults'       => $adults,
             'kids'         => $kids,
+            'kids_recorded'=> $kidsRecorded,
             'notes'        => $notes,
         ];
     }

@@ -24,6 +24,7 @@ $giStatus = [
     'needs_review' => ['Needs review',    'warning', 'bi-exclamation-triangle-fill'],
     'invalid'      => ['Cannot import',   'danger',  'bi-x-circle-fill'],
 ];
+$memberCount = $memberCount ?? 0;
 $giRole = [
     'leader' => 'VG Leader', 'lg_leader' => 'LG Leader',
     'intern' => 'Intern',    'attendee'  => 'Member',
@@ -87,12 +88,19 @@ $giRole = [
                     <div class="card">
                         <div class="card-header"><h6 class="mb-0"><i class="bi bi-file-earmark-excel me-2"></i>Choose your file</h6></div>
                         <div class="card-body">
-                            <form method="POST" action="index.php?action=groupImportUpload" enctype="multipart/form-data">
-                                <div class="mb-3">
-                                    <label class="form-label fw-semibold">Staff VG Schedule (Excel)</label>
-                                    <input type="file" name="import_file" class="form-control" accept=".xlsx,.xls" required>
-                                    <div class="form-text">Excel (.xlsx, .xls) — up to 5 MB.</div>
-                                </div>
+                            <form method="POST" action="index.php?action=groupImportUpload" enctype="multipart/form-data" id="giUploadForm">
+                                <!-- Drop zone. The real file input sits inside it, so keyboard
+                                     and screen-reader users still get a normal file picker. -->
+                                <label for="giFile" class="gi-drop d-block text-center p-4 mb-2" id="giDrop">
+                                    <i class="bi bi-cloud-arrow-up display-5 text-primary d-block mb-2" aria-hidden="true"></i>
+                                    <span class="fw-semibold d-block">Drop the Staff VG schedule here, or click to choose</span>
+                                    <span class="small text-muted d-block">Excel file (.xlsx or .xls), up to 5 MB</span>
+                                    <span class="d-block mt-2 fw-semibold text-success d-none" id="giFileName"></span>
+                                </label>
+                                <input type="file" name="import_file" id="giFile" class="form-control mb-2" accept=".xlsx,.xls" required
+                                       aria-describedby="giFileHelp">
+                                <div class="small text-danger mb-2 d-none" id="giFileError" role="alert"></div>
+                                <div class="form-text mb-3" id="giFileHelp">You can also use the button above to pick the file.</div>
                                 <button type="submit" class="btn btn-primary">
                                     <i class="bi bi-upload me-1"></i>Upload and Check
                                 </button>
@@ -129,6 +137,51 @@ Venue:                Quinos Lacson</pre>
                     </div>
                 </div>
             </div>
+            <style>
+            .gi-drop { border: 2px dashed #9aa9f5; border-radius: 12px; background: #f6f8ff; cursor: pointer; transition: background .15s, border-color .15s; }
+            .gi-drop:hover, .gi-drop.is-over { background: #e8edff; border-color: #1742f5; }
+            .gi-drop.is-bad { border-color: #dc3545; background: #fff5f5; }
+            </style>
+            <script>
+            // Drag-and-drop onto the label feeds the same file input the form submits.
+            (function () {
+                var drop = document.getElementById('giDrop'), input = document.getElementById('giFile');
+                var nameEl = document.getElementById('giFileName'), errEl = document.getElementById('giFileError');
+                var form = document.getElementById('giUploadForm');
+                if (!drop || !input) return;
+                function okName(n) { return /\.(xlsx|xls)$/i.test(n || ''); }
+                function show() {
+                    var f = input.files && input.files[0];
+                    errEl.classList.add('d-none'); drop.classList.remove('is-bad');
+                    if (!f) { nameEl.classList.add('d-none'); return; }
+                    if (!okName(f.name)) {
+                        input.value = '';
+                        nameEl.classList.add('d-none'); drop.classList.add('is-bad');
+                        errEl.textContent = '"' + f.name + '" is not an Excel file. Please choose the schedule saved as .xlsx or .xls.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    nameEl.textContent = 'Chosen: ' + f.name;
+                    nameEl.classList.remove('d-none');
+                }
+                input.addEventListener('change', show);
+                ['dragenter', 'dragover'].forEach(function (ev) {
+                    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('is-over'); });
+                });
+                ['dragleave', 'drop'].forEach(function (ev) {
+                    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('is-over'); });
+                });
+                drop.addEventListener('drop', function (e) {
+                    if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+                    try { input.files = e.dataTransfer.files; } catch (x) { return; }
+                    show();
+                });
+                form.addEventListener('submit', function (e) {
+                    var f = input.files && input.files[0];
+                    if (f && !okName(f.name)) { e.preventDefault(); show(); }
+                });
+            })();
+            </script>
 
             <?php else: ?>
             <!-- ─── Step 2: preview ───────────────────────────────────────── -->
@@ -159,8 +212,8 @@ Venue:                Quinos Lacson</pre>
                 <?php
                 $giPeople = [
                     ['Names on the sheet',  $summary['people'],     'secondary', 'bi-person-lines-fill'],
-                    ['Matched to a member', $summary['linked'],     'success',   'bi-person-check-fill'],
-                    ['Needs Link',          $summary['needs_link'], 'warning',   'bi-link-45deg'],
+                    ['Connected to a member', $summary['linked'],   'success',   'bi-person-check-fill'],
+                    ['Not connected yet',   $summary['needs_link'], 'secondary', 'bi-person'],
                     ['Couple names',        $summary['couples'],    'info',      'bi-people'],
                 ];
                 foreach ($giPeople as [$giL, $giV, $giC, $giIcon]):
@@ -177,15 +230,18 @@ Venue:                Quinos Lacson</pre>
                 <?php endforeach; ?>
             </div>
 
-            <?php if ($summary['needs_link'] > 0): ?>
-            <div class="alert alert-warning">
-                <i class="bi bi-link-45deg me-1"></i>
+            <?php if ($summary['needs_link'] > 0 && (int)($memberCount ?? 0) === 0): ?>
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle-fill me-1"></i>
+                You haven't added 2026 members yet, so these names will be connected after you add them.
+                <strong>Nothing is lost.</strong>
+            </div>
+            <?php elseif ($summary['needs_link'] > 0): ?>
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle-fill me-1"></i>
                 <strong><?php echo (int)$summary['needs_link']; ?></strong> of
-                <strong><?php echo (int)$summary['people']; ?></strong> names do not match anyone on your member list.
-                They will be saved <strong>exactly as written</strong> and shown as
-                <span class="badge bg-warning text-dark">Needs Link</span> on the Victory Groups page.
-                <strong>No member record is created for them.</strong> Add those people as members first, then link
-                them by hand — which is the expected order for the 2026 start.
+                <strong><?php echo (int)$summary['people']; ?></strong> names aren't connected to a member profile yet.
+                They are saved exactly as written, and you can connect them after the import. Nothing is lost.
             </div>
             <?php endif; ?>
 
@@ -205,12 +261,6 @@ Venue:                Quinos Lacson</pre>
                         <?php endif; ?>
                     </div>
                     <div class="d-flex gap-2">
-                        <?php if ($summary['needs_link'] > 0): ?>
-                        <a href="index.php?action=groupImportReview&batch=<?php echo urlencode($batchId); ?>"
-                           class="btn btn-sm btn-outline-secondary">
-                            <i class="bi bi-download me-1"></i>Download Needs-Link List
-                        </a>
-                        <?php endif; ?>
                         <a href="index.php?action=groupImportDiscard&batch=<?php echo urlencode($batchId); ?>"
                            class="btn btn-sm btn-outline-danger"
                            data-confirm="Discard this import? Nothing has been created yet.">
@@ -248,12 +298,14 @@ Venue:                Quinos Lacson</pre>
                         <span class="badge bg-<?php echo $giStColor; ?>">
                             <i class="bi <?php echo $giStIcon; ?> me-1"></i><?php echo $giStLabel; ?>
                         </span>
-                        <span class="ms-auto small text-muted">
-                            <?php echo htmlspecialchars($c['sheet_name'] . ' ' . $c['cell_ref']); ?>
-                            &middot; <?php echo (int)$c['people_count']; ?> listed
-                            <?php if ((int)$c['needs_link_count'] > 0): ?>
-                            &middot; <span class="text-warning fw-semibold"><?php echo (int)$c['needs_link_count']; ?> needs link</span>
-                            <?php endif; ?>
+                        <?php
+                        // Plain words on the dark header: "7 people · from row 6".
+                        $giPc  = (int)$c['people_count'];
+                        $giRow = preg_match('/(\d+)/', (string)$c['cell_ref'], $giM) ? (int)$giM[1] : 0;
+                        ?>
+                        <span class="ms-auto small gi-head-meta" style="color:rgba(255,255,255,.9)" title="<?php echo htmlspecialchars('Sheet ' . $c['sheet_name'] . ', cell ' . $c['cell_ref']); ?>">
+                            <?php echo $giPc . ' ' . ($giPc === 1 ? 'person' : 'people'); ?>
+                            <?php if ($giRow > 0): ?>&middot; from row <?php echo $giRow; ?><?php endif; ?>
                         </span>
                     </div>
                     <div class="card-body">
@@ -282,7 +334,12 @@ Venue:                Quinos Lacson</pre>
                                     <dt class="col-5 text-muted fw-normal">Venue</dt>
                                     <dd class="col-7 mb-0"><?php echo htmlspecialchars($c['venue'] ?: '—'); ?></dd>
                                 </dl>
-                                <?php if ($giIssues): ?>
+                                <?php
+                                // With no members yet, the per-card "not connected" line repeats the note at the top.
+                                if ((int)$memberCount === 0) {
+                                    $giIssues = array_values(array_filter($giIssues, fn($t) => strpos($t, 'not connected to a member profile yet') === false));
+                                }
+                                if ($giIssues): ?>
                                 <ul class="small text-muted mt-2 mb-0 ps-3">
                                     <?php foreach ($giIssues as $giIssue): ?>
                                     <li><?php echo htmlspecialchars($giIssue); ?></li>
@@ -300,7 +357,7 @@ Venue:                Quinos Lacson</pre>
                                             <tr>
                                                 <th style="width:110px;">Role</th>
                                                 <th>Name as written</th>
-                                                <th style="width:40%;">Member link</th>
+                                                <th style="width:40%;">Member profile</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -313,22 +370,23 @@ Venue:                Quinos Lacson</pre>
                                                     <?php echo htmlspecialchars($p['display_name']); ?>
                                                     <?php if (!empty($p['is_couple_name'])): ?>
                                                     <span class="badge bg-info bg-opacity-25 text-dark border" style="font-size:.65rem"
-                                                          title="Kept as one name — never split into two people. It imports with TWO link slots, so you can link each spouse to their own member record by hand on the Victory Groups page.">
-                                                        <i class="bi bi-people me-1"></i>couple — 2 links
+                                                          title="Kept as one name exactly as written. Each of the two people can be connected to their own member profile later.">
+                                                        <i class="bi bi-people me-1"></i>couple: 2 people
                                                     </span>
                                                     <?php endif; ?>
                                                 </td>
                                                 <td class="small">
                                                     <?php if ($p['link_status'] === 'linked'): ?>
                                                     <span class="badge bg-success">
-                                                        <i class="bi bi-person-check-fill me-1"></i>Linked
+                                                        <i class="bi bi-person-check-fill me-1"></i>Connected
                                                     </span>
                                                     <span class="text-muted"><?php echo htmlspecialchars($p['matched_full_name'] ?? ''); ?></span>
                                                     <?php else: ?>
-                                                    <span class="badge bg-warning text-dark">
-                                                        <i class="bi bi-link-45deg me-1"></i>Needs Link
+                                                    <span class="badge bg-light text-secondary border">
+                                                        <i class="bi bi-person me-1"></i>Not connected yet
                                                     </span>
-                                                    <?php if ($giPIssues): ?>
+                                                    <?php // With 0 members every name says the same thing; the one note at the top covers it.
+                                                    if ($giPIssues && (int)($memberCount ?? 0) > 0): ?>
                                                     <span class="text-muted"><?php echo htmlspecialchars($giPIssues[0]); ?></span>
                                                     <?php endif; ?>
                                                     <?php endif; ?>
@@ -356,8 +414,8 @@ Venue:                Quinos Lacson</pre>
                             <br>
                             <span class="small">
                                 <i class="bi bi-shield-check text-success me-1"></i>
-                                No member record is created by this import. Unmatched names are saved as
-                                <strong>Needs Link</strong> for you to resolve.
+                                No member record is created by this import. Names without a profile yet are saved as
+                                <strong>not connected yet</strong>, ready to connect later.
                             </span>
                         </p>
                         <button type="submit" class="btn btn-primary btn-lg px-5"

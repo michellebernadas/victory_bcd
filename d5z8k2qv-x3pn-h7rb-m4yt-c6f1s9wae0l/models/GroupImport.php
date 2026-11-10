@@ -497,7 +497,7 @@ class GroupImport {
             }
             if ($needsLink > 0 && $cardStatus !== 'invalid') {
                 array_unshift($issues, $needsLink . ' of ' . count($people)
-                    . ' name(s) could not be matched to a member. They import as "Needs Link" — '
+                    . ' name(s) are not connected to a member profile yet. They will be connected after you add these people as members; '
                     . 'no member record is created for them.');
             }
 
@@ -566,13 +566,13 @@ class GroupImport {
 
         if (self::isCoupleName($name)) {
             $out['is_couple'] = true;
-            $out['issues'][] = 'Written as a couple — kept as one name exactly as spelled, never split into two people. '
-                             . 'It imports as one row with TWO link slots: link each spouse to their own member '
-                             . 'record by hand on the Victory Groups page, once the 2026 members are encoded.';
+            $out['issues'][] = 'Written as a couple: kept as one name exactly as spelled. '
+                             . 'Each of the two people can be connected to their own member '
+                             . 'profile once the 2026 members are added.';
             return $out;
         }
         if (self::isMononym($name)) {
-            $out['issues'][] = 'Only a first name is given — too little to match a member on. Needs linking by hand.';
+            $out['issues'][] = 'Only a first name is given, so it can be connected by hand later.';
             return $out;
         }
 
@@ -588,7 +588,7 @@ class GroupImport {
             $out['issues'][] = count($hits) . ' members share this name — left unlinked so the wrong one is not picked.';
             return $out;
         }
-        $out['issues'][] = 'No member matches this name yet. It imports as "Needs Link" — no member is created for it.';
+        $out['issues'][] = 'No member matches this name yet. It will be connected after you add this person as a member. No member is created for it.';
         return $out;
     }
 
@@ -729,6 +729,7 @@ class GroupImport {
         $skip  = array_flip(array_map('intval', $skipCardIds));
 
         $created = 0; $people = 0; $skipped = 0; $needsLink = 0; $errors = [];
+        $byKind  = [];   // group_kind => groups created, so the caller can land on the busiest list
 
         try {
             $this->db->beginTransaction();
@@ -803,6 +804,7 @@ class GroupImport {
 
                 $markCard->execute([$groupId, $cardId]);
                 $created++;
+                $byKind[$card['group_kind']] = ($byKind[$card['group_kind']] ?? 0) + 1;
             }
 
             $this->db->commit();
@@ -813,7 +815,7 @@ class GroupImport {
                     'errors'  => ['The import was cancelled and nothing was saved: ' . $e->getMessage()]];
         }
         return ['created' => $created, 'people' => $people, 'needs_link' => $needsLink,
-                'skipped' => $skipped, 'errors' => $errors];
+                'skipped' => $skipped, 'errors' => $errors, 'by_kind' => $byKind];
     }
 
     /** The card's leader as written, for the legacy NOT NULL victory_groups.leader_name. */
@@ -836,24 +838,6 @@ class GroupImport {
         } catch (PDOException $e) {
             error_log('GroupImport::discardBatch: ' . $e->getMessage());
         }
-    }
-
-    /** CSV of every name that will import as Needs Link, for working through offline. */
-    public function buildReviewCsv(string $batchId): string {
-        $out = "Card,Where,Group,Kind,Role,Name As Written,Status,Why\n";
-        $cell = function ($v) { return '"' . str_replace('"', '""', (string)$v) . '"'; };
-        foreach ($this->getBatch($batchId) as $card) {
-            foreach ($card['people'] as $p) {
-                if ($p['link_status'] === 'linked') continue;
-                $why = implode('; ', json_decode($p['issues'] ?? '[]', true) ?: []);
-                $out .= implode(',', [
-                    (int)$card['card_index'] + 1, $cell($card['cell_ref']), $cell($card['source_label']),
-                    $cell($card['group_kind']), $cell($p['person_role']), $cell($p['display_name']),
-                    $cell('Needs Link'), $cell($why),
-                ]) . "\n";
-            }
-        }
-        return $out;
     }
 
     private function uuid(): string {
