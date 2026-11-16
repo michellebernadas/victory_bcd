@@ -187,7 +187,9 @@ class FacilityController {
             'email'    => $_SESSION['user']['email'] ?? '',
         ];
 
-        $activeTab = in_array($tab, ['calendar', 'requests', 'setup'], true) ? $tab : 'calendar';
+        $activeTab = in_array($tab, ['calendar', 'requests', 'setup', 'rooms'], true) ? $tab : 'calendar';
+        if ($activeTab === 'rooms' && !canManageFacilityRooms()) $activeTab = 'calendar';
+        $roomRows = ($activeTab === 'rooms') ? $this->facilityModel->getAllWithUsage() : [];
         $focusDate = $focus;
 
         include 'views/facility_calendar.php';
@@ -250,6 +252,65 @@ class FacilityController {
         exit();
     }
 
+    // ── Rooms (Facility Booking > Rooms) ─────────────────────────────────────
+
+    /** Redirect back to the Rooms tab with a message. */
+    private function backToRooms($notif = null, $error = null) {
+        $url = 'index.php?action=facilityCalendar&tab=rooms';
+        if ($notif) $url .= '&notif=' . urlencode($notif);
+        if ($error) $url .= '&error=1&msg=' . urlencode($error);
+        header('Location: ' . $url);
+        exit();
+    }
+
+    public function saveRoom(array $data, $id = 0) {
+        $this->requirePermission(canManageFacilityRooms(), 'You are not allowed to manage rooms.');
+        $c = Facility::cleanInput($data);
+        if (is_string($c)) $this->backToRooms(null, $c);
+        $id = (int)$id;
+        if ($this->facilityModel->nameTaken($c['name'], $id)) $this->backToRooms(null, 'A room called "' . $c['name'] . '" already exists.');
+        if ($id > 0) {
+            if (!$this->facilityModel->getFacilityById($id)) $this->backToRooms(null, 'That room no longer exists.');
+            $this->facilityModel->update($id, $c) ? $this->backToRooms('room_updated') : $this->backToRooms(null, 'Could not save the room.');
+        }
+        $this->facilityModel->create($c) ? $this->backToRooms('room_added') : $this->backToRooms(null, 'Could not add the room.');
+    }
+
+    public function setRoomActive($id, $active) {
+        $this->requirePermission(canManageFacilityRooms(), 'You are not allowed to manage rooms.');
+        $this->facilityModel->setActive($id, $active);
+        $this->backToRooms($active ? 'room_shown' : 'room_hidden');
+    }
+
+    public function deleteRoom($id) {
+        $this->requirePermission(canManageFacilityRooms(), 'You are not allowed to manage rooms.');
+        $res = $this->facilityModel->delete($id);
+        $res === true ? $this->backToRooms('room_deleted') : $this->backToRooms(null, $res);
+    }
+
+    public function reorderRooms(array $ids) {
+        if (!canManageFacilityRooms()) $this->denyAjax('Not permitted.');
+        $this->facilityModel->reorder(array_map('intval', $ids));
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => true]);
+        exit();
+    }
+
+    /**
+     * A special-case-only room (e.g. the Office Lobby) needs a stated reason.
+     * Checked here, not in the static validator, because it needs the room row.
+     * Returns an error message, or '' when fine.
+     */
+    private function specialCaseError(array $data) {
+        $fid = (int)($data['facility_id'] ?? 0);
+        if ($fid <= 0) return '';
+        $room = $this->facilityModel->getFacilityById($fid);
+        if ($room && !empty($room['special_case_only']) && trim((string)($data['special_case_reason'] ?? '')) === '') {
+            return '"' . $room['name'] . '" is for special cases only. Please explain why you need it.';
+        }
+        return '';
+    }
+
     // ── Step 1: Requestor submits (policy section 7) ─────────────────────────
 
     public function submitRequest(array $data) {
@@ -257,6 +318,7 @@ class FacilityController {
         // Portal-form rules (room + times for a Facility / Room request, end
         // after start, date required). Lead time still only warns.
         $invalid = FacilityRequest::validatePortalForm($data);
+        if ($invalid === '') $invalid = $this->specialCaseError($data);
         if ($invalid !== '') $this->back(null, $invalid);
 
         if (!empty($data['repeat_weekly'])) $this->submitSeries($data);
@@ -283,14 +345,14 @@ class FacilityController {
         $this->requirePermission(canRepeatFacilityRequest(), 'You are not allowed to submit facility requests.');
         $all  = self::seriesFromPost($data);
         $kept = array_values(array_intersect($all, array_map('strval', (array)($data['series_dates'] ?? []))));
-        if (!$kept) $this->back(null, 'Tick at least one date to submit the weekly series.');
+        if (!$kept) $this->back(null, 'Tick at least one date to submit the series.');
 
         $seriesId = count($kept) > 1 ? $this->requestModel->newSeriesId() : null;
         $created = 0; $failed = [];
         foreach ($kept as $i => $date) {
             $one = $data;
             $one['date_needed'] = $date;
-            $note = $seriesId ? 'Part of a weekly series (' . ($i + 1) . ' of ' . count($kept) . ').' : null;
+            $note = $seriesId ? 'Part of a repeating series (' . ($i + 1) . ' of ' . count($kept) . ').' : null;
             $res = $this->requestModel->submit($one, $this->userId(), $this->userId(), $seriesId, $note);
             if ($res['ok']) $created++; else $failed[] = $date;
         }
@@ -302,7 +364,7 @@ class FacilityController {
     /** The series dates the request form's Repeat weekly settings describe. */
     private static function seriesFromPost(array $data) {
         $until = (($data['repeat_mode'] ?? '') === 'until') ? trim((string)($data['repeat_until'] ?? '')) : null;
-        return FacilityRequest::seriesDates($data['date_needed'] ?? '', (int)($data['repeat_weeks'] ?? 0), $until ?: null);
+        return FacilityRequest::seriesDates($data['date_needed'] ?? '', (int)($data['repeat_weeks'] ?? 0), $until ?: null, (string)($data['repeat_every'] ?? 'weekly'));
     }
 
     /** Owner edit (submitted) or edit + resubmit (for_clarification). */
@@ -311,6 +373,7 @@ class FacilityController {
         $this->requirePermission($r && canEditFacilityRequest($r),
             'Only the person who submitted this request can edit it, and only before Facilities has reviewed it.');
         $invalid = FacilityRequest::validatePortalForm($data);
+        if ($invalid === '') $invalid = $this->specialCaseError($data);
         if ($invalid !== '') $this->back(null, $invalid);
         $res = $this->requestModel->updateRequest($id, $data, $this->userId());
         if (!$res['ok']) $this->back(null, $res['error']);
@@ -473,13 +536,14 @@ class FacilityController {
         if (!canRepeatFacilityRequest()) $this->denyAjax('Not permitted.');
         header('Content-Type: application/json');
         $invalid = FacilityRequest::validatePortalForm($data);
+        if ($invalid === '') $invalid = $this->specialCaseError($data);
         if ($invalid !== '') { echo json_encode(['error' => $invalid]); exit(); }
         if (($data['repeat_mode'] ?? '') === 'until' && trim((string)($data['repeat_until'] ?? '')) === '') {
-            echo json_encode(['error' => 'Choose the date the weekly series ends.']); exit();
+            echo json_encode(['error' => 'Choose the date the repeating series ends.']); exit();
         }
         $dates = self::seriesFromPost($data);
         if (count($dates) < 2) {
-            echo json_encode(['error' => 'A weekly series needs at least two dates. Check the number of weeks or the end date.']); exit();
+            echo json_encode(['error' => 'A repeating series needs at least two dates. Check the number of times or the end date.']); exit();
         }
         $facilityId = (int)($data['facility_id'] ?? 0) ?: null;
         $out = [];

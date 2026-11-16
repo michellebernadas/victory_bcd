@@ -171,7 +171,7 @@ class FacilityRequest {
 
     /** SELECT list shared by every read, so the facility name is always present. */
     private const SELECT_BASE =
-        "SELECT fr.*, f.name AS facility_name, f.facility_type, f.default_lead_days,
+        "SELECT fr.*, f.name AS facility_name, f.facility_type, f.default_lead_days, f.special_case_only,
                 ra.username AS fac_reviewed_by_name, ma.username AS minister_by_name,
                 ca.username AS confirmed_by_name, da.username AS deleted_by_name,
                 sa.username AS submitted_by_name,
@@ -797,11 +797,11 @@ class FacilityRequest {
                        equipment_requested, equipment_quantity, person_responsible,
                        technical_assistance, technical_assistance_details,
                        needs_setup, needs_technical, needs_security, needs_cleaning, needs_other,
-                       additional_details,
+                       additional_details, special_case_reason,
                        acknowledged, acknowledged_name, acknowledged_at,
                        status, lead_days_actual, lead_time_warning, source, source_label,
                        submitted_by, series_id, submitted_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())";
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())";
 
             $stmt = $this->db->prepare($sql);
             $stmt->execute([
@@ -817,6 +817,7 @@ class FacilityRequest {
                 $fields['technical_assistance'], $fields['technical_assistance_details'],
                 $fields['needs_setup'], $fields['needs_technical'], $fields['needs_security'],
                 $fields['needs_cleaning'], $fields['needs_other'], $fields['additional_details'],
+                $fields['special_case_reason'],
                 $fields['acknowledged'], $fields['acknowledged_name'], $fields['acknowledged_at'],
                 $status, $lead['lead_days'], $lead['warn'] ? 1 : 0, $fields['source'], $fields['source_label'],
                 ((int)$submittedBy) ?: null,
@@ -861,6 +862,7 @@ class FacilityRequest {
         'technical_assistance_details' => 'technical details', 'needs_setup' => 'setup assistance',
         'needs_technical' => 'technical assistance (E)', 'needs_security' => 'security / access',
         'needs_cleaning' => 'cleaning', 'needs_other' => 'other (E)', 'additional_details' => 'additional details',
+        'special_case_reason' => 'special-case reason',
     ];
 
     /** Human list of the fields that differ between the stored row and the normalised edit. */
@@ -918,7 +920,7 @@ class FacilityRequest {
                     equipment_requested = ?, equipment_quantity = ?, person_responsible = ?,
                     technical_assistance = ?, technical_assistance_details = ?,
                     needs_setup = ?, needs_technical = ?, needs_security = ?, needs_cleaning = ?, needs_other = ?,
-                    additional_details = ?, acknowledged = ?, acknowledged_name = ?,
+                    additional_details = ?, special_case_reason = ?, acknowledged = ?, acknowledged_name = ?,
                     lead_days_actual = ?, lead_time_warning = ?, status = ?
                   WHERE id = ?"
             );
@@ -934,6 +936,7 @@ class FacilityRequest {
                 $fields['technical_assistance'], $fields['technical_assistance_details'],
                 $fields['needs_setup'], $fields['needs_technical'], $fields['needs_security'],
                 $fields['needs_cleaning'], $fields['needs_other'], $fields['additional_details'],
+                $fields['special_case_reason'],
                 $fields['acknowledged'], $fields['acknowledged_name'],
                 $lead['lead_days'], $lead['warn'] ? 1 : 0, $newStatus,
                 $id,
@@ -1025,6 +1028,7 @@ class FacilityRequest {
             'needs_cleaning'    => !empty($d['needs_cleaning'])  ? 1 : 0,
             'needs_other'       => !empty($d['needs_other'])     ? 1 : 0,
             'additional_details' => $nullable($str('additional_details')),
+            'special_case_reason' => $nullable($str('special_case_reason', 1000)),
 
             'acknowledged'      => $acknowledged,
             'acknowledged_name' => $nullable($str('acknowledged_name', 255)) ?: ($acknowledged ? $str('requestor_name', 255) : null),
@@ -1332,23 +1336,50 @@ class FacilityRequest {
 
     // ── Repeat weekly ────────────────────────────────────────────────────────
 
+    /** Repeat patterns offered on the request form. */
+    const REPEAT_EVERY = [
+        'weekly'   => 'Every week',
+        'biweekly' => 'Every 2 weeks',
+        'monthly'  => 'Every month, same weekday (e.g. 2nd Sunday)',
+    ];
+
     /**
-     * The dates of a weekly series starting on $firstDate: either $weeks
-     * occurrences, or every 7 days up to and including $untilDate. Always
+     * The dates of a repeating series starting on $firstDate: either $count
+     * occurrences, or every occurrence up to and including $untilDate. Always
      * capped at SERIES_MAX. Returns [] for an unreadable first date.
+     *
+     * $every: weekly (+7 days), biweekly (+14 days), or monthly — the same
+     * weekday-of-the-month as the first date (the 2nd Sunday stays the 2nd
+     * Sunday; a 5th weekday that a month lacks falls back to its last one).
      */
-    public static function seriesDates($firstDate, $weeks = null, $untilDate = null) {
+    public static function seriesDates($firstDate, $count = null, $untilDate = null, $every = 'weekly') {
         $first = strtotime((string)$firstDate);
         if ($first === false) return [];
+        if (!isset(self::REPEAT_EVERY[$every])) $every = 'weekly';
         $out = [];
         $until = $untilDate ? strtotime((string)$untilDate) : false;
-        $n = $until !== false ? self::SERIES_MAX : max(1, min(self::SERIES_MAX, (int)$weeks));
+        $n = $until !== false ? self::SERIES_MAX : max(1, min(self::SERIES_MAX, (int)$count));
         for ($i = 0; $i < $n; $i++) {
-            $ts = strtotime('+' . ($i * 7) . ' days', $first);
+            if ($every === 'monthly') {
+                $ts = self::nthWeekdayOfMonth($first, $i);
+            } else {
+                $ts = strtotime('+' . ($i * ($every === 'biweekly' ? 14 : 7)) . ' days', $first);
+            }
             if ($until !== false && $ts > $until) break;
             $out[] = date('Y-m-d', $ts);
         }
         return $out;
+    }
+
+    /** The same nth weekday, $monthsAhead months after $first (last one if the month has no nth). */
+    private static function nthWeekdayOfMonth($first, $monthsAhead) {
+        $words = [1 => 'first', 2 => 'second', 3 => 'third', 4 => 'fourth', 5 => 'fifth'];
+        $nth = $words[(int)ceil((int)date('j', $first) / 7)];
+        $dow = date('l', $first);
+        $ym  = date('Y-m', strtotime('first day of +' . (int)$monthsAhead . ' month', strtotime(date('Y-m-01', $first))));
+        $ts  = strtotime("$nth $dow of $ym");
+        if ($ts === false || date('Y-m', $ts) !== $ym) $ts = strtotime("last $dow of $ym");
+        return $ts;
     }
 
     /** A fresh id for a weekly series (same UUID shape as facility_requests.uuid). */

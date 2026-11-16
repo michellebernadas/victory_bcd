@@ -172,22 +172,30 @@ $fbReturnInput = '<input type="hidden" name="_return" value="' . htmlspecialchar
                                 <div class="form-check mb-0">
                                     <input class="form-check-input" type="checkbox" name="repeat_weekly" value="1" id="fr_repeat">
                                     <label class="form-check-label small fw-semibold" for="fr_repeat">
-                                        <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>Repeat weekly
+                                        <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>Repeat this booking
                                     </label>
-                                    <span class="form-text ms-1" style="font-size:.7rem">Creates a separate request for each week, same day and time. Each one is reviewed, approved and confirmed on its own.</span>
+                                    <span class="form-text ms-1" style="font-size:.7rem">Creates a separate request for each date, same room and time. Each one is reviewed, approved and confirmed on its own.</span>
                                 </div>
                                 <div id="fr_repeat_opts" class="row g-2 mt-1 d-none">
+                                    <div class="col-12">
+                                        <label class="small me-1" for="fr_repeat_every">Repeat</label>
+                                        <select name="repeat_every" id="fr_repeat_every" class="form-select form-select-sm d-inline-block w-auto">
+                                            <?php foreach (FacilityRequest::REPEAT_EVERY as $rk => $rl): ?>
+                                            <option value="<?php echo htmlspecialchars($rk); ?>"><?php echo htmlspecialchars($rl); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
                                     <div class="col-12 col-md-6">
                                         <div class="form-check form-check-inline">
                                             <input class="form-check-input" type="radio" name="repeat_mode" id="fr_repeat_mode_weeks" value="weeks" checked>
                                             <label class="form-check-label small" for="fr_repeat_mode_weeks">For</label>
                                         </div>
-                                        <select name="repeat_weeks" id="fr_repeat_weeks" class="form-select form-select-sm d-inline-block w-auto" aria-label="Number of weeks">
+                                        <select name="repeat_weeks" id="fr_repeat_weeks" class="form-select form-select-sm d-inline-block w-auto" aria-label="Number of times">
                                             <?php for ($w = 2; $w <= FacilityRequest::SERIES_MAX; $w++): ?>
                                             <option value="<?php echo $w; ?>"<?php echo $w === 4 ? ' selected' : ''; ?>><?php echo $w; ?></option>
                                             <?php endfor; ?>
                                         </select>
-                                        <span class="small">weeks</span>
+                                        <span class="small">times</span>
                                     </div>
                                     <div class="col-12 col-md-6">
                                         <div class="form-check form-check-inline">
@@ -197,7 +205,7 @@ $fbReturnInput = '<input type="hidden" name="_return" value="' . htmlspecialchar
                                         <input type="date" name="repeat_until" id="fr_repeat_until" class="form-control form-control-sm d-inline-block w-auto" aria-label="Repeat until">
                                     </div>
                                     <div class="col-12 form-text mt-0" style="font-size:.7rem">
-                                        At most <?php echo (int)FacilityRequest::SERIES_MAX; ?> weeks. You will see every date with its clash check before anything is submitted, and can untick dates you do not need.
+                                        At most <?php echo (int)FacilityRequest::SERIES_MAX; ?> dates. You will see every date with its clash check before anything is submitted, and can untick dates you do not need.
                                     </div>
                                 </div>
                             </div>
@@ -215,8 +223,10 @@ $fbReturnInput = '<input type="hidden" name="_return" value="' . htmlspecialchar
                                 <option value="">No specific room (equipment / resource only)</option>
                                 <?php foreach ($facilities as $f): ?>
                                 <option value="<?php echo (int)$f['id']; ?>"
-                                        data-lead="<?php echo (int)$f['default_lead_days']; ?>">
+                                        data-lead="<?php echo (int)$f['default_lead_days']; ?>"
+                                        data-special="<?php echo !empty($f['special_case_only']) ? 1 : 0; ?>">
                                     <?php echo htmlspecialchars($f['name']); ?>
+                                    <?php echo !empty($f['special_case_only']) ? ' — special case only' : ''; ?>
                                     (<?php echo (int)$f['default_lead_days']; ?>d lead)
                                 </option>
                                 <?php endforeach; ?>
@@ -224,6 +234,16 @@ $fbReturnInput = '<input type="hidden" name="_return" value="' . htmlspecialchar
                             <div id="fr_room_msg" class="fb-field-msg" aria-live="polite"></div>
                             <div class="form-text" style="font-size:.7rem">
                                 The number in brackets is the recommended notice in days (policy section 10). Short notice is a warning, not a block.
+                            </div>
+                        </div>
+                        <div class="col-12 d-none" id="fr_special_wrap">
+                            <div class="alert alert-warning py-2 mb-0">
+                                <label class="form-label small fw-semibold mb-1" for="fr_special">
+                                    <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>Special case — why do you need <span id="fr_special_room">this room</span>? <span class="text-danger">*</span>
+                                </label>
+                                <textarea name="special_case_reason" id="fr_special" class="form-control form-control-sm" rows="2" maxlength="1000"
+                                          placeholder="This space is normally not for booking. Explain the situation so Facilities and the Minister can decide."></textarea>
+                                <div class="fb-field-msg" id="fr_special_msg" aria-live="polite"></div>
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
@@ -694,6 +714,9 @@ $fbReturnInput = '<input type="hidden" name="_return" value="' . htmlspecialchar
                 </button>
                 <button type="button" class="btn btn-outline-secondary d-none" id="fd_book_btn">
                     <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>Book again
+                </button>
+                <button type="button" class="btn btn-outline-secondary d-none" id="fd_repeat_btn">
+                    <i class="bi bi-calendar2-week me-1" aria-hidden="true"></i>Repeat
                 </button>
                 <button type="button" class="btn btn-outline-primary d-none" id="fd_edit_btn">
                     <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>Edit

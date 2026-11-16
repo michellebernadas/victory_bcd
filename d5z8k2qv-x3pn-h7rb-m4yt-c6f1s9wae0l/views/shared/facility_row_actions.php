@@ -86,7 +86,11 @@ $eventJs      = htmlspecialchars(json_encode($r['event_activity']), ENT_QUOTES);
             <?php endif; ?>
             <?php if ($canBookAgain): ?>
             <li><button type="button" class="dropdown-item" onclick="openBookAgain(<?php echo $rid; ?>)">
-                <i class="bi bi-arrow-repeat me-2" aria-hidden="true"></i>Book again</button></li>
+                <i class="bi bi-arrow-repeat me-2" aria-hidden="true"></i>Book again (duplicate)</button></li>
+            <?php if (canRepeatFacilityRequest($currentUserType)): ?>
+            <li><button type="button" class="dropdown-item" onclick="openBookAgain(<?php echo $rid; ?>, true)">
+                <i class="bi bi-calendar2-week me-2" aria-hidden="true"></i>Repeat this booking</button></li>
+            <?php endif; ?>
             <?php endif; ?>
             <?php if ($canCancel || $canDelete): ?>
             <li><hr class="dropdown-divider"></li>

@@ -77,6 +77,7 @@ const PERMISSION_GROUPS = [
         'facility_approve' => ['Minister approval',         'Step 3 — approve, decline or return for clarification.'],
         'facility_confirm' => ['Facilities confirmation',   'Step 4 — make it an official reservation.'],
         'facility_cancel'  => ['Cancel any request',        'Cancel or close-as-expired anyone\'s request.'],
+        'facility_rooms'   => ['Manage rooms',              'Add, edit, hide, reorder and delete the rooms people can book, and mark a room as special-case only.'],
     ],
 ];
 
@@ -470,6 +471,11 @@ function canRepeatFacilityRequest($role = null) {
 /** Weekly setup sheet (confirmed bookings only): anyone who can see Facility Booking. */
 function canViewFacilitySetupSheet($role = null) {
     return canViewFacilityBooking($role);
+}
+
+/** Add / edit / hide / delete rooms (Facility Booking > Rooms). Admin always; other roles by permission. */
+function canManageFacilityRooms($role = null) {
+    return hasPermission('facility_rooms', $role);
 }
 
 /** The import page and its template are admin surfaces, like the import itself. */

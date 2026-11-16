@@ -37,6 +37,7 @@ $setupRows        = $setupRows        ?? [];
 $setupFrom        = $setupFrom        ?? date('Y-m-d');
 $setupTo          = $setupTo          ?? date('Y-m-d');
 $fbReturn         = $fbReturn         ?? 'tab=requests';
+$roomRows         = $roomRows         ?? [];
 require_once __DIR__ . '/shared/facility_stepper.php';
 
 /** Status badge — one consistent rendering everywhere on the page. */
@@ -143,6 +144,11 @@ foreach ($calendarRequests as $r) {
                     'resubmitted'            => 'Request resubmitted. It is back with Facilities Personnel for review.',
                     'deleted'                => 'Request deleted. It is hidden everywhere and no longer reserves anything; admins can restore it from the Deleted list.',
                     'restored'               => 'Request restored, exactly as it was before it was deleted.',
+                    'room_added'             => 'Room added. It now appears in the request form.',
+                    'room_updated'           => 'Room updated.',
+                    'room_hidden'            => 'Room hidden from the request form. Existing requests keep it.',
+                    'room_shown'             => 'Room is available in the request form again.',
+                    'room_deleted'           => 'Room deleted.',
                     'series_submitted'       => (int)($_GET['n'] ?? 0) . ' weekly requests submitted. Each one goes through Facilities review, the Minister and confirmation on its own — none is reserved yet.',
                 ];
                 $notifKey   = $_GET['notif'];
@@ -226,11 +232,20 @@ foreach ($calendarRequests as $r) {
                     </a>
                 </li>
                 <?php endif; ?>
+                <?php if (canManageFacilityRooms($currentUserType)): ?>
+                <li class="nav-item">
+                    <a class="nav-link <?php echo $activeTab === 'rooms' ? 'active' : ''; ?>"
+                       href="index.php?action=facilityCalendar&tab=rooms">
+                        <i class="bi bi-door-open me-1" aria-hidden="true"></i>Rooms
+                    </a>
+                </li>
+                <?php endif; ?>
             </ul>
 
 <?php include 'shared/facility_calendar_tab.php'; ?>
 <?php include 'shared/facility_requests_tab.php'; ?>
 <?php if ($activeTab === 'setup' && canViewFacilitySetupSheet($currentUserType)) include 'shared/facility_setup_tab.php'; ?>
+<?php if ($activeTab === 'rooms' && canManageFacilityRooms($currentUserType)) include 'shared/facility_rooms_tab.php'; ?>
 
         </div>
     </div>

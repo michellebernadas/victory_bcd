@@ -71,6 +71,9 @@ $tableDeleted = $tableDeleted ?? false;   // Deleted list: who / when / why inst
                 <td class="small">
                     <?php if ($r['facility_name']): ?>
                         <?php echo htmlspecialchars($r['facility_name']); ?>
+                        <?php if (!empty($r['special_case_reason'])): ?>
+                            <div><span class="fb-chip fb-chip-warning" title="<?php echo htmlspecialchars($r['special_case_reason']); ?>"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i>Special case</span></div>
+                        <?php endif; ?>
                     <?php else: ?>
                         <span class="text-muted" title="No room requested — nothing is occupied, so no conflict check runs.">
                             <i class="bi bi-dash-circle me-1" aria-hidden="true"></i>No room

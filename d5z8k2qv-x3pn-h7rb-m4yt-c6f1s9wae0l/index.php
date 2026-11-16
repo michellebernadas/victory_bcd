@@ -1259,6 +1259,34 @@ switch ($action) {
         }
         break;
 
+    // Room management (Facility Booking > Rooms). Gated by the "Manage rooms"
+    // permission; the controller re-checks it.
+    case 'addFacilityRoom':
+    case 'updateFacilityRoom':
+    case 'showFacilityRoom':
+    case 'hideFacilityRoom':
+    case 'deleteFacilityRoom':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canManageFacilityRooms($currentUserType)) { header('Location: index.php?action=facilityCalendar&error=1&msg=' . urlencode('You are not allowed to manage rooms.')); exit(); }
+        $roomId = (int)($_GET['id'] ?? 0);
+        if ($action === 'addFacilityRoom' || $action === 'updateFacilityRoom') {
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: index.php?action=facilityCalendar&tab=rooms'); exit(); }
+            $facilityController->saveRoom($_POST, $action === 'updateFacilityRoom' ? $roomId : 0);
+        } elseif ($action === 'deleteFacilityRoom') {
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: index.php?action=facilityCalendar&tab=rooms'); exit(); }
+            $facilityController->deleteRoom($roomId);
+        } else {
+            $facilityController->setRoomActive($roomId, $action === 'showFacilityRoom');
+        }
+        break;
+
+    case 'reorderFacilityRooms':
+        if (!isset($_SESSION['user'])) { http_response_code(401); exit(); }
+        if (!canManageFacilityRooms($currentUserType) || $_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(403); exit(); }
+        $roomIds = $_POST['ids'] ?? [];
+        $facilityController->reorderRooms(is_array($roomIds) ? $roomIds : []);
+        break;
+
     // Weekly setup sheet export (CSV / Excel) — confirmed bookings only.
     case 'facilitySetupSheetExport':
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }

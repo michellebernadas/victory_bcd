@@ -80,6 +80,7 @@
      * arranges the form.
      */
     var formMode = { mode: 'new', id: null };
+    var canRepeat = !!document.getElementById('fr_repeat');
     var DEFAULT_TITLE = 'Facilities, Equipment & Resource Request';
     function setFormMode(mode, r) {
         formMode = { mode: mode, id: r ? r.id : null };
@@ -123,7 +124,15 @@
         set('fr_event', r.event_activity); set('fr_purpose', r.purpose);
         set('fr_date', keepDate ? r.date_needed : '');
         set('fr_start', hm(r.start_time)); set('fr_end', hm(r.end_time));
-        set('fr_attendance', r.expected_attendance); set('fr_facility', r.facility_id);
+        set('fr_attendance', r.expected_attendance);
+        // A room hidden or deleted since this request was made is not in the list; add it so Edit / Book again still shows it.
+        var facSel = el('fr_facility');
+        if (facSel && r.facility_id && !Array.prototype.some.call(facSel.options, function (o) { return o.value === String(r.facility_id); })) {
+            var ghost = new Option((r.facility_name || 'Room') + ' (no longer offered)', r.facility_id);
+            ghost.dataset.special = Number(r.special_case_only) ? '1' : '0';
+            facSel.add(ghost);
+        }
+        set('fr_facility', r.facility_id); set('fr_special', r.special_case_reason);
         set('fr_setup', r.preferred_setup); set('fr_tables', r.num_tables); set('fr_chairs', r.num_chairs);
         set('fr_otherreq', r.other_requirements); set('fr_equipment', r.equipment_requested);
         set('fr_qty', r.equipment_quantity); set('fr_responsible', r.person_responsible);
@@ -144,7 +153,7 @@
             if (window.jQuery && jQuery(n).data('select2')) jQuery(n).trigger('change.select2');
         };
         sel('fr_member', r.requestor_member_id); sel('fr_ministry', r.ministry);
-        syncRoomRequired(); checkTimes(); checkAvailability();
+        syncRoomRequired(); syncSpecialCase(); checkTimes(); checkAvailability();
     }
 
     /** Fetch one request, then hand it to cb (shared by Edit and Book again). */
@@ -166,13 +175,16 @@
         });
     };
 
-    window.openBookAgain = function (id) {
+    window.openBookAgain = function (id, asRepeat) {
         withRequest(id, function (d) {
             if (!d.can_book_again) return;
             hideDetail();
             window.openFacilityRequestForm(null, null, true);
             setFormMode('again', d.request);
             fillForm(d.request, false);
+            // "Repeat this booking": same as Book again, with the repeat options already open.
+            var rep = el('fr_repeat');
+            if (rep && asRepeat && canRepeat) { rep.checked = true; syncRepeat(); }
             show('facilityRequestModal').show();
             var dt = el('fr_date'); if (dt) setTimeout(function () { dt.focus(); }, 400);
         });
@@ -201,6 +213,7 @@
         }
         clearFormErrors();
         syncRoomRequired();
+        syncSpecialCase();
         checkTimes();
         checkAvailability();
         if (!noShow) show('facilityRequestModal').show();
@@ -212,7 +225,7 @@
         var on = el('fr_repeat') && el('fr_repeat').checked;
         var opts = el('fr_repeat_opts'); if (opts) opts.classList.toggle('d-none', !on);
         var label = el('fr_submit_label');
-        if (label && formMode.mode !== 'edit') label.textContent = on ? 'Check the weekly dates' : 'Submit for Facilities review';
+        if (label && formMode.mode !== 'edit') label.textContent = on ? 'Check the dates' : 'Submit for Facilities review';
     }
     document.addEventListener('change', function (e) {
         if (e.target.id === 'fr_repeat') { hideSeriesPreview(); syncRepeat(); }
@@ -252,13 +265,13 @@
             .then(function (d) {
                 if (!d || d.error) {
                     var errs = el('fr_errors');
-                    errs.innerHTML = esc((d && d.error) || 'Could not check the weekly dates.');
+                    errs.innerHTML = esc((d && d.error) || 'Could not check the dates.');
                     errs.classList.remove('d-none'); errs.focus();
                     box.innerHTML = '';
                     return;
                 }
                 var html = '<h6 class="fw-bold text-purple border-bottom pb-1"><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>'
-                         + 'Weekly series — ' + esc(el('fr_event').value) + '</h6>'
+                         + 'Repeating booking — ' + esc(el('fr_event').value) + '</h6>'
                          + '<p class="small mb-2">Untick any date you do not need. <strong><span id="fr_series_count">' + d.dates.length
                          + '</span></strong> separate request(s) will be submitted, each going through Facilities review, the Minister and '
                          + 'confirmation on its own. Nothing is reserved yet.</p>'
@@ -294,7 +307,7 @@
                 syncSeriesCount();
                 box.scrollIntoView({ block: 'start' });
             })
-            .catch(function () { box.innerHTML = '<div class="text-danger small">Could not check the weekly dates.</div>'; });
+            .catch(function () { box.innerHTML = '<div class="text-danger small">Could not check the dates.</div>'; });
     }
 
     // Picking a member fills the contact block rather than making it retyped.
@@ -368,6 +381,22 @@
         document.querySelectorAll('#frForm .is-invalid').forEach(function (n) { n.classList.remove('is-invalid'); });
         var rm = el('fr_room_msg'); if (rm) rm.innerHTML = '';
     }
+    /** Special-case rooms (e.g. the Office Lobby) ask why; shown only while one is selected. */
+    function isSpecialRoom() {
+        var fac = el('fr_facility');
+        var opt = fac && fac.options[fac.selectedIndex];
+        return !!(opt && opt.value && opt.dataset.special === '1');
+    }
+    function syncSpecialCase() {
+        var wrap = el('fr_special_wrap'), fac = el('fr_facility');
+        if (!wrap) return;
+        var on = isSpecialRoom();
+        wrap.classList.toggle('d-none', !on);
+        var nm = el('fr_special_room');
+        if (nm && on) nm.textContent = '' + String(fac.options[fac.selectedIndex].textContent).replace(/\s+—\s+special case only\s*$/, '').replace(/\s*\(\d+d lead\)\s*$/, '').trim();
+    }
+    document.addEventListener('change', function (e) { if (e.target.id === 'fr_facility') syncSpecialCase(); });
+
     function validateRequestForm() {
         clearFormErrors();
         var errs = [], mark = function (id) { var n = el(id); if (n) n.classList.add('is-invalid'); };
@@ -388,6 +417,10 @@
             if (!val('fr_end'))   { errs.push('End time is required for a room booking.'); mark('fr_end'); }
         }
         if (!checkTimes()) errs.push('End time must be after the start time.');
+        if (isSpecialRoom() && !val('fr_special')) {
+            errs.push('This room is for special cases only. Please explain why you need it.');
+            mark('fr_special');
+        }
         var ack = el('fr_ack');
         if (ack && !ack.checked) { errs.push('Please tick the acknowledgment in section F.'); mark('fr_ack'); }
 
@@ -628,7 +661,7 @@
         // History loads in parallel into its own column beside the details.
         loadHistory(id, el('fdh_loading'), el('fdh_list'), el('fdh_empty'));
         var wait = el('fd_waiting');
-        ['fd_action_btn', 'fd_cancel_btn', 'fd_edit_btn', 'fd_book_btn', 'fd_delete_btn'].forEach(function (b) {
+        ['fd_action_btn', 'fd_cancel_btn', 'fd_edit_btn', 'fd_book_btn', 'fd_repeat_btn', 'fd_delete_btn'].forEach(function (b) {
             var n = el(b); if (n) { n.classList.add('d-none'); n.onclick = null; }
         });
         wait.innerHTML = '';
@@ -693,6 +726,7 @@
         reveal('fd_edit_btn', d.can_edit && d.request.status !== 'for_clarification',
                function () { window.openEditRequest(d.request.id); });
         reveal('fd_book_btn', d.can_book_again, function () { window.openBookAgain(d.request.id); });
+        reveal('fd_repeat_btn', d.can_book_again && canRepeat, function () { window.openBookAgain(d.request.id, true); });
         reveal('fd_delete_btn', d.can_delete && !missing('deleteRequestModal'),
                function () { window.openDeleteRequest(d.payload); });
     }
@@ -737,7 +771,7 @@
         if (d.series && d.series.length > 1) {
             var cur = d.series.filter(function (s) { return s.current; })[0];
             html += '<div class="alert alert-light border small py-2 fd-series"><i class="bi bi-arrow-repeat me-1 text-purple" aria-hidden="true"></i>'
-                 +  '<strong>Part of a weekly series' + (cur ? ' (' + cur.n + ' of ' + d.series.length + ')' : '') + '.</strong> '
+                 +  '<strong>Part of a repeating series' + (cur ? ' (' + cur.n + ' of ' + d.series.length + ')' : '') + '.</strong> '
                  +  'Each week is its own request with its own approvals.<div class="d-flex flex-wrap gap-1 mt-1">';
             d.series.forEach(function (s) {
                 html += s.current
@@ -785,6 +819,10 @@
         html += row('Time', [fmtTime(r.start_time), fmtTime(r.end_time)].filter(Boolean).join(' – '));
         html += row('Expected Attendance', r.expected_attendance);
         html += row('Facility / Room', r.facility_name || 'No room requested (nothing occupied)');
+        if (r.special_case_reason) {
+            html += '<div class="col-12 mb-2"><div class="alert alert-warning small py-2 mb-0"><i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>'
+                 +  '<strong>Special case.</strong> ' + esc(r.facility_name || 'This room') + ' is normally not for booking. Reason given: &ldquo;' + esc(r.special_case_reason) + '&rdquo;</div></div>';
+        }
         html += row('Preferred Setup', r.preferred_setup);
         html += row('Chairs', r.num_chairs);
         html += row('Tables', r.num_tables);
