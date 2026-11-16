@@ -46,14 +46,6 @@
                     <span class="fw-normal text-lowercase">&mdash; <?php echo htmlspecialchars($sundayScope['label']); ?></span>
                 </span>
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <div class="btn-group btn-group-sm" role="group" aria-label="Attendance range">
-                        <?php foreach (ServiceAttendance::RANGES as $srKey => $srLabel): ?>
-                        <a href="<?php echo htmlspecialchars($sundayUrl($srKey)); ?>"
-                           class="btn btn-sm <?php echo $sundayRange === $srKey ? 'btn-primary' : 'btn-outline-primary'; ?>">
-                            <?php echo htmlspecialchars($srLabel); ?>
-                        </a>
-                        <?php endforeach; ?>
-                    </div>
                     <a href="index.php?action=serviceAttendance" class="btn btn-sm btn-outline-secondary">
                         <i class="bi bi-plus-circle me-1"></i>Record
                     </a>
@@ -179,7 +171,11 @@
                     <i class="bi bi-fire me-1"></i>Prayer Meeting &amp; Students&rsquo; Hangout
                     <span class="fw-normal text-lowercase">&mdash; <?php echo htmlspecialchars($sundayRange === 'last4' ? 'last 4 of each' : strtolower($sundayScope['label'])); ?></span>
                 </span>
-                <a href="index.php?action=gatheringAttendance" class="btn btn-sm btn-outline-secondary"><i class="bi bi-plus-circle me-1"></i>Record</a>
+                <span class="d-flex gap-1">
+                <?php foreach (GATHERING_PERMISSIONS as $gdLinkType => $gdLinkPerm): if (!hasPermission($gdLinkPerm)) continue; ?>
+                <a href="index.php?action=gatheringAttendance&amp;gathering_type=<?php echo $gdLinkType; ?>" class="btn btn-sm btn-outline-secondary"><i class="bi bi-plus-circle me-1"></i>Record <?php echo htmlspecialchars(GatheringAttendance::TYPES[$gdLinkType]['label']); ?></a>
+                <?php endforeach; ?>
+                </span>
             </div>
             <div class="row g-3">
                 <?php foreach (GatheringAttendance::TYPES as $gdT => $gdDef):
@@ -215,11 +211,6 @@
                     <i class="bi bi-bar-chart me-1"></i>Month by Month &mdash; Average per Event
                     <span class="fw-normal text-lowercase">&mdash; <?php echo (int)$healthYear; ?></span>
                 </span>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Year">
-                    <?php foreach ($healthYears as $hy): ?>
-                    <a href="<?php echo htmlspecialchars($healthYearUrl((int)$hy)); ?>" class="btn btn-sm <?php echo (int)$hy === $healthYear ? 'btn-primary' : 'btn-outline-primary'; ?>"><?php echo (int)$hy; ?></a>
-                    <?php endforeach; ?>
-                </div>
             </div>
             <?php if ($mhAny): ?>
             <div class="row g-3">

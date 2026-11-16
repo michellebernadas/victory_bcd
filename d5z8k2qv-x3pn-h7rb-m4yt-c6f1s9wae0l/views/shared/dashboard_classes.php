@@ -30,54 +30,7 @@ $dcScopeLabel = ($dashClass ? ProgramAttendance::PROGRAM_LABELS[$dashClass] . ' 
             <span class="badge bg-white text-primary ms-1"><?php echo $dashFilterCount; ?> filter<?php echo $dashFilterCount === 1 ? '' : 's'; ?></span>
             <?php endif; ?>
         </h6>
-        <div class="d-flex align-items-center flex-wrap gap-2">
-            <?php if ($dashFilterCount): ?>
-            <a href="index.php#classAttendance" class="btn btn-sm btn-outline-light"><i class="bi bi-x-circle me-1"></i>Clear</a>
-            <?php endif; ?>
-            <button class="btn btn-sm btn-outline-light" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#dashFilterBody" aria-expanded="<?php echo $dashFilterCount ? 'true' : 'false'; ?>">
-                <i class="bi bi-funnel me-1"></i>Class / Year
-            </button>
-        </div>
-    </div>
-    <!-- Class / Year filter -->
-    <div class="collapse<?php echo $dashFilterCount ? ' show' : ''; ?>" id="dashFilterBody">
-        <div class="card-body border-bottom py-3 bg-light">
-            <form method="GET" action="index.php#classAttendance" class="row g-2 align-items-end">
-                <input type="hidden" name="sunday_range" value="<?php echo htmlspecialchars($sundayRange); ?>">
-                <div class="col-md-4">
-                    <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Class</label>
-                    <select name="dash_class" class="form-select form-select-sm">
-                        <option value="">All classes</option>
-                        <?php foreach (ProgramAttendance::PROGRAM_LABELS as $dhPt => $dhLbl): ?>
-                        <option value="<?php echo $dhPt; ?>" <?php echo $dashClass === $dhPt ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($dhLbl); ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Year</label>
-                    <select name="dash_year" class="form-select form-select-sm">
-                        <option value="">All years</option>
-                        <?php foreach ($dashYearOptions as $dhYr): ?>
-                        <option value="<?php echo (int)$dhYr; ?>" <?php echo $dashYear === (int)$dhYr ? 'selected' : ''; ?>><?php echo (int)$dhYr; ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Trend by</label>
-                    <select name="dash_bucket" class="form-select form-select-sm">
-                        <?php foreach ($bucketLabels as $dhBk => $dhBl): ?>
-                        <option value="<?php echo $dhBk; ?>" <?php echo $dashBucket === $dhBk ? 'selected' : ''; ?>><?php echo $dhBl; ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-2 d-grid">
-                    <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Apply</button>
-                </div>
-            </form>
-        </div>
+        <span class="small text-white-50"><i class="bi bi-funnel me-1" aria-hidden="true"></i>Set with the filter bar above</span>
     </div>
 
     <div class="card-body">

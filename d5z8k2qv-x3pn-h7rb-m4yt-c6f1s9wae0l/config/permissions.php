@@ -62,13 +62,28 @@ const PERMISSION_GROUPS = [
         'dashboard' => ['Dashboard & Church Health', 'The church-wide statistics landing page and its Excel export. Without it the account lands on a short welcome page instead.'],
     ],
     'Discipleship' => [
-        'members'              => ['Members',                 'View, add and edit members and their profiles.'],
-        'attendance_records'   => ['Attendance Records',      'Class attendance records.'],
-        'victory_groups'       => ['Victory Groups',          'Victory Groups, Leadership Groups, Campus and the Leaders list.'],
-        'serve_teams'          => ['Serve Teams',             'Serve teams and their members.'],
-        'service_attendance'   => ['Sunday Attendance',       'Sunday service attendance.'],
-        'gathering_attendance' => ['Prayer & Students',       'Prayer meeting and Students\' Hangout attendance.'],
-        'classes'              => ['Classes',                 'Victory Weekend, Church Community, Making Disciples, Empowering Leaders, Leadership 1-1-3 and Spiritual Foundations.'],
+        'members'              => ['Members',            'View, add and edit members and their profiles.'],
+        'attendance_records'   => ['Attendance Records', 'The all-classes Attendance Records page. Individual class pages are granted separately below.'],
+        'serve_teams'          => ['Serve Teams',        'Serve teams and their members.'],
+        'service_attendance'   => ['Sunday Attendance',  'Sunday service attendance.'],
+    ],
+    'Groups' => [
+        'group_vg'      => ['Victory Groups',     'The Victory Groups list (and its statistics).'],
+        'group_lg'      => ['Leadership Groups',  'The Leadership Groups list.'],
+        'group_campus'  => ['Campus',             'The Campus groups list.'],
+        'group_leaders' => ['Leaders list',       'The read-only list of group leaders.'],
+    ],
+    'Gatherings' => [
+        'prayer_meeting'   => ['Prayer Meeting',     'Prayer Meeting attendance (Tuesday / Wednesday).'],
+        'students_hangout' => ['Students\' Hangout', 'Students\' Hangout attendance (Friday).'],
+    ],
+    'Classes' => [
+        'class_victory_weekend'       => ['Victory Weekend',       'Victory Weekend attendance records.'],
+        'class_church_community'      => ['Church Community',      'Church Community attendance records.'],
+        'class_making_disciples'      => ['Making Disciples',      'Making Disciples attendance records.'],
+        'class_empowering_leaders'    => ['Empowering Leaders',    'Empowering Leaders attendance records.'],
+        'class_leadership_113'        => ['Leadership 1-1-3',      'Leadership 1-1-3 records.'],
+        'class_spiritual_foundations' => ['Spiritual Foundations', 'Spiritual Foundations records.'],
     ],
     'Facility Booking' => [
         'facility_view'    => ['View calendar & requests',  'See the calendar, requests, history and the setup sheet.'],
@@ -79,6 +94,19 @@ const PERMISSION_GROUPS = [
         'facility_cancel'  => ['Cancel any request',        'Cancel or close-as-expired anyone\'s request.'],
         'facility_rooms'   => ['Manage rooms',              'Add, edit, hide, reorder and delete the rooms people can book, and mark a room as special-case only.'],
     ],
+];
+
+/**
+ * The three bundled permissions this app used to have, and the separate
+ * permissions each one became. Used by the migration's logic (mirrored in SQL)
+ * and by the pre-migration fallback roles, so a role that held a bundle keeps
+ * exactly the same access after the split.
+ */
+const LEGACY_PERMISSION_MAP = [
+    'victory_groups'       => ['group_vg', 'group_lg', 'group_campus', 'group_leaders'],
+    'gathering_attendance' => ['prayer_meeting', 'students_hangout'],
+    'classes'              => ['class_victory_weekend', 'class_church_community', 'class_making_disciples',
+                            'class_empowering_leaders', 'class_leadership_113', 'class_spiritual_foundations'],
 ];
 
 /** Flat key => label view of PERMISSION_GROUPS (for validation and display). */
@@ -140,7 +168,7 @@ function allRoles() {
     }
     if (!$roles) {
         $all = array_keys(permissionCatalog());
-        $facBase = ['dashboard','members','attendance_records','victory_groups','serve_teams','service_attendance','gathering_attendance','classes','facility_view','facility_submit'];
+        $facBase = array_merge(['dashboard','members','attendance_records','serve_teams','service_attendance','facility_view','facility_submit'], LEGACY_PERMISSION_MAP['victory_groups'], LEGACY_PERMISSION_MAP['gathering_attendance'], LEGACY_PERMISSION_MAP['classes']);
         $roles = [
             ROLE_ADMIN      => ['id'=>0,'slug'=>ROLE_ADMIN,      'label'=>'Admin',                'description'=>'', 'is_system'=>1, 'permissions'=>$all],
             ROLE_EDITOR     => ['id'=>0,'slug'=>ROLE_EDITOR,     'label'=>'Editor',               'description'=>'', 'is_system'=>1, 'permissions'=>$facBase],
@@ -198,10 +226,10 @@ function hasAnyPermission(array $permissions, $role = null) {
 }
 
 /**
- * The permission each routed action needs. The ONE map the front controller
- * consults (index.php) so a new route cannot quietly skip the gate. Actions
- * absent from this map keep whatever gate they already had (login only, or
- * canAdminister()).
+ * Routed actions guarded by ONE fixed permission. The front controller
+ * (index.php) consults this and requiredPermissionsFor() before every request,
+ * so a new route cannot quietly skip the gate. Actions absent from both keep
+ * whatever gate they already had (login only, or canAdminister()).
  */
 const ACTION_PERMISSIONS = [
     // Members
@@ -209,61 +237,185 @@ const ACTION_PERMISSIONS = [
     'updateMember' => 'members', 'deleteMember' => 'members', 'deactivateMember' => 'members',
     'activateMember' => 'members', 'memberProfile' => 'members',
     'memberGroupSave' => 'members', 'memberTeamSave' => 'members',
-    // Attendance records
-    'attendanceRecords' => 'attendance_records', 'addAttendance' => 'attendance_records',
-    'updateAttendance' => 'attendance_records', 'deactivateAttendance' => 'attendance_records',
-    'activateAttendance' => 'attendance_records', 'deleteAttendance' => 'attendance_records',
-    // Victory groups / leadership / campus / leaders
-    'victoryGroups' => 'victory_groups', 'groupLeaders' => 'victory_groups', 'addGroup' => 'victory_groups',
-    'editGroup' => 'victory_groups', 'updateGroup' => 'victory_groups', 'deleteGroup' => 'victory_groups',
-    'activateGroup' => 'victory_groups', 'hardDeleteGroup' => 'victory_groups',
-    'addVglStat' => 'victory_groups', 'updateVglStat' => 'victory_groups', 'deleteVglStat' => 'victory_groups',
-    'deactivateVglStat' => 'victory_groups', 'activateVglStat' => 'victory_groups', 'updateVglStatOrder' => 'victory_groups',
+    // Group leaders list
+    'groupLeaders' => 'group_leaders',
+    // Victory-group statistics definitions live on the Victory Groups page
+    'addVglStat' => 'group_vg', 'updateVglStat' => 'group_vg', 'deleteVglStat' => 'group_vg',
+    'deactivateVglStat' => 'group_vg', 'activateVglStat' => 'group_vg', 'updateVglStatOrder' => 'group_vg',
     // Serve teams
     'serveTeams' => 'serve_teams', 'addServeTeam' => 'serve_teams', 'updateServeTeam' => 'serve_teams',
     'activateServeTeam' => 'serve_teams', 'deactivateServeTeam' => 'serve_teams', 'deleteServeTeam' => 'serve_teams',
-    // Sunday + prayer/students
+    // Sunday service
     'serviceAttendance' => 'service_attendance', 'addServiceAttendance' => 'service_attendance',
     'updateServiceAttendance' => 'service_attendance', 'deleteServiceAttendance' => 'service_attendance',
     'saveServiceDay' => 'service_attendance', 'ajaxServiceDay' => 'service_attendance',
-    'gatheringAttendance' => 'gathering_attendance', 'addGatheringAttendance' => 'gathering_attendance',
-    'updateGatheringAttendance' => 'gathering_attendance', 'deleteGatheringAttendance' => 'gathering_attendance',
-    // Classes
-    'leadership113' => 'classes', 'addL113Record' => 'classes', 'updateL113Record' => 'classes',
-    'deactivateL113Record' => 'classes', 'activateL113Record' => 'classes', 'deleteL113Record' => 'classes',
-    // Member pickers
-    'ajaxSearchMembers' => 'any_member_data', 'ajaxFindMemberByName' => 'any_member_data',
-    'ajaxCheckAttendanceDuplicate' => 'any_member_data',
-    'spiritualFoundations' => 'classes', 'addSfRecord' => 'classes', 'updateSfRecord' => 'classes',
-    'deactivateSfRecord' => 'classes', 'activateSfRecord' => 'classes', 'deleteSfRecord' => 'classes',
+    // Dedicated class pages
+    'leadership113' => 'class_leadership_113', 'addL113Record' => 'class_leadership_113',
+    'updateL113Record' => 'class_leadership_113', 'deactivateL113Record' => 'class_leadership_113',
+    'activateL113Record' => 'class_leadership_113', 'deleteL113Record' => 'class_leadership_113',
+    'spiritualFoundations' => 'class_spiritual_foundations', 'addSfRecord' => 'class_spiritual_foundations',
+    'updateSfRecord' => 'class_spiritual_foundations', 'deactivateSfRecord' => 'class_spiritual_foundations',
+    'activateSfRecord' => 'class_spiritual_foundations', 'deleteSfRecord' => 'class_spiritual_foundations',
 ];
 
-/** Which permission (if any) guards this routed action. */
-function permissionForAction($action) {
-    return ACTION_PERMISSIONS[$action] ?? null;
+/** group_kind => the permission for that list. */
+const GROUP_KIND_PERMISSIONS = [
+    'victory_group' => 'group_vg', 'leadership_group' => 'group_lg', 'campus' => 'group_campus',
+];
+
+/** ?tab= value on the Groups page => permission. Stats tabs belong to Victory Groups. */
+const GROUP_TAB_PERMISSIONS = [
+    'vg' => 'group_vg', 'lg' => 'group_lg', 'campus' => 'group_campus',
+    'stats' => 'group_vg', 'statDefs' => 'group_vg',
+];
+
+/** gathering_type => permission. */
+const GATHERING_PERMISSIONS = [
+    'prayer_meeting' => 'prayer_meeting', 'students_hangout' => 'students_hangout',
+];
+
+/** One column of one stored row, for the actions that carry only an id. Whitelisted. */
+function permLookup($table, $column, $id) {
+    $allowed = [
+        'victory_groups'       => 'group_kind',
+        'program_attendances'  => 'program_type',
+        'gathering_attendances' => 'gathering_type',
+    ];
+    if (($allowed[$table] ?? null) !== $column) return null;
+    $db = $GLOBALS['__vb_perm_db'] ?? null;
+    if (!($db instanceof PDO) || (int)$id <= 0) return null;
+    try {
+        $stmt = $db->prepare("SELECT `$column` FROM `$table` WHERE id = ?");
+        $stmt->execute([(int)$id]);
+        $v = $stmt->fetchColumn();
+        return $v === false ? null : (string)$v;
+    } catch (PDOException $e) {
+        error_log('permLookup: ' . $e->getMessage());
+        return null;
+    }
 }
 
-/** May the account open this routed action? Actions with no mapped permission pass. */
+/** The permission a class page needs, from its program_type; '' = the all-classes page. */
+function classPermission($programType) {
+    $programType = (string)$programType;
+    if ($programType === '') return 'attendance_records';
+    $key = 'class_' . $programType;
+    return isset(permissionCatalog()[$key]) ? $key : 'attendance_records';
+}
+
+/**
+ * What a request needs, resolved from the action plus the unit it targets:
+ * the group tab / kind, the class program_type, the gathering type. Stored
+ * rows are looked up when only an id is sent, so an id cannot be used to reach
+ * a unit the role does not hold.
+ *
+ * @return array|null  ['all', [perms…]] every one needed,
+ *                     ['any', [perms…]] at least one needed, or null = no gate here.
+ */
+function requiredPermissionsFor($action) {
+    $get  = $_GET;
+    $post = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' ? $_POST : [];
+    $val  = function ($k) use ($get, $post) { return (string)($post[$k] ?? $get[$k] ?? ''); };
+
+    if (isset(ACTION_PERMISSIONS[$action])) return ['all', [ACTION_PERMISSIONS[$action]]];
+
+    switch ($action) {
+        // ── Groups: Victory Groups / Leadership Groups / Campus are separate ──
+        case 'victoryGroups': {
+            $tab = $val('tab') !== '' ? $val('tab') : 'vg';
+            if (isset(GROUP_TAB_PERMISSIONS[$tab])) return ['all', [GROUP_TAB_PERMISSIONS[$tab]]];
+            // Unknown tab: the list falls back to a group_kind filter (or Victory Groups).
+            $kind = $val('group_kind');
+            return ['all', [GROUP_KIND_PERMISSIONS[$kind] ?? 'group_vg']];
+        }
+        case 'addGroup': {
+            $kind = (string)($post['group_kind'] ?? '');
+            $p = $kind !== '' ? (GROUP_KIND_PERMISSIONS[$kind] ?? 'group_vg')
+                              : (GROUP_TAB_PERMISSIONS[$val('tab') ?: 'vg'] ?? 'group_vg');
+            return ['all', [$p]];
+        }
+        case 'editGroup': case 'deleteGroup': case 'activateGroup': case 'hardDeleteGroup': {
+            $kind = permLookup('victory_groups', 'group_kind', $get['id'] ?? 0);
+            return ['all', [GROUP_KIND_PERMISSIONS[$kind] ?? 'group_vg']];
+        }
+        case 'updateGroup': {
+            $need = [GROUP_KIND_PERMISSIONS[permLookup('victory_groups', 'group_kind', $get['id'] ?? 0)] ?? 'group_vg'];
+            if (!empty($post['group_kind'])) $need[] = GROUP_KIND_PERMISSIONS[$post['group_kind']] ?? 'group_vg';
+            return ['all', array_values(array_unique($need))];
+        }
+
+        // ── Class attendance records, one permission per class ───────────────
+        case 'attendanceRecords':
+            return ['all', [classPermission($val('program_type'))]];
+        case 'addAttendance':
+            return ['all', [classPermission($post['program_type'] ?? '')]];
+        case 'updateAttendance': {
+            $need = [classPermission(permLookup('program_attendances', 'program_type', $get['id'] ?? 0) ?? '')];
+            if (isset($post['program_type'])) $need[] = classPermission($post['program_type']);
+            return ['all', array_values(array_unique($need))];
+        }
+        case 'deactivateAttendance': case 'activateAttendance': case 'deleteAttendance':
+            return ['all', [classPermission(permLookup('program_attendances', 'program_type', $get['id'] ?? 0) ?? '')]];
+
+        // ── Prayer Meeting and Students' Hangout are separate ────────────────
+        case 'gatheringAttendance': {
+            $t = $val('gathering_type');
+            return isset(GATHERING_PERMISSIONS[$t])
+                ? ['all', [GATHERING_PERMISSIONS[$t]]]
+                : ['any', array_values(GATHERING_PERMISSIONS)];
+        }
+        case 'addGatheringAttendance': {
+            $t = (string)($post['gathering_type'] ?? '');
+            return ['all', [GATHERING_PERMISSIONS[$t] ?? 'prayer_meeting']];
+        }
+        case 'updateGatheringAttendance': {
+            $old  = permLookup('gathering_attendances', 'gathering_type', $get['id'] ?? 0);
+            $need = [GATHERING_PERMISSIONS[$old ?? ''] ?? 'prayer_meeting'];
+            if (!empty($post['gathering_type'])) $need[] = GATHERING_PERMISSIONS[$post['gathering_type']] ?? 'prayer_meeting';
+            return ['all', array_values(array_unique($need))];
+        }
+        case 'deleteGatheringAttendance': {
+            $t = permLookup('gathering_attendances', 'gathering_type', $get['id'] ?? 0);
+            return ['all', [GATHERING_PERMISSIONS[$t ?? ''] ?? 'prayer_meeting']];
+        }
+
+        // ── Member-name pickers: any discipleship section opens them ─────────
+        case 'ajaxSearchMembers': case 'ajaxFindMemberByName': case 'ajaxCheckAttendanceDuplicate':
+            return ['any', memberDataPermissions()];
+    }
+    return null;
+}
+
+/** May the account open this request? Requests with no mapped permission pass. */
 function canAccessAction($action, $role = null) {
-    $p = permissionForAction($action);
-    if ($p === null) return true;
-    // The class pages (Victory Weekend, Church Community, Making Disciples,
-    // Empowering Leaders) are the attendance-records routes filtered by
-    // program_type, so holding either permission opens them.
-    if ($p === 'attendance_records') return hasAnyPermission(['attendance_records', 'classes'], $role);
-    if ($p === 'any_member_data')    return hasAnyPermission(MEMBER_DATA_PERMISSIONS, $role);
-    return hasPermission($p, $role);
+    $req = requiredPermissionsFor($action);
+    if ($req === null) return true;
+    list($mode, $perms) = $req;
+    return $mode === 'any' ? hasAnyPermission($perms, $role) : hasAllPermissions($perms, $role);
+}
+
+/** True when the role has every one of the given permissions. */
+function hasAllPermissions(array $permissions, $role = null) {
+    foreach ($permissions as $p) if (!hasPermission($p, $role)) return false;
+    return true;
 }
 
 /**
  * Member-name lookups (pickers on the group, team, attendance and class
- * forms). Shared by every discipleship section, so any of them opens it — but a
- * role limited to Facility Booking cannot search the membership.
+ * forms). Shared by every discipleship section, so holding any of them opens
+ * it — but a role limited to Facility Booking cannot search the membership.
  */
-const MEMBER_DATA_PERMISSIONS = [
-    'members', 'attendance_records', 'victory_groups', 'serve_teams',
-    'service_attendance', 'gathering_attendance', 'classes',
-];
+function memberDataPermissions() {
+    $keys = ['members', 'attendance_records', 'serve_teams', 'service_attendance'];
+    foreach (['Groups', 'Gatherings', 'Classes'] as $g) $keys = array_merge($keys, array_keys(PERMISSION_GROUPS[$g]));
+    return $keys;
+}
+
+/** The permissions that open some page of the Groups / Gatherings / Classes families. */
+function anyGroupPermission($role = null)     { return hasAnyPermission(array_keys(PERMISSION_GROUPS['Groups']), $role); }
+function anyGatheringPermission($role = null) { return hasAnyPermission(array_keys(PERMISSION_GROUPS['Gatherings']), $role); }
+function anyClassPermission($role = null)     { return hasAnyPermission(array_keys(PERMISSION_GROUPS['Classes']), $role); }
+
 
 /**
  * The first page this account may land on after login / when redirected away

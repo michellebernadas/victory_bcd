@@ -11,6 +11,7 @@ if (!canViewDashboard()) { include 'views/home.php'; return; }
 require_once 'models/Member.php';
 require_once 'models/VictoryGroup.php';
 require_once 'models/ProgramAttendance.php';
+require_once 'models/FacilityRequest.php';
 $memberModel = new Member($db);
 $groupModel = new VictoryGroup($db);
 $paModel = new ProgramAttendance($db);
@@ -126,15 +127,30 @@ include 'shared/header.php';
     <?php include 'shared/menu.php'; ?>
 
     <div class="main-content">
-        <div class="container-fluid">
+        <div class="container-fluid vb-chart-tools" id="dashboardRoot">
 
-            <!-- Header -->
-            <div class="row mb-4">
-                <div class="col-12">
-                    <h1 class="h3 mb-0"><i class="bi bi-house-door me-2 text-primary"></i>Dashboard</h1>
-                    <p class="text-muted mb-0">Welcome back, <strong><?php echo htmlspecialchars($_SESSION['user']['username']); ?></strong> &mdash; Victory Bacolod Admin Portal</p>
-                </div>
-            </div>
+            <!-- Greeting banner: same partial as the welcome page, plus an at-a-glance row. -->
+            <?php
+            $gbSubtitle = 'Here is how the church is doing. Use the filters below to change the period.';
+            $gbRefresh  = true;
+            $gbActions  = [['url' => 'index.php?action=churchHealthExport&range=' . $sundayRange, 'icon' => 'bi-file-earmark-excel', 'label' => 'Export Excel']];
+            $gbActions[] = ['url' => '#', 'icon' => 'bi-printer', 'label' => 'Print / PDF'];
+            $gbStats = [];
+            if (!empty($sundayLatest['date'])) {
+                $gbStats[] = ['n' => number_format((int)$sundayLatest['total']), 'l' => 'Latest Sunday attendance',
+                              'd' => date('M j, Y', strtotime($sundayLatest['date'])), 'url' => 'index.php?action=serviceAttendance'];
+            }
+            $gbStats[] = ['n' => number_format((int)($memberStats['active'] ?? 0)), 'l' => 'Active members',
+                          'd' => number_format((int)($memberStats['total'] ?? 0)) . ' on record', 'url' => 'index.php?action=members&member_status=active'];
+            $gbStats[] = ['n' => number_format((int)($groupStats['vg_active'] ?? 0) + (int)($groupStats['lg_active'] ?? 0) + (int)($groupStats['campus_active'] ?? 0)),
+                          'l' => 'Active groups', 'd' => 'Victory, Leadership & Campus', 'url' => 'index.php?action=victoryGroups&tab=vg'];
+            $gbWaiting = canViewFacilityBooking() ? (new FacilityRequest($db))->countByStatuses(facilityWaitingStatuses(), facilityWaitingOwnerScope()) : 0;
+            if ($gbWaiting > 0) {
+                $gbStats[] = ['n' => (int)$gbWaiting, 'l' => 'Facility requests waiting on you', 'd' => 'Needs your action',
+                              'url' => 'index.php?action=facilityCalendar&tab=requests&list=waiting'];
+            }
+            include 'shared/greeting_banner.php';
+            ?>
 
             <?php if (!empty($_SESSION['access_denied'])): ?>
             <div class="alert alert-warning alert-dismissible fade show" role="alert">
@@ -154,6 +170,9 @@ include 'shared/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
             <?php endif; ?>
+
+            <!-- One filter bar for every dashboard filter (same query parameters the cards already read). -->
+            <?php include 'shared/dashboard_filterbar.php'; ?>
 
             <!-- Getting started with 2026 (admin only; hides itself when every step is done) -->
             <?php include 'shared/dashboard_checklist.php'; ?>
@@ -259,10 +278,10 @@ include 'shared/header.php';
             <!-- Church Health: real attendance (Sundays, per service, gatherings, monthly, export) -->
             <?php include 'shared/dashboard_health.php'; ?>
 
-            <!-- Discipleship Journey Progress -->
-            <div class="row mb-4">
+            <!-- Discipleship Journey Progress. .dash-equal: both columns end on the same line (css/style.css). -->
+            <div class="row mb-4 dash-equal">
                 <div class="col-md-8">
-                    <div class="card mb-4">
+                    <div class="card">
                         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <h6 class="mb-0"><i class="bi bi-bar-chart-steps me-2"></i>Discipleship Journey Overview</h6>
                             <span class="badge bg-light text-muted border small" title="Auto-synced from Attendance Records — adding/removing a record updates the flag automatically.">
@@ -323,7 +342,7 @@ include 'shared/header.php';
 
                 <!-- Quick Actions -->
                 <div class="col-md-4">
-                    <div class="card mb-3">
+                    <div class="card">
                         <div class="card-header">
                             <h6 class="mb-0"><i class="bi bi-lightning-charge me-2"></i>Quick Actions</h6>
                         </div>
@@ -339,29 +358,36 @@ include 'shared/header.php';
                                 </a>
                             </div>
                             <?php endif; ?>
-                            <?php if (hasPermission('victory_groups')): ?>
+                            <?php if (anyGroupPermission()): ?>
                             <h6 class="text-muted small fw-bold mb-2 mt-3">GROUPS</h6>
                             <div class="d-grid gap-2 mb-3">
-                                <a href="index.php?action=victoryGroups&amp;tab=vg&amp;openAdd=1" class="btn btn-sm btn-outline-info">
-                                    <i class="bi bi-diagram-3 me-1"></i> Add VG / Leadership Group
+                                <?php foreach (['group_vg' => ['vg', 'Victory Groups'], 'group_lg' => ['lg', 'Leadership Groups'], 'group_campus' => ['campus', 'Campus']] as $qaPerm => [$qaTab, $qaLabel]): ?>
+                                <?php if (hasPermission($qaPerm)): ?>
+                                <a href="index.php?action=victoryGroups&amp;tab=<?php echo $qaTab; ?>" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-list-ul me-1"></i> <?php echo $qaLabel; ?>
                                 </a>
-                                <a href="index.php?action=victoryGroups" class="btn btn-sm btn-outline-secondary">
-                                    <i class="bi bi-list-ul me-1"></i> View All Groups
-                                </a>
+                                <?php endif; ?>
+                                <?php endforeach; ?>
                             </div>
                             <?php endif; ?>
-                            <?php if (hasAnyPermission(['classes', 'attendance_records'])): ?>
+                            <?php if (anyClassPermission() || hasPermission('attendance_records')): ?>
                             <h6 class="text-muted small fw-bold mb-2 mt-3">CLASSES</h6>
                             <div class="d-grid gap-2 mb-3">
+                                <?php if (hasPermission('attendance_records')): ?>
                                 <a href="index.php?action=attendanceRecords" class="btn btn-sm btn-outline-success">
                                     <i class="bi bi-calendar-check me-1"></i> Attendance Records
                                 </a>
+                                <?php endif; ?>
+                                <?php if (hasPermission('class_leadership_113')): ?>
                                 <a href="index.php?action=leadership113" class="btn btn-sm btn-outline-danger">
                                     <i class="bi bi-trophy me-1"></i> Leadership 1-1-3
                                 </a>
+                                <?php endif; ?>
+                                <?php if (hasPermission('class_spiritual_foundations')): ?>
                                 <a href="index.php?action=spiritualFoundations" class="btn btn-sm btn-outline-info">
                                     <i class="bi bi-shield me-1"></i> Spiritual Foundations
                                 </a>
+                                <?php endif; ?>
                             </div>
                             <?php endif; ?>
                             <?php if (canAdminister()): ?>
@@ -566,6 +592,13 @@ include 'shared/header.php';
     </div>
 
 <?php include 'shared/footer.php'; ?>
+<script src="<?php echo asset('js/chart-tools.js'); ?>"></script>
+<script>
+// Banner "Print / PDF": the page already hides the sidebar, filters and buttons in print CSS.
+document.querySelectorAll('.hm-pill-btn[href="#"]').forEach(function (a) {
+    a.addEventListener('click', function (e) { e.preventDefault(); window.print(); });
+});
+</script>
 <script>
 // Attendance trend. Uses the same bounded .chart-box container as the other
 // charts (fixed height + maintainAspectRatio:false), so it fills its box and

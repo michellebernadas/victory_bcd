@@ -1231,9 +1231,10 @@ function renderNameList($members, $showGender = true) {
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Kind <span class="text-danger">*</span></label>
                             <select name="group_kind" class="modal-select2" id="ag_kind" onchange="toggleKindSections('ag_kind','am')">
-                                <option value="victory_group">Victory Group</option>
-                                <option value="leadership_group">Leadership Group</option>
-                                <option value="campus">Campus</option>
+                                <?php foreach (['victory_group' => 'Victory Group', 'leadership_group' => 'Leadership Group', 'campus' => 'Campus'] as $kv => $kl):
+                                    if (!hasPermission(GROUP_KIND_PERMISSIONS[$kv])) continue; ?>
+                                <option value="<?php echo $kv; ?>"><?php echo $kl; ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="col-md-3">
@@ -1362,9 +1363,10 @@ function renderNameList($members, $showGender = true) {
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Kind</label>
                             <select name="group_kind" class="modal-select2" id="eg_kind" onchange="toggleKindSections('eg_kind','em')">
-                                <option value="victory_group">Victory Group</option>
-                                <option value="leadership_group">Leadership Group</option>
-                                <option value="campus">Campus</option>
+                                <?php foreach (['victory_group' => 'Victory Group', 'leadership_group' => 'Leadership Group', 'campus' => 'Campus'] as $kv => $kl):
+                                    if (!hasPermission(GROUP_KIND_PERMISSIONS[$kv])) continue; ?>
+                                <option value="<?php echo $kv; ?>"><?php echo $kl; ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="col-md-3">

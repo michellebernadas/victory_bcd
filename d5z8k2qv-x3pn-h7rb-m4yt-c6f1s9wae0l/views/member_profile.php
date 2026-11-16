@@ -350,6 +350,7 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                             <?php
                                                 $grpTab = $grp['group_kind'] === 'leadership_group' ? 'lg' : ($grp['group_kind'] === 'campus' ? 'campus' : 'vg');
                                             ?>
+                                            <?php if (hasPermission(GROUP_TAB_PERMISSIONS[$grpTab])): ?>
                                             <a href="index.php?action=victoryGroups&tab=<?php echo $grpTab; ?>&highlight=<?php echo (int)$gid; ?>#group-<?php echo (int)$gid; ?>"
                                                class="btn btn-sm btn-outline-secondary flex-fill">
                                                 <i class="bi bi-eye me-1"></i>View Group
@@ -358,6 +359,7 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                                class="btn btn-sm btn-outline-primary flex-fill">
                                                 <i class="bi bi-pencil me-1"></i>Edit Group Details
                                             </a>
+                                            <?php endif; ?>
                                         </div>
 
                                     </div>

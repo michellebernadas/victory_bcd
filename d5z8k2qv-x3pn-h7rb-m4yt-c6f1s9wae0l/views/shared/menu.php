@@ -36,98 +36,45 @@
         </li>
         <?php endif; ?>
         <?php
-        // Three group lists, one sidebar item each (same victoryGroups route, tab=vg|lg|campus).
-        // editGroup sets $_GET['tab'] from the group's kind, so its item stays lit too.
-        $grpAction = $_GET['action'] ?? '';
-        $grpTab    = $_GET['tab'] ?? 'vg';
-        $onGroups  = in_array($grpAction, ['victoryGroups', 'editGroup', 'addGroup'], true);
-        if (!in_array($grpTab, ['vg', 'lg', 'campus'], true)) $grpTab = 'vg';
-        $grpItems  = [
-            'vg'     => ['Victory Groups',    'bi-people-fill'],
-            'lg'     => ['Leadership Groups', 'bi-diagram-3'],
-            'campus' => ['Campus',            'bi-building'],
-        ];
-        foreach (hasPermission('victory_groups') ? $grpItems : [] as $gTab => [$gLabel, $gIcon]): ?>
-        <li class="nav-item">
-            <a href="index.php?action=victoryGroups&amp;tab=<?php echo $gTab; ?>" class="nav-link <?php echo ($onGroups && $grpTab === $gTab) ? 'active' : ''; ?>">
-                <i class="bi <?php echo $gIcon; ?> me-2"></i><?php echo $gLabel; ?>
-            </a>
-        </li>
-        <?php endforeach; ?>
-        <?php if (hasPermission('victory_groups')): ?>
-        <li class="nav-item">
-            <a href="index.php?action=groupLeaders" class="nav-link <?php echo $grpAction === 'groupLeaders' ? 'active' : ''; ?>">
-                <i class="bi bi-star me-2"></i>Leaders
-            </a>
-        </li>
-        <?php endif; ?>
-        <?php if (hasPermission('serve_teams')): ?>
-        <li class="nav-item">
-            <a href="index.php?action=serveTeams" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'serveTeams') ? 'active' : ''; ?>">
-                <i class="bi bi-hand-thumbs-up me-2"></i>Serve Teams
-            </a>
-        </li>
-        <?php endif; ?>
-        <?php if (hasPermission('service_attendance')): ?>
-        <li class="nav-item">
-            <a href="index.php?action=serviceAttendance" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'serviceAttendance') ? 'active' : ''; ?>">
-                <i class="bi bi-heart-pulse me-2"></i>Sunday Attendance
-            </a>
-        </li>
-        <?php endif; ?>
-        <?php if (hasPermission('gathering_attendance')): ?>
-        <li class="nav-item">
-            <a href="index.php?action=gatheringAttendance" class="nav-link <?php echo (($_GET['action'] ?? '') === 'gatheringAttendance') ? 'active' : ''; ?>">
-                <i class="bi bi-fire me-2"></i>Prayer &amp; Students
-            </a>
-        </li>
-        <?php endif; ?>
-        <?php if (hasPermission('classes')): ?>
+        // Every item is its own permission (PERMISSION_GROUPS in config/permissions.php):
+        // Victory Groups / Leadership Groups / Campus / Leaders, Prayer Meeting and
+        // Students' Hangout, and each class are all separate. editGroup sets
+        // $_GET['tab'] from the group's kind, so its item stays lit too.
+        $mnAction  = $_GET['action']         ?? '';
+        $mnTab     = $_GET['tab']            ?? 'vg';
+        $mnProgram = $_GET['program_type']   ?? '';
+        $mnGType   = $_GET['gathering_type'] ?? '';
+        $onGroups  = in_array($mnAction, ['victoryGroups', 'editGroup', 'addGroup'], true);
+        if (!in_array($mnTab, ['vg', 'lg', 'campus'], true)) $mnTab = 'vg';
+        $mnLink = function ($perm, $url, $icon, $label, $active) {
+            if (!hasPermission($perm)) return;
+            echo '<li class="nav-item"><a href="' . $url . '" class="nav-link ' . ($active ? 'active' : '') . '">'
+               . '<i class="bi ' . $icon . ' me-2"></i>' . $label . '</a></li>' . "\n";
+        };
+        $mnLink('group_vg',      'index.php?action=victoryGroups&amp;tab=vg',     'bi-people-fill',    'Victory Groups',    $onGroups && $mnTab === 'vg');
+        $mnLink('group_lg',      'index.php?action=victoryGroups&amp;tab=lg',     'bi-diagram-3',      'Leadership Groups', $onGroups && $mnTab === 'lg');
+        $mnLink('group_campus',  'index.php?action=victoryGroups&amp;tab=campus', 'bi-building',       'Campus',            $onGroups && $mnTab === 'campus');
+        $mnLink('group_leaders', 'index.php?action=groupLeaders',                 'bi-star',           'Leaders',           $mnAction === 'groupLeaders');
+        $mnLink('serve_teams',   'index.php?action=serveTeams',                   'bi-hand-thumbs-up', 'Serve Teams',       $mnAction === 'serveTeams');
+        $mnLink('service_attendance', 'index.php?action=serviceAttendance',       'bi-heart-pulse',    'Sunday Attendance', $mnAction === 'serviceAttendance');
+        $mnLink('prayer_meeting',   'index.php?action=gatheringAttendance&amp;gathering_type=prayer_meeting',   'bi-fire',        'Prayer Meeting',        $mnAction === 'gatheringAttendance' && $mnGType === 'prayer_meeting');
+        $mnLink('students_hangout', 'index.php?action=gatheringAttendance&amp;gathering_type=students_hangout', 'bi-mortarboard', 'Students&rsquo; Hangout', $mnAction === 'gatheringAttendance' && $mnGType === 'students_hangout');
+        ?>
+        <?php if (anyClassPermission()): ?>
         <li class="mt-2 mb-1">
             <small class="text-muted px-3 fw-bold" style="font-size: 11px; letter-spacing: 1px;">CLASSES</small>
         </li>
         <?php
-        $atAction  = $_GET['action']       ?? '';
-        $atProgram = $_GET['program_type'] ?? '';
-        $isAtRecs  = $atAction === 'attendanceRecords';
+        $isAtRecs = $mnAction === 'attendanceRecords';
+        $mnLink('class_victory_weekend',    'index.php?action=attendanceRecords&amp;program_type=victory_weekend',    'bi-sun',         'Victory Weekend',       $isAtRecs && $mnProgram === 'victory_weekend');
+        $mnLink('class_church_community',   'index.php?action=attendanceRecords&amp;program_type=church_community',   'bi-building',    'Church Community',      $isAtRecs && $mnProgram === 'church_community');
+        $mnLink('class_making_disciples',   'index.php?action=attendanceRecords&amp;program_type=making_disciples',   'bi-person-plus', 'Making Disciples',      $isAtRecs && $mnProgram === 'making_disciples');
+        $mnLink('class_empowering_leaders', 'index.php?action=attendanceRecords&amp;program_type=empowering_leaders', 'bi-star',        'Empowering Leaders',    $isAtRecs && $mnProgram === 'empowering_leaders');
+        $mnLink('class_leadership_113',     'index.php?action=leadership113',                                         'bi-trophy',      'Leadership 1-1-3',      $mnAction === 'leadership113' || ($isAtRecs && $mnProgram === 'leadership_113'));
+        $mnLink('class_spiritual_foundations', 'index.php?action=spiritualFoundations',                               'bi-shield',      'Spiritual Foundations', $mnAction === 'spiritualFoundations' || ($isAtRecs && $mnProgram === 'spiritual_foundations'));
         ?>
-        <li class="nav-item">
-            <a href="index.php?action=attendanceRecords&program_type=victory_weekend"
-               class="nav-link <?php echo ($isAtRecs && $atProgram === 'victory_weekend') ? 'active' : ''; ?>">
-                <i class="bi bi-sun me-2"></i>Victory Weekend
-            </a>
-        </li>
-        <li class="nav-item">
-            <a href="index.php?action=attendanceRecords&program_type=church_community"
-               class="nav-link <?php echo ($isAtRecs && $atProgram === 'church_community') ? 'active' : ''; ?>">
-                <i class="bi bi-building me-2"></i>Church Community
-            </a>
-        </li>
-        <li class="nav-item">
-            <a href="index.php?action=attendanceRecords&program_type=making_disciples"
-               class="nav-link <?php echo ($isAtRecs && $atProgram === 'making_disciples') ? 'active' : ''; ?>">
-                <i class="bi bi-person-plus me-2"></i>Making Disciples
-            </a>
-        </li>
-        <li class="nav-item">
-            <a href="index.php?action=attendanceRecords&program_type=empowering_leaders"
-               class="nav-link <?php echo ($isAtRecs && $atProgram === 'empowering_leaders') ? 'active' : ''; ?>">
-                <i class="bi bi-star me-2"></i>Empowering Leaders
-            </a>
-        </li>
-        <li class="nav-item">
-            <a href="index.php?action=leadership113"
-               class="nav-link <?php echo ((isset($_GET['action']) && $_GET['action'] == 'leadership113') || ($isAtRecs && $atProgram === 'leadership_113')) ? 'active' : ''; ?>">
-                <i class="bi bi-trophy me-2"></i>Leadership 1-1-3
-            </a>
-        </li>
-        <li class="nav-item">
-            <a href="index.php?action=spiritualFoundations"
-               class="nav-link <?php echo ((isset($_GET['action']) && $_GET['action'] == 'spiritualFoundations') || ($isAtRecs && $atProgram === 'spiritual_foundations')) ? 'active' : ''; ?>">
-                <i class="bi bi-shield me-2"></i>Spiritual Foundations
-            </a>
-        </li>
         <?php endif; ?>
+
         <?php /* Facility Booking is visible to every logged-in account,
                  including Facilities Personnel — canViewFacilityBooking().
                  What each role may DO once inside is decided per button by

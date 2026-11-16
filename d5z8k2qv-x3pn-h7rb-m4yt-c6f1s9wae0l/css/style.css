@@ -659,3 +659,68 @@ div.dt-container .dt-paging .dt-paging-button {
 .modal-dialog-scrollable .modal-content > form > .modal-footer {
   flex-shrink: 0;
 }
+
+/* ═══ Greeting banner (dashboard + welcome page) ═══════════════════════════
+   One banner, two pages: views/shared/greeting_banner.php. */
+.hm-hero { display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between;
+           padding:1.4rem 1.75rem; border-radius:.9rem; color:#fff;
+           background:linear-gradient(135deg,#0a1070 0%,#1742f5 100%); box-shadow:0 6px 18px rgba(23,66,245,.18); }
+.hm-hello { font-size:1.65rem; font-weight:700; line-height:1.2; }
+.hm-sub   { opacity:.85; margin-top:.15rem; }
+.hm-meta  { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; }
+.hm-pill  { background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28); border-radius:999px; padding:.3rem .8rem; font-size:.85rem; white-space:nowrap; color:#fff; }
+.hm-pill-btn { cursor:pointer; text-decoration:none; }
+.hm-pill-btn:hover, .hm-pill-btn:focus-visible { background:rgba(255,255,255,.28); color:#fff; }
+.hm-hero-stats { flex:1 1 100%; display:flex; flex-wrap:wrap; gap:.6rem; margin-top:.2rem; }
+.hm-hero-stat { flex:1 1 150px; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.22); border-radius:.65rem;
+                padding:.55rem .8rem; color:#fff; text-decoration:none; line-height:1.15; }
+a.hm-hero-stat:hover, a.hm-hero-stat:focus-visible { background:rgba(255,255,255,.22); color:#fff; }
+.hm-hero-stat .n { display:block; font-size:1.4rem; font-weight:700; }
+.hm-hero-stat .l { display:block; font-size:.72rem; opacity:.85; }
+.hm-hero-stat .d { display:block; font-size:.68rem; opacity:.7; }
+@media (max-width: 575.98px) { .hm-hello { font-size:1.35rem; } .hm-hero { padding:1.1rem 1.2rem; } }
+
+/* ═══ Chart toolbar (js/chart-tools.js) ═══════════════════════════════════ */
+.vb-chart-bar { display:flex; flex-wrap:wrap; gap:.3rem; justify-content:flex-end; margin-top:.35rem; }
+.vb-chart-btn { --bs-btn-padding-y:.1rem; --bs-btn-padding-x:.45rem; --bs-btn-font-size:.72rem; }
+@media print { .vb-chart-bar, .db-filterbar, .db-noprint { display:none !important; } }
+
+/* ═══ Dashboard filter bar ════════════════════════════════════════════════ */
+.db-filterbar { position:sticky; top:0; z-index:20; background:rgba(255,255,255,.96); backdrop-filter:blur(4px);
+                border:1px solid #e6e8ee; border-radius:.75rem; padding:.6rem .8rem; box-shadow:0 2px 8px rgba(16,24,40,.05); }
+.db-filterbar .form-select, .db-filterbar .form-control { min-width:0; }
+.db-filterbar label { font-size:.68rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#6c757d; margin-bottom:.1rem; }
+.db-chip { display:inline-flex; align-items:center; gap:.3rem; font-size:.75rem; background:#eef2ff; color:#2b3a8c;
+           border:1px solid #d6defc; border-radius:999px; padding:.15rem .6rem; text-decoration:none; }
+.db-chip:hover { background:#e1e8ff; color:#2b3a8c; }
+
+/* ═══ Dashboard print / Save-as-PDF ═══════════════════════════════════════
+   Hides the chrome (sidebar, filters, buttons, chart toolbars) and lets the
+   content fill the page, keeping each card and chart whole across page breaks. */
+@media print {
+  #main-menu, #sidebarToggle, #sidebarBackdrop, .sidebar, .navbar, .btn, .dropdown,
+  .alert-dismissible .btn-close, .modal, .db-filterbar, .vb-chart-bar, .hm-meta { display:none !important; }
+  .main-content { margin:0 !important; padding:0 !important; width:100% !important; }
+  body { background:#fff !important; }
+  .hm-hero { background:#0a1070 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; box-shadow:none; }
+  .card, .hm-hero, .chart-box { break-inside:avoid; page-break-inside:avoid; }
+  .card { box-shadow:none !important; border:1px solid #ddd !important; }
+  a[href]:after { content:none !important; }
+}
+
+/* While a card is being captured to an image, drop effects html2canvas mis-renders. */
+.vb-capturing, .vb-capturing * { box-shadow:none !important; transition:none !important; animation:none !important; }
+.vb-capturing a.stat-card::after { display:none !important; }
+
+/* ═══ Equal-height columns (dashboard) ═══════════════════════════════════════
+   Put .dash-equal on a .row whose columns each hold stacked cards. Both columns
+   then end on the same line: the LAST card in each column grows to fill the gap.
+   Cards always keep a 1rem gap below them (so stacked cards never touch on a
+   phone); the equal-height behaviour only starts at the md breakpoint, where
+   the columns sit side by side. Below it there is nothing to line up. */
+.dash-equal > [class*="col"] > .card { margin-bottom:1rem; }
+@media (min-width: 768px) {
+  .dash-equal > [class*="col"] { display:flex; flex-direction:column; }
+  .dash-equal > [class*="col"] > .card:last-child { flex:1 1 auto; margin-bottom:0; }
+  .dash-equal > [class*="col"] > .card:last-child > .card-body { flex:1 1 auto; }
+}

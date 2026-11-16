@@ -41,7 +41,7 @@ $glPreRole = ['vg_leader' => 'VG Leader', 'vg_intern' => 'VG Intern', 'lg_leader
                 <i class="bi bi-star display-4 text-muted d-block mb-3"></i>
                 <h2 class="h5">No leaders yet</h2>
                 <p class="text-muted mb-3">Leaders appear here once groups have a leader or intern.</p>
-                <a href="index.php?action=victoryGroups&amp;tab=vg" class="btn btn-sm btn-primary"><i class="bi bi-people-fill me-1"></i>Open Victory Groups</a>
+                <?php if (hasPermission('group_vg')): ?><a href="index.php?action=victoryGroups&amp;tab=vg" class="btn btn-sm btn-primary"><i class="bi bi-people-fill me-1"></i>Open Victory Groups</a><?php endif; ?>
             </div></div>
             <?php else: ?>
             <!-- Unique people by role. Connected people count once even if they lead

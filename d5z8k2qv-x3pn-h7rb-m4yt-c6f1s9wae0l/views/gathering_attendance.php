@@ -7,8 +7,13 @@ $records       = $records       ?? [];
 $gaStats       = $gaStats       ?? [];
 $activeFilters = $activeFilters ?? [];
 $gaEditId      = (int)($gaEditId ?? 0);
-$gaFilterCount = count(array_filter($activeFilters, fn($v) => $v !== '' && $v !== null));
+// The page shows ONE gathering (set by the controller from ?gathering_type=).
+$gaType        = $gaType ?? ($activeFilters['gathering_type'] ?? 'prayer_meeting');
+$gaDef         = $gaDef  ?? GatheringAttendance::TYPES[$gaType];
+$gaIsPrayer    = $gaType === 'prayer_meeting';
+$gaFilterCount = count(array_filter(array_diff_key($activeFilters, ['gathering_type' => 1]), fn($v) => $v !== '' && $v !== null));
 $gaFilterQs    = http_build_query(array_filter($activeFilters));
+$gaBase        = 'index.php?action=gatheringAttendance&gathering_type=' . urlencode($gaType);
 
 include 'shared/header.php';
 ?>
@@ -19,11 +24,11 @@ include 'shared/header.php';
 
             <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
                 <div>
-                    <h1 class="h3 mb-0"><i class="bi bi-fire me-2 text-primary"></i>Prayer Meeting &amp; Students&rsquo; Hangout</h1>
-                    <p class="text-muted mb-0">One head count per gathering per date &mdash; Prayer Meeting (Tue/Wed) and Students&rsquo; Hangout (Fri)</p>
+                    <h1 class="h3 mb-0"><i class="bi <?php echo $gaDef['icon']; ?> me-2 text-<?php echo $gaDef['color']; ?>"></i><?php echo $gaIsPrayer ? 'Prayer Meeting' : 'Students&rsquo; Hangout'; ?></h1>
+                    <p class="text-muted mb-0">One head count per date &mdash; <?php echo $gaIsPrayer ? 'Tuesday or Wednesday' : 'Friday'; ?></p>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
-                    <a href="index.php#gatheringHealth" class="btn btn-outline-secondary"><i class="bi bi-graph-up me-1"></i>Church Health</a>
+                    <?php if (canViewDashboard()): ?><a href="index.php#gatheringHealth" class="btn btn-outline-secondary"><i class="bi bi-graph-up me-1"></i>Church Health</a><?php endif; ?>
                     <?php if (function_exists('canAdminister') && canAdminister()): ?>
                     <a href="index.php?action=attendanceImport" class="btn btn-outline-success"><i class="bi bi-upload me-1"></i>Import spreadsheet</a>
                     <?php endif; ?>
@@ -55,10 +60,10 @@ include 'shared/header.php';
 
             <!-- Summary per gathering (respects the date filter) -->
             <div class="row mb-3 g-2">
-                <?php foreach (GatheringAttendance::TYPES as $gaKey => $gaDef):
+                <?php foreach ([$gaType => $gaDef] as $gaKey => $gaDef):
                     $s = $gaStats[$gaKey] ?? ['events' => 0, 'total' => 0, 'average' => 0, 'latest_date' => null, 'latest' => null];
                 ?>
-                <div class="col-md-6">
+                <div class="col-12">
                     <div class="card h-100 border-<?php echo $gaDef['color']; ?> border-opacity-50">
                         <div class="card-body py-2">
                             <div class="fw-semibold mb-1"><i class="bi <?php echo $gaDef['icon']; ?> text-<?php echo $gaDef['color']; ?> me-1"></i><?php echo htmlspecialchars($gaDef['label']); ?>
@@ -83,29 +88,21 @@ include 'shared/header.php';
                     <span class="text-white fw-semibold"><i class="bi bi-funnel me-2"></i>Search &amp; Filter
                         <?php if ($gaFilterCount): ?><span class="badge bg-white text-primary ms-1"><?php echo $gaFilterCount; ?> active</span><?php endif; ?>
                     </span>
-                    <a href="index.php?action=gatheringAttendance" class="btn btn-sm btn-outline-light"><i class="bi bi-x-circle me-1"></i>Clear</a>
+                    <a href="<?php echo htmlspecialchars($gaBase); ?>" class="btn btn-sm btn-outline-light"><i class="bi bi-x-circle me-1"></i>Clear</a>
                 </div>
                 <div class="card-body py-3">
                     <form method="GET" action="index.php" class="row g-2 align-items-end">
                         <input type="hidden" name="action" value="gatheringAttendance">
-                        <div class="col-md-3">
-                            <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Gathering</label>
-                            <select name="gathering_type" class="form-select form-select-sm">
-                                <option value="">Both</option>
-                                <?php foreach (GatheringAttendance::TYPES as $gaKey => $gaDef): ?>
-                                <option value="<?php echo $gaKey; ?>" <?php echo ($activeFilters['gathering_type'] ?? '') === $gaKey ? 'selected' : ''; ?>><?php echo htmlspecialchars($gaDef['label']); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
+                        <input type="hidden" name="gathering_type" value="<?php echo htmlspecialchars($gaType); ?>">
+                        <div class="col-md-4">
                             <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Date from</label>
                             <input type="date" name="date_from" class="form-control form-control-sm" value="<?php echo htmlspecialchars($activeFilters['date_from'] ?? ''); ?>">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Date to</label>
                             <input type="date" name="date_to" class="form-control form-control-sm" value="<?php echo htmlspecialchars($activeFilters['date_to'] ?? ''); ?>">
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-md-3">
                             <label class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em">Search</label>
                             <input type="text" id="gaFilterSearch" class="form-control form-control-sm" placeholder="Notes, date…">
                         </div>
@@ -134,13 +131,13 @@ include 'shared/header.php';
                         <i class="bi bi-calendar-x display-4 mb-3 d-block"></i>
                         No entries<?php echo $gaFilterCount ? ' match these filters' : ' yet'; ?>.<br>
                         <small><?php echo $gaFilterCount
-                            ? 'Try adjusting or <a href="index.php?action=gatheringAttendance">clearing the filters</a>.'
-                            : 'Use <strong>Add Entry</strong> above to record a Prayer Meeting or Students&rsquo; Hangout.'; ?></small>
+                            ? 'Try adjusting or <a href="' . htmlspecialchars($gaBase) . '">clearing the filters</a>.'
+                            : 'Use <strong>Add Entry</strong> above to record a ' . ($gaIsPrayer ? 'Prayer Meeting' : 'Students&rsquo; Hangout') . '.'; ?></small>
                     </div>
                     <?php else: ?>
                     <div class="table-responsive">
                         <table class="table table-hover mb-0" style="width:100%" id="gaTable">
-                            <thead><tr><th>#</th><th>Date</th><th>Gathering</th><th class="text-end">Attendance</th><th>Notes</th><th class="text-center">Actions</th></tr></thead>
+                            <thead><tr><th>#</th><th>Date</th><th class="text-end">Attendance</th><th>Notes</th><th class="text-center">Actions</th></tr></thead>
                             <tbody>
                             <?php foreach ($records as $i => $r):
                                 $def = GatheringAttendance::TYPES[$r['gathering_type']] ?? ['label' => $r['gathering_type'], 'color' => 'secondary', 'icon' => 'bi-calendar'];
@@ -151,8 +148,6 @@ include 'shared/header.php';
                                     <td class="text-muted small ga-row-num"><?php echo $i + 1; ?></td>
                                     <td class="text-nowrap"><span class="fw-semibold"><?php echo date('M j, Y', strtotime($r['event_date'])); ?></span>
                                         <div class="text-muted" style="font-size:10px;"><?php echo date('l', strtotime($r['event_date'])); ?></div></td>
-                                    <td><span class="badge bg-<?php echo $def['color']; ?>-subtle text-<?php echo $def['color']; ?>-emphasis border border-<?php echo $def['color']; ?>-subtle">
-                                        <i class="bi <?php echo $def['icon']; ?> me-1"></i><?php echo htmlspecialchars($def['label']); ?></span></td>
                                     <td class="text-end fw-bold"><?php echo (int)$r['attendance']; ?></td>
                                     <td class="small"><?php echo !empty($r['notes']) ? htmlspecialchars($r['notes']) : '<span class="text-muted">—</span>'; ?>
                                         <?php if (!empty($r['recorded_by_name'])): ?><div class="text-muted" style="font-size:10px;"><i class="bi bi-person me-1"></i><?php echo htmlspecialchars($r['recorded_by_name']); ?></div><?php endif; ?></td>
@@ -182,19 +177,13 @@ include 'shared/header.php';
                 <div class="modal-dialog"><div class="modal-content">
                     <form method="POST" action="<?php echo htmlspecialchars($m['action']); ?>" id="<?php echo $m['form']; ?>" class="ga-form">
                         <div class="modal-header bg-primary text-white">
-                            <h5 class="modal-title"><i class="bi bi-fire me-2"></i><?php echo $m['title']; ?></h5>
+                            <h5 class="modal-title"><i class="bi <?php echo $gaDef['icon']; ?> me-2"></i><?php echo $m['title']; ?> &mdash; <?php echo htmlspecialchars($gaDef['label']); ?></h5>
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
                             <div class="row g-3">
-                                <div class="col-12">
-                                    <label class="form-label fw-semibold" for="<?php echo $p; ?>_type">Gathering <span class="text-danger">*</span></label>
-                                    <select name="gathering_type" id="<?php echo $p; ?>_type" class="form-select" required>
-                                        <?php foreach (GatheringAttendance::TYPES as $gaKey => $gaDef): ?>
-                                        <option value="<?php echo $gaKey; ?>" <?php echo ($activeFilters['gathering_type'] ?? '') === $gaKey ? 'selected' : ''; ?>><?php echo htmlspecialchars($gaDef['label']); ?> (<?php echo htmlspecialchars($gaDef['day']); ?>)</option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
+                                <input type="hidden" name="gathering_type" id="<?php echo $p; ?>_type" value="<?php echo htmlspecialchars($gaType); ?>">
+                                <div class="col-12"><div class="small text-muted"><i class="bi <?php echo $gaDef['icon']; ?> me-1"></i><?php echo htmlspecialchars($gaDef['label']); ?> &middot; <?php echo htmlspecialchars($gaDef['day']); ?></div></div>
                                 <div class="col-6">
                                     <label class="form-label fw-semibold" for="<?php echo $p; ?>_date">Date <span class="text-danger">*</span></label>
                                     <input type="date" name="event_date" id="<?php echo $p; ?>_date" class="form-control" required max="<?php echo date('Y-m-d'); ?>">
@@ -210,7 +199,7 @@ include 'shared/header.php';
                                 </div>
                             </div>
                             <div class="alert alert-info py-2 small mt-3 mb-0"><i class="bi bi-info-circle me-1"></i>
-                                One entry per gathering per date. If there was no meeting that week, simply don&rsquo;t add one &mdash; don&rsquo;t record a 0.</div>
+                                One entry per date. If there was no meeting that week, simply don&rsquo;t add one &mdash; don&rsquo;t record a 0.</div>
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -258,7 +247,7 @@ include 'shared/header.php';
         var tr = document.querySelector('tr[data-ga-id="' + id + '"]');
         var b = tr ? tr.querySelector('button[onclick^="gaOpenEditModal"]') : null;
         if (b) { b.click(); return; }
-        window.location.href = 'index.php?action=gatheringAttendance&edit=' + id;
+        window.location.href = <?php echo json_encode($gaBase); ?> + '&edit=' + id;
     };
     document.querySelectorAll('form.ga-form').forEach(function (f) {
         f.addEventListener('submit', function () {
@@ -299,7 +288,7 @@ function gaExportData() {
     });
     return { heads: heads, rows: rows };
 }
-function gaFileName(ext) { return 'prayer_students_attendance_' + new Date().toISOString().slice(0, 10) + '.' + ext; }
+function gaFileName(ext) { return <?php echo json_encode($gaType . '_attendance_'); ?> + new Date().toISOString().slice(0, 10) + '.' + ext; }
 function exportGaCSV() {
     var d = gaExportData(), q = function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; };
     var csv = [d.heads.map(q).join(',')].concat(d.rows.map(function (r) { return r.map(q).join(','); }));
@@ -310,7 +299,7 @@ function exportGaCSV() {
 function exportGaExcel() {
     if (typeof XLSX === 'undefined') { exportGaCSV(); return; }
     var d = gaExportData(), wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([d.heads].concat(d.rows)), 'Prayer & Students');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([d.heads].concat(d.rows)), <?php echo json_encode($gaIsPrayer ? 'Prayer Meeting' : "Students' Hangout"); ?>);
     XLSX.writeFile(wb, gaFileName('xlsx'));
 }
 </script>
