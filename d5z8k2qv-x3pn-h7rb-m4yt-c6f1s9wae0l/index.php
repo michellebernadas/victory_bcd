@@ -49,6 +49,8 @@ require_once 'controllers/VglStatController.php';
 require_once 'controllers/FacilityController.php';
 
 $db = getDB();
+// Roles and their permissions are read from the database (config/permissions.php).
+setPermissionDb($db);
 $userController = new UserController($db);
 $memberController = new MemberController($db);
 $groupController = new VictoryGroupController($db);
@@ -59,10 +61,37 @@ $facilityController = new FacilityController($db);
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
+// The role is stored in the session at login, so an admin changing someone's
+// role would not reach them until they signed in again. Re-read it each
+// request (one indexed lookup) so role changes apply immediately.
+if (isset($_SESSION['user']['id'])) {
+    try {
+        $roleStmt = $db->prepare("SELECT accounttype FROM accounts WHERE id = ?");
+        $roleStmt->execute([$_SESSION['user']['id']]);
+        $freshType = $roleStmt->fetchColumn();
+        if ($freshType !== false) $_SESSION['user']['accounttype'] = $freshType;
+    } catch (PDOException $e) {
+        error_log('role refresh: ' . $e->getMessage());
+    }
+}
 $currentUserType = $_SESSION['user']['accounttype'] ?? null;
 
 function sanitizeInput($value) {
     return filter_var($value, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+}
+
+// ─── Central permission gate ─────────────────────────────────────────────────
+// Every routed action that ACTION_PERMISSIONS maps to a permission is checked
+// here, once, before the switch below — so a role limited to Victory Groups
+// cannot reach Members or Serve Teams by typing the URL, and a route added
+// later cannot forget its gate. Signed-out visitors fall through to each case's
+// own login redirect. AJAX/JSON actions get a status code instead of a redirect.
+if (isset($_SESSION['user']) && !canAccessAction($action, $currentUserType)) {
+    $isAjaxAction = strpos($action, 'ajax') === 0 || !empty($_POST['ajax']) || $action === 'updateVglStatOrder';
+    if ($isAjaxAction) { http_response_code(403); exit(); }
+    $_SESSION['access_denied'] = 'Your role does not have access to that page.';
+    header('Location: index.php');
+    exit();
 }
 
 switch ($action) {
@@ -489,6 +518,28 @@ switch ($action) {
         if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
         if ($currentUserType !== 'admin') { header('Location: index.php'); exit(); }
         isset($_GET['uuid']) ? $userController->deactivateUserByUuid($_GET['uuid']) : $userController->deactivateUser($_GET['id']);
+        break;
+
+    // ─── Roles & permissions (Admin only) ────────────────────────────
+    case 'roles':
+    case 'addRole':
+    case 'updateRole':
+    case 'deleteRole':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if (!canAdminister($currentUserType)) { header('Location: index.php'); exit(); }
+        require_once 'controllers/RoleController.php';
+        $roleController = new RoleController($db);
+        if ($action === 'roles') {
+            $roleController->listRoles();
+        } elseif ($action === 'deleteRole') {
+            $roleController->deleteRole($_GET['slug'] ?? '');
+        } elseif ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Location: index.php?action=roles');
+        } elseif ($action === 'addRole') {
+            $roleController->saveRole($_POST);
+        } else {
+            $roleController->saveRole($_POST, (string)($_GET['slug'] ?? ''));
+        }
         break;
 
     // ─── Attendance Records ───────────────────────────────────────────

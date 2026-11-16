@@ -28,8 +28,8 @@ class UserController {
         }
 
         // Validate accounttype against the one whitelist in config/permissions.php
-        // (VALID_ACCOUNT_TYPES), so adding a role never means remembering to
-        // widen a literal array here as well.
+        // (validAccountTypes(), read from the roles table), so adding a role
+        // never means remembering to widen a literal array here as well.
         if (!isValidAccountType($accounttype)) {
             header('Location: index.php?action=users&error=add&msg=' . urlencode('Invalid account type'));
             exit();

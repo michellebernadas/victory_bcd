@@ -40,27 +40,237 @@ const ROLE_EDITOR     = 'editor';
 const ROLE_FACILITIES = 'facilities';
 const ROLE_MINISTER   = 'minister';   // migrations/2026_10_20_12_minister_role.sql
 
-/** Every value accounts.accounttype may legally hold — the write whitelist. */
-const VALID_ACCOUNT_TYPES = [ROLE_ADMIN, ROLE_EDITOR, ROLE_FACILITIES, ROLE_MINISTER];
+/**
+ * ROLES ARE DATA NOW
+ * Roles live in the `roles` table and their permissions in `role_permissions`
+ * (migrations/2026_11_16_01_roles_and_permissions.sql); admins manage both from
+ * Administration > Roles. accounts.accounttype stores a role's slug. The one
+ * exception is 'admin': a built-in role that is granted EVERYTHING in code, so
+ * no edit to the tables can lock the church out of its own portal.
+ *
+ * What a permission means is defined here, in PERMISSION_CATALOG, and checked
+ * through hasPermission(). Roles are plain data; the catalog is the code.
+ */
 
-/** Human labels for the role dropdown / badges. Display only, never stored. */
-const ACCOUNT_TYPE_LABELS = [
-    ROLE_ADMIN      => 'Admin',
-    ROLE_EDITOR     => 'Editor',
-    ROLE_FACILITIES => 'Facilities Personnel',
-    ROLE_MINISTER   => 'Minister',
+/**
+ * Every permission a role can be given, grouped for the Roles screen.
+ * key => [label, help]. Keys are stored in role_permissions.permission, so
+ * never rename one without a migration.
+ */
+const PERMISSION_GROUPS = [
+    'General' => [
+        'dashboard' => ['Dashboard & Church Health', 'The church-wide statistics landing page and its Excel export. Without it the account lands on a short welcome page instead.'],
+    ],
+    'Discipleship' => [
+        'members'              => ['Members',                 'View, add and edit members and their profiles.'],
+        'attendance_records'   => ['Attendance Records',      'Class attendance records.'],
+        'victory_groups'       => ['Victory Groups',          'Victory Groups, Leadership Groups, Campus and the Leaders list.'],
+        'serve_teams'          => ['Serve Teams',             'Serve teams and their members.'],
+        'service_attendance'   => ['Sunday Attendance',       'Sunday service attendance.'],
+        'gathering_attendance' => ['Prayer & Students',       'Prayer meeting and Students\' Hangout attendance.'],
+        'classes'              => ['Classes',                 'Victory Weekend, Church Community, Making Disciples, Empowering Leaders, Leadership 1-1-3 and Spiritual Foundations.'],
+    ],
+    'Facility Booking' => [
+        'facility_view'    => ['View calendar & requests',  'See the calendar, requests, history and the setup sheet.'],
+        'facility_submit'  => ['Submit requests',           'Step 1 — request a room, and edit / resubmit / cancel their own requests.'],
+        'facility_review'  => ['Facilities review',         'Step 2 — assess logistics.'],
+        'facility_approve' => ['Minister approval',         'Step 3 — approve, decline or return for clarification.'],
+        'facility_confirm' => ['Facilities confirmation',   'Step 4 — make it an official reservation.'],
+        'facility_cancel'  => ['Cancel any request',        'Cancel or close-as-expired anyone\'s request.'],
+    ],
+];
+
+/** Flat key => label view of PERMISSION_GROUPS (for validation and display). */
+function permissionCatalog() {
+    $flat = [];
+    foreach (PERMISSION_GROUPS as $perms) {
+        foreach ($perms as $key => $meta) $flat[$key] = $meta[0];
+    }
+    return $flat;
+}
+
+/** Keep only keys that exist in the catalog — the write whitelist for role edits. */
+function sanitizePermissionKeys($keys) {
+    $catalog = permissionCatalog();
+    $out = [];
+    foreach ((array)$keys as $k) {
+        if (is_string($k) && isset($catalog[$k])) $out[$k] = true;
+    }
+    return array_keys($out);
+}
+
+/**
+ * The PDO handle roles are read through. index.php calls setPermissionDb($db)
+ * once, right after getDB(); this file loads before the handle exists.
+ */
+function setPermissionDb($db) {
+    $GLOBALS['__vb_perm_db'] = $db;
+    $GLOBALS['__vb_roles_cache'] = null;
+}
+
+/**
+ * All roles, once per request: slug => ['id','slug','label','description',
+ * 'is_system','permissions'=>[key,...]]. Falls back to the four original
+ * built-in roles if the tables do not exist yet (migration not applied), so a
+ * half-deployed site keeps working instead of locking everyone out.
+ */
+function allRoles() {
+    if (isset($GLOBALS['__vb_roles_cache']) && is_array($GLOBALS['__vb_roles_cache'])) {
+        return $GLOBALS['__vb_roles_cache'];
+    }
+    $roles = [];
+    $db = $GLOBALS['__vb_perm_db'] ?? null;
+    if ($db instanceof PDO) {
+        try {
+            foreach ($db->query("SELECT id, slug, label, description, is_system FROM roles ORDER BY is_system DESC, id ASC")->fetchAll() as $r) {
+                $r['permissions'] = [];
+                $roles[$r['slug']] = $r;
+            }
+            $byId = [];
+            foreach ($roles as $slug => $r) $byId[(int)$r['id']] = $slug;
+            foreach ($db->query("SELECT role_id, permission FROM role_permissions")->fetchAll() as $p) {
+                $slug = $byId[(int)$p['role_id']] ?? null;
+                if ($slug !== null) $roles[$slug]['permissions'][] = $p['permission'];
+            }
+        } catch (PDOException $e) {
+            error_log('allRoles: ' . $e->getMessage());
+            $roles = [];
+        }
+    }
+    if (!$roles) {
+        $all = array_keys(permissionCatalog());
+        $facBase = ['dashboard','members','attendance_records','victory_groups','serve_teams','service_attendance','gathering_attendance','classes','facility_view','facility_submit'];
+        $roles = [
+            ROLE_ADMIN      => ['id'=>0,'slug'=>ROLE_ADMIN,      'label'=>'Admin',                'description'=>'', 'is_system'=>1, 'permissions'=>$all],
+            ROLE_EDITOR     => ['id'=>0,'slug'=>ROLE_EDITOR,     'label'=>'Editor',               'description'=>'', 'is_system'=>1, 'permissions'=>$facBase],
+            ROLE_FACILITIES => ['id'=>0,'slug'=>ROLE_FACILITIES, 'label'=>'Facilities Personnel', 'description'=>'', 'is_system'=>1, 'permissions'=>array_merge($facBase, ['facility_review','facility_confirm','facility_cancel'])],
+            ROLE_MINISTER   => ['id'=>0,'slug'=>ROLE_MINISTER,   'label'=>'Minister',             'description'=>'', 'is_system'=>1, 'permissions'=>array_merge($facBase, ['facility_approve'])],
+        ];
+    }
+    return $GLOBALS['__vb_roles_cache'] = $roles;
+}
+
+/** Drop the per-request cache after a role is created, edited or deleted. */
+function resetRolesCache() {
+    $GLOBALS['__vb_roles_cache'] = null;
+}
+
+/** Every slug accounts.accounttype may hold — the write whitelist. */
+function validAccountTypes() {
+    return array_keys(allRoles());
+}
+
+/** slug => label for dropdowns and badges. */
+function accountTypeLabels() {
+    $out = [];
+    foreach (allRoles() as $slug => $r) $out[$slug] = $r['label'];
+    return $out;
+}
+
+/** slug => one-line description for the Users page role help. */
+function accountTypeHelp() {
+    $out = [];
+    foreach (allRoles() as $slug => $r) {
+        $out[$slug] = $slug === ROLE_ADMIN
+            ? 'Everything, including users, roles and settings. May act on any facility stage; a Minister decision by an Admin is recorded as an override.'
+            : (string)($r['description'] ?? '');
+    }
+    return $out;
+}
+
+/**
+ * May this role do $permission? Admin always may. An unknown or null role may
+ * not. $role defaults to the signed-in account's.
+ */
+function hasPermission($permission, $role = null) {
+    $r = currentRole($role);
+    if ($r === null) return false;
+    if ($r === ROLE_ADMIN) return true;
+    $roles = allRoles();
+    return isset($roles[$r]) && in_array($permission, $roles[$r]['permissions'], true);
+}
+
+/** True when the role has at least one of the given permissions. */
+function hasAnyPermission(array $permissions, $role = null) {
+    foreach ($permissions as $p) if (hasPermission($p, $role)) return true;
+    return false;
+}
+
+/**
+ * The permission each routed action needs. The ONE map the front controller
+ * consults (index.php) so a new route cannot quietly skip the gate. Actions
+ * absent from this map keep whatever gate they already had (login only, or
+ * canAdminister()).
+ */
+const ACTION_PERMISSIONS = [
+    // Members
+    'members' => 'members', 'addMember' => 'members', 'editMember' => 'members',
+    'updateMember' => 'members', 'deleteMember' => 'members', 'deactivateMember' => 'members',
+    'activateMember' => 'members', 'memberProfile' => 'members',
+    'memberGroupSave' => 'members', 'memberTeamSave' => 'members',
+    // Attendance records
+    'attendanceRecords' => 'attendance_records', 'addAttendance' => 'attendance_records',
+    'updateAttendance' => 'attendance_records', 'deactivateAttendance' => 'attendance_records',
+    'activateAttendance' => 'attendance_records', 'deleteAttendance' => 'attendance_records',
+    // Victory groups / leadership / campus / leaders
+    'victoryGroups' => 'victory_groups', 'groupLeaders' => 'victory_groups', 'addGroup' => 'victory_groups',
+    'editGroup' => 'victory_groups', 'updateGroup' => 'victory_groups', 'deleteGroup' => 'victory_groups',
+    'activateGroup' => 'victory_groups', 'hardDeleteGroup' => 'victory_groups',
+    'addVglStat' => 'victory_groups', 'updateVglStat' => 'victory_groups', 'deleteVglStat' => 'victory_groups',
+    'deactivateVglStat' => 'victory_groups', 'activateVglStat' => 'victory_groups', 'updateVglStatOrder' => 'victory_groups',
+    // Serve teams
+    'serveTeams' => 'serve_teams', 'addServeTeam' => 'serve_teams', 'updateServeTeam' => 'serve_teams',
+    'activateServeTeam' => 'serve_teams', 'deactivateServeTeam' => 'serve_teams', 'deleteServeTeam' => 'serve_teams',
+    // Sunday + prayer/students
+    'serviceAttendance' => 'service_attendance', 'addServiceAttendance' => 'service_attendance',
+    'updateServiceAttendance' => 'service_attendance', 'deleteServiceAttendance' => 'service_attendance',
+    'saveServiceDay' => 'service_attendance', 'ajaxServiceDay' => 'service_attendance',
+    'gatheringAttendance' => 'gathering_attendance', 'addGatheringAttendance' => 'gathering_attendance',
+    'updateGatheringAttendance' => 'gathering_attendance', 'deleteGatheringAttendance' => 'gathering_attendance',
+    // Classes
+    'leadership113' => 'classes', 'addL113Record' => 'classes', 'updateL113Record' => 'classes',
+    'deactivateL113Record' => 'classes', 'activateL113Record' => 'classes', 'deleteL113Record' => 'classes',
+    // Member pickers
+    'ajaxSearchMembers' => 'any_member_data', 'ajaxFindMemberByName' => 'any_member_data',
+    'ajaxCheckAttendanceDuplicate' => 'any_member_data',
+    'spiritualFoundations' => 'classes', 'addSfRecord' => 'classes', 'updateSfRecord' => 'classes',
+    'deactivateSfRecord' => 'classes', 'activateSfRecord' => 'classes', 'deleteSfRecord' => 'classes',
+];
+
+/** Which permission (if any) guards this routed action. */
+function permissionForAction($action) {
+    return ACTION_PERMISSIONS[$action] ?? null;
+}
+
+/** May the account open this routed action? Actions with no mapped permission pass. */
+function canAccessAction($action, $role = null) {
+    $p = permissionForAction($action);
+    if ($p === null) return true;
+    // The class pages (Victory Weekend, Church Community, Making Disciples,
+    // Empowering Leaders) are the attendance-records routes filtered by
+    // program_type, so holding either permission opens them.
+    if ($p === 'attendance_records') return hasAnyPermission(['attendance_records', 'classes'], $role);
+    if ($p === 'any_member_data')    return hasAnyPermission(MEMBER_DATA_PERMISSIONS, $role);
+    return hasPermission($p, $role);
+}
+
+/**
+ * Member-name lookups (pickers on the group, team, attendance and class
+ * forms). Shared by every discipleship section, so any of them opens it — but a
+ * role limited to Facility Booking cannot search the membership.
+ */
+const MEMBER_DATA_PERMISSIONS = [
+    'members', 'attendance_records', 'victory_groups', 'serve_teams',
+    'service_attendance', 'gathering_attendance', 'classes',
 ];
 
 /**
- * One-line help per role for the Users page, so whoever assigns a role can see
- * which facility workflow stages it acts on. Display only.
+ * The first page this account may land on after login / when redirected away
+ * from somewhere forbidden. The dashboard is open to everyone signed in.
  */
-const ACCOUNT_TYPE_HELP = [
-    ROLE_EDITOR     => 'Discipleship records. May submit facility requests and view the calendar; may edit, resubmit or cancel their own requests; cannot review, approve, confirm or cancel anyone else\'s.',
-    ROLE_FACILITIES => 'Facility stage 2 (Facilities Review) and stage 4 (Confirmation), plus cancel. Cannot give the Minister\'s approval or open admin settings.',
-    ROLE_MINISTER   => 'Facility stage 3 only (Approve / Decline / For Clarification). Cannot review or confirm, and has no admin access.',
-    ROLE_ADMIN      => 'Everything, including users and settings. May act on any stage; a Minister decision by an Admin is recorded as an override.',
-];
+function homeUrl() {
+    return 'index.php';
+}
 
 /**
  * The acting account's role, or null when nobody is logged in.
@@ -92,11 +302,11 @@ function isMinister($role = null) {
 
 /** Human label for a stored account type. */
 function accountTypeLabel($type) {
-    return ACCOUNT_TYPE_LABELS[$type] ?? ucfirst((string)$type);
+    return accountTypeLabels()[$type] ?? ucfirst(str_replace('_', ' ', (string)$type));
 }
 
 function isValidAccountType($type) {
-    return in_array($type, VALID_ACCOUNT_TYPES, true);
+    return in_array($type, validAccountTypes(), true);
 }
 
 // ── Facility booking (Phase G) ───────────────────────────────────────────────
@@ -108,7 +318,7 @@ function isValidAccountType($type) {
  * Read-only — seeing a request is not being able to move it.
  */
 function canViewFacilityBooking($role = null) {
-    return currentRole($role) !== null;
+    return hasPermission('facility_view', $role);
 }
 
 /**
@@ -116,7 +326,7 @@ function canViewFacilityBooking($role = null) {
  * Any logged-in account: anyone in a ministry may ask for a room.
  */
 function canSubmitFacilityRequest($role = null) {
-    return canViewFacilityBooking($role);
+    return hasPermission('facility_submit', $role);
 }
 
 /**
@@ -125,8 +335,7 @@ function canSubmitFacilityRequest($role = null) {
  * no facilities account is logged in.
  */
 function canFacilitiesReview($role = null) {
-    $r = currentRole($role);
-    return $r === ROLE_FACILITIES || $r === ROLE_ADMIN;
+    return hasPermission('facility_review', $role);
 }
 
 /**
@@ -140,13 +349,16 @@ function canFacilitiesReview($role = null) {
  * the append-only history record which capacity acted.
  */
 function canMinisterApprove($role = null) {
-    $r = currentRole($role);
-    return $r === ROLE_MINISTER || $r === ROLE_ADMIN;
+    return hasPermission('facility_approve', $role);
 }
 
-/** True when a step-3 decision is made by someone other than the Minister (an Admin override). */
+/**
+ * True when a step-3 decision is made in the Admin capacity rather than by a
+ * role that was given the approval permission on purpose. Only Admin is an
+ * override: a custom role granted 'facility_approve' is a real approver.
+ */
 function ministerActsAsOverride($role = null) {
-    return canMinisterApprove($role) && !isMinister($role);
+    return canMinisterApprove($role) && isAdmin($role);
 }
 
 /**
@@ -154,8 +366,7 @@ function ministerActsAsOverride($role = null) {
  * reservation (policy section 20). Facilities Personnel and admins.
  */
 function canFacilitiesConfirm($role = null) {
-    $r = currentRole($role);
-    return $r === ROLE_FACILITIES || $r === ROLE_ADMIN;
+    return hasPermission('facility_confirm', $role);
 }
 
 /**
@@ -166,8 +377,7 @@ function canFacilitiesConfirm($role = null) {
  * canCancelThisFacilityRequest() below. Everyone else still cannot cancel.
  */
 function canCancelFacilityRequest($role = null) {
-    $r = currentRole($role);
-    return $r === ROLE_FACILITIES || $r === ROLE_ADMIN;
+    return hasPermission('facility_cancel', $role);
 }
 
 /** The acting account's id, or null when nobody is logged in. */
@@ -373,7 +583,7 @@ function facilityNextAction($status, $role = null) {
  * attendance figures in a spreadsheet, not anything the page does not show.
  */
 function canViewDashboard($role = null) {
-    return currentRole($role) !== null;
+    return hasPermission('dashboard', $role);
 }
 
 // ── Everything else stays admin-only ─────────────────────────────────────────

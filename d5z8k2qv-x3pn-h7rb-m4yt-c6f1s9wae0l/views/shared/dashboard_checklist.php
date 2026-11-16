@@ -21,8 +21,16 @@ $gsCount = function (string $sql, array $params = []) use ($db): int {
 $gsMembers   = $gsCount("SELECT COUNT(*) FROM members WHERE is_deleted = 0");
 $gsGroups    = $gsCount("SELECT COUNT(*) FROM victory_groups WHERE is_deleted = 0");
 $gsUnlinked  = $groupModel->countUnresolvedSlots();
-$gsFacility  = $gsCount("SELECT COUNT(*) FROM accounts WHERE accounttype = 'facilities' AND accountstatus = 'active'");
-$gsMinister  = $gsCount("SELECT COUNT(*) FROM accounts WHERE accounttype = 'minister' AND accountstatus = 'active'");
+// Roles are data now: count active accounts whose role holds the stage permission.
+$gsRoleCount = function (array $perms) use ($gsCount, $db) {
+    $slugs = [];
+    foreach (allRoles() as $slug => $r) { if ($slug !== ROLE_ADMIN && hasAnyPermission($perms, $slug)) $slugs[] = $slug; }
+    if (!$slugs) return 0;
+    $in = implode(',', array_map(function ($s) use ($db) { return $db->quote($s); }, $slugs));
+    return $gsCount("SELECT COUNT(*) FROM accounts WHERE accounttype IN ($in) AND accountstatus = 'active'");
+};
+$gsFacility  = $gsRoleCount(['facility_review', 'facility_confirm']);
+$gsMinister  = $gsRoleCount(['facility_approve']);
 $gsSundays   = $gsCount("SELECT COUNT(*) FROM service_attendances");
 $gsServe     = $gsCount("SELECT COUNT(*) FROM serve_teams WHERE is_deleted = 0");
 

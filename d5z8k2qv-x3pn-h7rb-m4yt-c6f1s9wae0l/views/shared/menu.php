@@ -21,16 +21,20 @@
         <li class="mt-2 mb-1">
             <small class="text-muted px-3 fw-bold" style="font-size: 11px; letter-spacing: 1px;">DISCIPLESHIP</small>
         </li>
+        <?php if (hasPermission('members')): ?>
         <li class="nav-item">
             <a href="index.php?action=members" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'members') ? 'active' : ''; ?>">
                 <i class="bi bi-people me-2"></i>Members
             </a>
         </li>
+        <?php endif; ?>
+        <?php if (hasPermission('attendance_records')): ?>
         <li class="nav-item">
             <a href="index.php?action=attendanceRecords" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'attendanceRecords' && empty($_GET['program_type'])) ? 'active' : ''; ?>">
                 <i class="bi bi-calendar-check me-2"></i>Attendance Records
             </a>
         </li>
+        <?php endif; ?>
         <?php
         // Three group lists, one sidebar item each (same victoryGroups route, tab=vg|lg|campus).
         // editGroup sets $_GET['tab'] from the group's kind, so its item stays lit too.
@@ -43,33 +47,42 @@
             'lg'     => ['Leadership Groups', 'bi-diagram-3'],
             'campus' => ['Campus',            'bi-building'],
         ];
-        foreach ($grpItems as $gTab => [$gLabel, $gIcon]): ?>
+        foreach (hasPermission('victory_groups') ? $grpItems : [] as $gTab => [$gLabel, $gIcon]): ?>
         <li class="nav-item">
             <a href="index.php?action=victoryGroups&amp;tab=<?php echo $gTab; ?>" class="nav-link <?php echo ($onGroups && $grpTab === $gTab) ? 'active' : ''; ?>">
                 <i class="bi <?php echo $gIcon; ?> me-2"></i><?php echo $gLabel; ?>
             </a>
         </li>
         <?php endforeach; ?>
+        <?php if (hasPermission('victory_groups')): ?>
         <li class="nav-item">
             <a href="index.php?action=groupLeaders" class="nav-link <?php echo $grpAction === 'groupLeaders' ? 'active' : ''; ?>">
                 <i class="bi bi-star me-2"></i>Leaders
             </a>
         </li>
+        <?php endif; ?>
+        <?php if (hasPermission('serve_teams')): ?>
         <li class="nav-item">
             <a href="index.php?action=serveTeams" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'serveTeams') ? 'active' : ''; ?>">
                 <i class="bi bi-hand-thumbs-up me-2"></i>Serve Teams
             </a>
         </li>
+        <?php endif; ?>
+        <?php if (hasPermission('service_attendance')): ?>
         <li class="nav-item">
             <a href="index.php?action=serviceAttendance" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'serviceAttendance') ? 'active' : ''; ?>">
                 <i class="bi bi-heart-pulse me-2"></i>Sunday Attendance
             </a>
         </li>
+        <?php endif; ?>
+        <?php if (hasPermission('gathering_attendance')): ?>
         <li class="nav-item">
             <a href="index.php?action=gatheringAttendance" class="nav-link <?php echo (($_GET['action'] ?? '') === 'gatheringAttendance') ? 'active' : ''; ?>">
                 <i class="bi bi-fire me-2"></i>Prayer &amp; Students
             </a>
         </li>
+        <?php endif; ?>
+        <?php if (hasPermission('classes')): ?>
         <li class="mt-2 mb-1">
             <small class="text-muted px-3 fw-bold" style="font-size: 11px; letter-spacing: 1px;">CLASSES</small>
         </li>
@@ -114,6 +127,7 @@
                 <i class="bi bi-shield me-2"></i>Spiritual Foundations
             </a>
         </li>
+        <?php endif; ?>
         <?php /* Facility Booking is visible to every logged-in account,
                  including Facilities Personnel — canViewFacilityBooking().
                  What each role may DO once inside is decided per button by
@@ -150,6 +164,11 @@
         <li class="nav-item">
             <a href="index.php?action=users" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'users') ? 'active' : ''; ?>">
                 <i class="bi bi-person-gear me-2"></i>Users
+            </a>
+        </li>
+        <li class="nav-item">
+            <a href="index.php?action=roles" class="nav-link <?php echo (($_GET['action'] ?? '') === 'roles') ? 'active' : ''; ?>">
+                <i class="bi bi-shield-lock me-2"></i>Roles
             </a>
         </li>
         <li class="nav-item">

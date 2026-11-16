@@ -169,7 +169,17 @@ class FacilityController {
         $stageEvents = $this->requestModel->stageEventsFor(array_keys($advisories));
 
         // Approvers panel: who holds each stage.
-        $approvers = $this->requestModel->getApprovers([ROLE_FACILITIES, ROLE_MINISTER, ROLE_ADMIN]);
+        // Roles are data now, so "who holds a stage" is every role granted the
+        // permission for it, not a fixed list of role names.
+        $approverRoles = ['review' => [], 'approve' => []];
+        foreach (allRoles() as $slug => $role) {
+            if ($slug === ROLE_ADMIN) continue;
+            if (hasAnyPermission(['facility_review', 'facility_confirm'], $slug)) $approverRoles['review'][]  = $slug;
+            if (hasPermission('facility_approve', $slug))                         $approverRoles['approve'][] = $slug;
+        }
+        $approvers = $this->requestModel->getApprovers(array_values(array_unique(
+            array_merge($approverRoles['review'], $approverRoles['approve'], [ROLE_ADMIN])
+        )));
 
         // Prefill the request form's requestor block from the signed-in account.
         $currentAccount = [

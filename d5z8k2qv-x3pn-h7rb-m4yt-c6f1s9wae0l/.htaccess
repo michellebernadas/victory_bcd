@@ -53,11 +53,23 @@ Options -Indexes
 </IfModule>
 
 # PHP upload settings override (ensure 5MB uploads work)
+# php_value only exists under mod_php; under PHP-FPM / FastCGI (XAMPP's default
+# setup) Apache rejects it with "Invalid command 'php_value'" and every request
+# is a 500. Guarded so both setups boot; the FastCGI equivalent is .user.ini.
 
-php_value upload_max_filesize 5M
-php_value post_max_size 6M
-php_value max_execution_time 60
-php_value memory_limit 256M
+<IfModule php_module>
+    php_value upload_max_filesize 5M
+    php_value post_max_size 6M
+    php_value max_execution_time 60
+    php_value memory_limit 256M
+</IfModule>
+
+<IfModule mod_php.c>
+    php_value upload_max_filesize 5M
+    php_value post_max_size 6M
+    php_value max_execution_time 60
+    php_value memory_limit 256M
+</IfModule>
 
 # Additional admin security - prevent access to view files directly
 

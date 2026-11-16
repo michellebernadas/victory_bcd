@@ -4,6 +4,10 @@ if (!isset($_SESSION['user'])) {
     exit();
 }
 
+// A role without the Dashboard permission gets a short welcome page — no
+// church-wide statistics, and none of the queries below.
+if (!canViewDashboard()) { include 'views/home.php'; return; }
+
 require_once 'models/Member.php';
 require_once 'models/VictoryGroup.php';
 require_once 'models/ProgramAttendance.php';
@@ -131,6 +135,13 @@ include 'shared/header.php';
                     <p class="text-muted mb-0">Welcome back, <strong><?php echo htmlspecialchars($_SESSION['user']['username']); ?></strong> &mdash; Victory Bacolod Admin Portal</p>
                 </div>
             </div>
+
+            <?php if (!empty($_SESSION['access_denied'])): ?>
+            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                <i class="bi bi-shield-exclamation me-2"></i><?php echo htmlspecialchars($_SESSION['access_denied']); unset($_SESSION['access_denied']); ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            <?php endif; ?>
 
             <!-- Notification -->
             <?php if (isset($_GET['notif'])): ?>
@@ -317,6 +328,7 @@ include 'shared/header.php';
                             <h6 class="mb-0"><i class="bi bi-lightning-charge me-2"></i>Quick Actions</h6>
                         </div>
                         <div class="card-body">
+                            <?php if (hasPermission('members')): ?>
                             <h6 class="text-muted small fw-bold mb-2">MEMBERS</h6>
                             <div class="d-grid gap-2 mb-3">
                                 <a href="index.php?action=members&amp;openAdd=1" class="btn btn-sm btn-outline-primary">
@@ -326,6 +338,8 @@ include 'shared/header.php';
                                     <i class="bi bi-people me-1"></i> View All Members
                                 </a>
                             </div>
+                            <?php endif; ?>
+                            <?php if (hasPermission('victory_groups')): ?>
                             <h6 class="text-muted small fw-bold mb-2 mt-3">GROUPS</h6>
                             <div class="d-grid gap-2 mb-3">
                                 <a href="index.php?action=victoryGroups&amp;tab=vg&amp;openAdd=1" class="btn btn-sm btn-outline-info">
@@ -335,6 +349,8 @@ include 'shared/header.php';
                                     <i class="bi bi-list-ul me-1"></i> View All Groups
                                 </a>
                             </div>
+                            <?php endif; ?>
+                            <?php if (hasAnyPermission(['classes', 'attendance_records'])): ?>
                             <h6 class="text-muted small fw-bold mb-2 mt-3">CLASSES</h6>
                             <div class="d-grid gap-2 mb-3">
                                 <a href="index.php?action=attendanceRecords" class="btn btn-sm btn-outline-success">
@@ -347,7 +363,8 @@ include 'shared/header.php';
                                     <i class="bi bi-shield me-1"></i> Spiritual Foundations
                                 </a>
                             </div>
-                            <?php if (isset($_SESSION['user']['accounttype']) && $_SESSION['user']['accounttype'] === 'admin'): ?>
+                            <?php endif; ?>
+                            <?php if (canAdminister()): ?>
                             <h6 class="text-muted small fw-bold mb-2 mt-3">ADMINISTRATION</h6>
                             <div class="d-grid gap-2">
                                 <a href="index.php?action=users" class="btn btn-sm btn-outline-warning">
@@ -374,7 +391,7 @@ include 'shared/header.php';
                             <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>System Info</h6>
                         </div>
                         <div class="card-body">
-                            <p class="mb-2 small"><strong>Role:</strong> <?php echo ucfirst($_SESSION['user']['accounttype'] ?? 'Editor'); ?></p>
+                            <p class="mb-2 small"><strong>Role:</strong> <?php echo htmlspecialchars(accountTypeLabel($_SESSION['user']['accounttype'] ?? 'editor')); ?></p>
                             <p class="mb-2 small"><strong>Username:</strong> <?php echo htmlspecialchars($_SESSION['user']['username']); ?></p>
                             <p class="mb-0 small"><strong>Last Login:</strong>
                                 <?php

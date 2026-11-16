@@ -7,8 +7,16 @@
  * for admins only (canAdminister()).
  */
 $approvers = $approvers ?? [];
-$facAccts  = $approvers[ROLE_FACILITIES] ?? [];
-$minAccts  = $approvers[ROLE_MINISTER]   ?? [];
+// Accounts whose role holds the review/confirm or approve permission
+// ($approverRoles is built in FacilityController::showCalendar()).
+$approverRoles = $approverRoles ?? ['review' => [ROLE_FACILITIES], 'approve' => [ROLE_MINISTER]];
+$collect = function (array $slugs) use ($approvers) {
+    $rows = [];
+    foreach ($slugs as $slug) foreach ($approvers[$slug] ?? [] as $a) $rows[$a['id']] = $a;
+    return array_values($rows);
+};
+$facAccts  = $collect($approverRoles['review']);
+$minAccts  = $collect($approverRoles['approve']);
 $admAccts  = $approvers[ROLE_ADMIN]      ?? [];
 $canUsers  = canAdminister();
 $names = function (array $rows) {
