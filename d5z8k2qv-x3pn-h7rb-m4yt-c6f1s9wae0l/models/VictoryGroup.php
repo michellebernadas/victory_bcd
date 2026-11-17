@@ -135,6 +135,20 @@ class VictoryGroup {
 
     private const VALID_KINDS = ['victory_group', 'leadership_group', 'campus'];
 
+    /** Keep only valid addresses from a comma / semicolon / space separated list; null when none. */
+    public static function cleanNotifyEmails($raw) {
+        $ok = [];
+        foreach (preg_split('/[\s,;]+/', (string)$raw, -1, PREG_SPLIT_NO_EMPTY) as $e) {
+            if (filter_var($e, FILTER_VALIDATE_EMAIL)) $ok[strtolower($e)] = $e;
+        }
+        return $ok ? mb_substr(implode(', ', $ok), 0, 255) : null;
+    }
+
+    /** 1 only when ticked AND the kind may be public (Leadership Groups never are). */
+    private static function publicFlag($groupKind, $data) {
+        return (!empty($data['show_public']) && in_array($groupKind, ['victory_group', 'campus'], true)) ? 1 : 0;
+    }
+
     public function addGroup($data, $leaders, $interns, $attendees, $lgLeaders = []) {
         try {
             $uuid = $this->generateUUID();
@@ -143,8 +157,8 @@ class VictoryGroup {
             $stmt = $this->db->prepare("
                 INSERT INTO victory_groups
                     (uuid, group_kind, group_type, group_category, day_of_week, meeting_time,
-                     location, meeting_frequency, group_status, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     location, meeting_frequency, group_status, notes, show_public, notify_email)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $dayOfWeek = is_array($data['day_of_week'] ?? null)
                 ? implode(', ', array_filter(array_map('trim', $data['day_of_week'])))
@@ -160,6 +174,8 @@ class VictoryGroup {
                 $data['meeting_frequency'] ?? 'weekly',
                 $data['group_status']      ?? 'active',
                 $data['notes']             ?? '',
+                self::publicFlag($groupKind, $data),
+                self::cleanNotifyEmails($data['notify_email'] ?? ''),
             ]);
             $groupId = $this->db->lastInsertId();
             [$leaders, $lgLeaders] = $this->leadersForKind($groupKind, $leaders, $lgLeaders);
@@ -178,7 +194,7 @@ class VictoryGroup {
             $stmt = $this->db->prepare("
                 UPDATE victory_groups SET
                     group_kind = ?, group_type = ?, group_category = ?, day_of_week = ?, meeting_time = ?,
-                    location = ?, meeting_frequency = ?, group_status = ?, notes = ?
+                    location = ?, meeting_frequency = ?, group_status = ?, notes = ?, show_public = ?, notify_email = ?
                 WHERE id = ?
             ");
             $dayOfWeek = is_array($data['day_of_week'] ?? null)
@@ -194,6 +210,8 @@ class VictoryGroup {
                 $data['meeting_frequency'] ?? 'weekly',
                 $data['group_status']      ?? 'active',
                 $data['notes']             ?? '',
+                self::publicFlag($groupKind, $data),
+                self::cleanNotifyEmails($data['notify_email'] ?? ''),
                 $id,
             ]);
             [$leaders, $lgLeaders] = $this->leadersForKind($groupKind, $leaders, $lgLeaders);

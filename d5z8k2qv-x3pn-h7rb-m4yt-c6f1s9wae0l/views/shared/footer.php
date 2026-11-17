@@ -7,6 +7,28 @@
     <script src="https://cdn.datatables.net/2.2.2/js/dataTables.bootstrap5.min.js"></script>
     <!-- Select2 -->
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <!-- Select2 inside a SCROLLED modal: select2 positions its dropdown from the page scroll and ignores the
+         modal's own scroll, so after scrolling a long form (Add Group -> Attendees) the list opened off-screen
+         (e.g. top: -190px) and the page looked frozen. Add the scroll offset of the container the dropdown is
+         attached to. Applies to every select2 whose dropdownParent is a scrolling modal. -->
+    <script>
+    (function ($) {
+        if (!$ || !$.fn.select2 || !$.fn.select2.amd) return;
+        var AttachBody = $.fn.select2.amd.require('select2/dropdown/attachBody');
+        var original = AttachBody.prototype._positionDropdown;
+        AttachBody.prototype._positionDropdown = function () {
+            original.apply(this, arguments);
+            var $p = this.$dropdownParent;
+            if ($p.css('position') === 'static') $p = $p.offsetParent();
+            var el = $p[0];
+            if (!el || el === document.body || el === document.documentElement) return;
+            var st = el.scrollTop, sl = el.scrollLeft;
+            if (!st && !sl) return;
+            var $c = this.$dropdownContainer;
+            $c.css({ top: (parseFloat($c.css('top')) || 0) + st, left: (parseFloat($c.css('left')) || 0) + sl });
+        };
+    })(window.jQuery);
+    </script>
     <!-- jsPDF + AutoTable (used for PDF export on Victory Groups page) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>

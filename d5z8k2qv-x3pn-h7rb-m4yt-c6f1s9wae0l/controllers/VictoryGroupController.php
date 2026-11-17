@@ -75,6 +75,22 @@ class VictoryGroupController {
         return $result;
     }
 
+    /**
+     * Victory Groups and Campus groups need at least one intern and a valid
+     * notify email (so the leader hears about interested visitors). Leadership
+     * Groups have neither. Returns an error message, or '' when fine.
+     */
+    private function requiredFieldsError($data, array $interns) {
+        if (($data['group_kind'] ?? '') === 'leadership_group') return '';
+        if (empty($interns)) return 'At least one intern is required';
+        $raw = trim((string)($data['notify_email'] ?? ''));
+        if ($raw === '') return 'The email to notify when someone is interested is required';
+        foreach (preg_split('/[\s,;]+/', $raw, -1, PREG_SPLIT_NO_EMPTY) as $e) {
+            if (!filter_var($e, FILTER_VALIDATE_EMAIL)) return 'This is not a valid email address: ' . $e;
+        }
+        return '';
+    }
+
     public function addGroup($data) {
         $leaders   = $this->parseMembersFromPost('leader_name', 'leader_gender');
         $interns   = $this->parseMembersFromPost('intern_name', 'intern_gender');
@@ -85,6 +101,11 @@ class VictoryGroupController {
         $isLeadership = ($data['group_kind'] ?? '') === 'leadership_group';
         if ($isLeadership ? empty($lgLeaders) : empty($leaders)) {
             header('Location: index.php?action=victoryGroups&tab=' . $tab . '&error=add&msg=' . urlencode('At least one leader is required'));
+            exit();
+        }
+
+        if (($reqErr = $this->requiredFieldsError($data, $interns)) !== '') {
+            header('Location: index.php?action=victoryGroups&tab=' . $tab . '&error=add&msg=' . urlencode($reqErr));
             exit();
         }
 
@@ -127,6 +148,11 @@ class VictoryGroupController {
         $attendees = $this->parseMembersFromPost('attendee_name');
         $lgLeaders = $this->parseMembersFromPost('lg_leader_name', 'lg_leader_gender');
         $tab = $this->tabForKind($data['group_kind'] ?? '');
+
+        if (($reqErr = $this->requiredFieldsError($data, $interns)) !== '') {
+            header('Location: index.php?action=victoryGroups&tab=' . $tab . '&error=update&msg=' . urlencode($reqErr));
+            exit();
+        }
 
         $result = $this->groupModel->updateGroup($id, $data, $leaders, $interns, $attendees, $lgLeaders);
         if ($result) {

@@ -85,6 +85,9 @@ const PERMISSION_GROUPS = [
         'class_leadership_113'        => ['Leadership 1-1-3',      'Leadership 1-1-3 records.'],
         'class_spiritual_foundations' => ['Spiritual Foundations', 'Spiritual Foundations records.'],
     ],
+    'Public site' => [
+        'join_requests' => ['Interested people (join inbox)', 'The inbox of people who said they are interested in joining a Victory Group on the public website. Contains names and contact details.'],
+    ],
     'Facility Booking' => [
         'facility_view'    => ['View calendar & requests',  'See the calendar, requests, history and the setup sheet.'],
         'facility_submit'  => ['Submit requests',           'Step 1 — request a room, and edit / resubmit / cancel their own requests.'],
@@ -239,6 +242,8 @@ const ACTION_PERMISSIONS = [
     'memberGroupSave' => 'members', 'memberTeamSave' => 'members',
     // Group leaders list
     'groupLeaders' => 'group_leaders',
+    // Public-site join requests inbox
+    'joinRequests' => 'join_requests', 'updateJoinRequest' => 'join_requests', 'resendJoinNotice' => 'join_requests', 'deleteJoinRequest' => 'join_requests',
     // Victory-group statistics definitions live on the Victory Groups page
     'addVglStat' => 'group_vg', 'updateVglStat' => 'group_vg', 'deleteVglStat' => 'group_vg',
     'deactivateVglStat' => 'group_vg', 'activateVglStat' => 'group_vg', 'updateVglStatOrder' => 'group_vg',

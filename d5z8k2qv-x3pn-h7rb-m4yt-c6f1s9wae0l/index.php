@@ -520,6 +520,27 @@ switch ($action) {
         isset($_GET['uuid']) ? $userController->deactivateUserByUuid($_GET['uuid']) : $userController->deactivateUser($_GET['id']);
         break;
 
+    // ─── Public-site join requests inbox (permission: join_requests) ──
+    case 'joinRequests':
+    case 'updateJoinRequest':
+    case 'deleteJoinRequest':
+    case 'resendJoinNotice':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        require_once 'controllers/JoinRequestController.php';
+        $jrController = new JoinRequestController($db);
+        if ($action === 'joinRequests') {
+            $jrController->listRequests();
+        } elseif ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Location: index.php?action=joinRequests');
+        } elseif ($action === 'updateJoinRequest') {
+            $jrController->update((int)($_GET['id'] ?? 0), $_POST);
+        } elseif ($action === 'resendJoinNotice') {
+            $jrController->resend((int)($_GET['id'] ?? 0));
+        } else {
+            $jrController->delete((int)($_GET['id'] ?? 0));
+        }
+        break;
+
     // ─── Roles & permissions (Admin only) ────────────────────────────
     case 'roles':
     case 'addRole':

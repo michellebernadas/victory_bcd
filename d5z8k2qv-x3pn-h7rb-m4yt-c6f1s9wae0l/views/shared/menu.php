@@ -59,6 +59,17 @@
         $mnLink('service_attendance', 'index.php?action=serviceAttendance',       'bi-heart-pulse',    'Sunday Attendance', $mnAction === 'serviceAttendance');
         $mnLink('prayer_meeting',   'index.php?action=gatheringAttendance&amp;gathering_type=prayer_meeting',   'bi-fire',        'Prayer Meeting',        $mnAction === 'gatheringAttendance' && $mnGType === 'prayer_meeting');
         $mnLink('students_hangout', 'index.php?action=gatheringAttendance&amp;gathering_type=students_hangout', 'bi-mortarboard', 'Students&rsquo; Hangout', $mnAction === 'gatheringAttendance' && $mnGType === 'students_hangout');
+        if (hasPermission('join_requests')) {
+            $mnJr = 0;
+            if (class_exists('JoinRequest') || is_file(__DIR__ . '/../../models/JoinRequest.php')) {
+                require_once __DIR__ . '/../../models/JoinRequest.php';
+                if (isset($GLOBALS['db']) && $GLOBALS['db'] instanceof PDO) $mnJr = (new JoinRequest($GLOBALS['db']))->countNew();
+            }
+            echo '<li class="nav-item"><a href="index.php?action=joinRequests" class="nav-link d-flex align-items-center ' . ($mnAction === 'joinRequests' ? 'active' : '') . '">'
+               . '<i class="bi bi-inbox me-2"></i>Interested People'
+               . ($mnJr > 0 ? '<span class="badge rounded-pill bg-danger ms-auto" title="' . (int)$mnJr . ' new">' . (int)$mnJr . '</span>' : '')
+               . '</a></li>' . "\n";
+        }
         ?>
         <?php if (anyClassPermission()): ?>
         <li class="mt-2 mb-1">
@@ -102,6 +113,19 @@
             </a>
         </li>
         <?php } ?>
+        <?php /* Public site: the pages visitors see, opened in a NEW tab so the admin stays put.
+                 Relative to this app's folder; the public pages live one level up (site root). */ ?>
+        <li class="mt-2 mb-1">
+            <small class="text-muted px-3 fw-bold" style="font-size: 11px; letter-spacing: 1px;">PUBLIC SITE</small>
+        </li>
+        <?php foreach ([['../services.php', 'bi-clock', 'Service times'], ['../groups.php', 'bi-people-fill', 'Find a group'], ['../join.php', 'bi-heart', 'Interested form']] as [$psUrl, $psIcon, $psLabel]): ?>
+        <li class="nav-item">
+            <a href="<?php echo $psUrl; ?>" target="_blank" rel="noopener" class="nav-link d-flex align-items-center">
+                <i class="bi <?php echo $psIcon; ?> me-2"></i><?php echo $psLabel; ?>
+                <i class="bi bi-box-arrow-up-right ms-auto small text-muted" aria-hidden="true"></i><span class="visually-hidden">(opens in a new tab)</span>
+            </a>
+        </li>
+        <?php endforeach; ?>
         <?php /* Administration stays admin-only: Facilities Personnel get the
                  booking workflow and nothing else. */ ?>
         <?php if (canAdminister()) { ?>

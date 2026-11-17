@@ -1218,7 +1218,7 @@ function renderNameList($members, $showGender = true) {
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Add Victory Group / Leadership Group</h5>
+                    <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i><span id="agTitleText">Add Victory Group</span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form method="POST" action="index.php?action=addGroup" id="addGroupForm" novalidate>
@@ -1228,7 +1228,7 @@ function renderNameList($members, $showGender = true) {
                         <ul class="mb-0 mt-1 ps-3" id="addGroupErrorList"></ul>
                     </div>
                     <div class="row g-3">
-                        <div class="col-md-3">
+                        <div class="col-md-3 d-none"><!-- Kind comes from the page you opened this from (initAddModal) -->
                             <label class="form-label fw-semibold">Kind <span class="text-danger">*</span></label>
                             <select name="group_kind" class="modal-select2" id="ag_kind" onchange="toggleKindSections('ag_kind','am')">
                                 <?php foreach (['victory_group' => 'Victory Group', 'leadership_group' => 'Leadership Group', 'campus' => 'Campus'] as $kv => $kl):
@@ -1292,6 +1292,19 @@ function renderNameList($members, $showGender = true) {
                                 <option value="inactive">Inactive</option>
                             </select>
                         </div>
+                        <div class="col-12 col-md-6 am-vg-section">
+                            <label class="form-label fw-semibold" for="ag_notify">Email to notify when someone is interested <span class="text-danger">*</span></label>
+                            <input type="text" name="notify_email" id="ag_notify" class="form-control" maxlength="255" placeholder="leader@example.com (several: separate with commas)">
+                            <div id="ag_notify_error" class="text-danger small mt-1 d-none"></div>
+                            <div class="form-text">The group leader gets an email with the visitor's details. Use a real address the leader reads. Never shown publicly.</div>
+                        </div>
+                        <div class="col-12 col-md-6 d-flex align-items-end am-vg-section">
+                            <div class="form-check mb-2" id="ag_public_wrap">
+                                <input class="form-check-input" type="checkbox" name="show_public" value="1" id="ag_public">
+                                <label class="form-check-label" for="ag_public"><strong>Show on the public page</strong>
+                                    <span class="d-block form-text mt-0">Visitors will see the leaders' names, day, time and location. Not available for Leadership Groups.</span></label>
+                            </div>
+                        </div>
                         <div class="col-12 am-vg-section">
                             <label class="form-label fw-semibold">Victory Group Leader(s) <span class="text-danger">*</span></label>
                             <div id="am-leaders"></div>
@@ -1299,9 +1312,10 @@ function renderNameList($members, $showGender = true) {
                             <div id="am_leaders_error" class="text-danger small mt-1 d-none"><i class="bi bi-exclamation-circle me-1"></i>At least one leader is required.</div>
                         </div>
                         <div class="col-12 am-vg-section">
-                            <label class="form-label fw-semibold">Intern(s)</label>
+                            <label class="form-label fw-semibold">Intern(s) <span class="text-danger">*</span></label>
                             <div id="am-interns"></div>
                             <button type="button" class="btn btn-sm btn-outline-secondary mt-1" onclick="addMemberRow('am-interns','intern')"><i class="bi bi-plus me-1"></i>Add Intern</button>
+                            <div id="am_interns_error" class="text-danger small mt-1 d-none"><i class="bi bi-exclamation-circle me-1"></i>At least one intern is required.</div>
                         </div>
                         <div class="col-12 am-lg-section d-none">
                             <label class="form-label fw-semibold">LG Leader(s) <span class="text-danger">*</span></label>
@@ -1354,13 +1368,13 @@ function renderNameList($members, $showGender = true) {
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit Group</h5>
+                    <h5 class="modal-title"><i class="bi bi-pencil me-2"></i><span id="egTitleText">Edit Group</span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form method="POST" id="editGroupForm" action="">
                 <div class="modal-body">
                     <div class="row g-3">
-                        <div class="col-md-3">
+                        <div class="col-md-3 d-none"><!-- Kind is fixed once a group exists; it comes from the group itself (openEditGroupModal) -->
                             <label class="form-label fw-semibold">Kind</label>
                             <select name="group_kind" class="modal-select2" id="eg_kind" onchange="toggleKindSections('eg_kind','em')">
                                 <?php foreach (['victory_group' => 'Victory Group', 'leadership_group' => 'Leadership Group', 'campus' => 'Campus'] as $kv => $kl):
@@ -1424,15 +1438,29 @@ function renderNameList($members, $showGender = true) {
                                 <option value="inactive">Inactive</option>
                             </select>
                         </div>
+                        <div class="col-12 col-md-6 em-vg-section">
+                            <label class="form-label fw-semibold" for="eg_notify">Email to notify when someone is interested <span class="text-danger">*</span></label>
+                            <input type="text" name="notify_email" id="eg_notify" class="form-control" maxlength="255" placeholder="leader@example.com (several: separate with commas)">
+                            <div id="eg_notify_error" class="text-danger small mt-1 d-none"></div>
+                            <div class="form-text">The group leader gets an email with the visitor's details. Use a real address the leader reads. Never shown publicly.</div>
+                        </div>
+                        <div class="col-12 col-md-6 d-flex align-items-end em-vg-section">
+                            <div class="form-check mb-2" id="eg_public_wrap">
+                                <input class="form-check-input" type="checkbox" name="show_public" value="1" id="eg_public">
+                                <label class="form-check-label" for="eg_public"><strong>Show on the public page</strong>
+                                    <span class="d-block form-text mt-0">Visitors will see the leaders' names, day, time and location. Not available for Leadership Groups.</span></label>
+                            </div>
+                        </div>
                         <div class="col-12 em-vg-section">
                             <label class="form-label fw-semibold">Victory Group Leader(s) <span class="text-danger">*</span></label>
                             <div id="em-leaders"></div>
                             <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addMemberRow('em-leaders','leader')"><i class="bi bi-plus me-1"></i>Add Leader</button>
                         </div>
                         <div class="col-12 em-vg-section">
-                            <label class="form-label fw-semibold">Intern(s)</label>
+                            <label class="form-label fw-semibold">Intern(s) <span class="text-danger">*</span></label>
                             <div id="em-interns"></div>
                             <button type="button" class="btn btn-sm btn-outline-secondary mt-1" onclick="addMemberRow('em-interns','intern')"><i class="bi bi-plus me-1"></i>Add Intern</button>
+                            <div id="em_interns_error" class="text-danger small mt-1 d-none"><i class="bi bi-exclamation-circle me-1"></i>At least one intern is required.</div>
                         </div>
                         <div class="col-12 em-lg-section d-none">
                             <label class="form-label fw-semibold">LG Leader(s) <span class="text-danger">*</span></label>
@@ -1963,7 +1991,9 @@ function renderNameList($members, $showGender = true) {
     function initAddModal(kind) {
         kind = kind || 'victory_group';
         document.getElementById('ag_kind').value = kind;
+        document.getElementById('agTitleText').textContent = 'Add ' + ({ victory_group: 'Victory Group', leadership_group: 'Leadership Group', campus: 'Campus Group' }[kind] || 'Group');
         toggleKindSections('ag_kind', 'am');
+        syncPublicBox('ag');
         populateMembers('am-leaders','leader',[]);
         populateMembers('am-interns','intern',[]);
         populateMembers('am-lgleaders','lg_leader',[]);
@@ -2031,11 +2061,27 @@ function renderNameList($members, $showGender = true) {
         new bootstrap.Modal(document.getElementById('viewGroupModal')).show();
     }
 
+    /** Leadership Groups are never public: untick and disable the box for that kind. */
+    function syncPublicBox(p) {
+        var kind = document.getElementById(p + '_kind').value, box = document.getElementById(p + '_public');
+        var ok = kind !== 'leadership_group';
+        box.disabled = !ok; if (!ok) box.checked = false;
+        document.getElementById(p + '_public_wrap').style.opacity = ok ? '' : '.5';
+    }
+    document.addEventListener('change', function (e) {
+        if (e.target.id === 'ag_kind') syncPublicBox('ag');
+        if (e.target.id === 'eg_kind') syncPublicBox('eg');
+    });
+
     function openEditGroupModal(g) {
         document.getElementById('eg_kind').value = g.group_kind || 'victory_group';
+        document.getElementById('egTitleText').textContent = 'Edit ' + ({ victory_group: 'Victory Group', leadership_group: 'Leadership Group', campus: 'Campus Group' }[g.group_kind] || 'Group');
         toggleKindSections('eg_kind', 'em');
         document.getElementById('eg_time').value  = g.meeting_time || '';
         document.getElementById('eg_notes').value = g.notes        || '';
+        document.getElementById('eg_public').checked = String(g.show_public) === '1';
+        document.getElementById('eg_notify').value = g.notify_email || '';
+        syncPublicBox('eg');
         document.getElementById('editGroupForm').action = 'index.php?action=updateGroup&id=' + g.id;
         populateMembers('em-leaders',   'leader',   g.leaders   || []);
         populateMembers('em-interns',   'intern',   g.interns   || []);
@@ -2115,6 +2161,9 @@ function renderNameList($members, $showGender = true) {
             $('#am_leaders_error').addClass('d-none');
             $('#am_lgleaders_error').addClass('d-none');
             $('#am_attendees_error').addClass('d-none');
+            $('#am_interns_error').addClass('d-none');
+            $('#ag_notify_error').addClass('d-none');
+            $('#ag_notify').removeClass('is-invalid');
 
             // Validate each required field
             REQUIRED.forEach(function(f) {
@@ -2156,6 +2205,16 @@ function renderNameList($members, $showGender = true) {
                 }
             }
 
+            if (!isLg) {
+                // At least one intern
+                var hasIntern = false;
+                $('#am-interns .member-name-select').each(function() { if ($(this).val()) { hasIntern = true; return false; } });
+                if (!hasIntern) { errors.push('Intern (at least one required)'); $('#am_interns_error').removeClass('d-none'); }
+                // Email to notify: required, every address valid
+                var nErr = notifyEmailError($('#ag_notify').val());
+                if (nErr) { errors.push('Email to notify: ' + nErr); $('#ag_notify').addClass('is-invalid'); $('#ag_notify_error').text(nErr).removeClass('d-none'); }
+            }
+
             // At least one attendee/member
             var hasAttendee = false;
             $('#am-attendees .member-name-select').each(function() {
@@ -2174,7 +2233,8 @@ function renderNameList($members, $showGender = true) {
                 errors.forEach(function(msg) { $errList.append('<li>' + msg + '</li>'); });
                 $errBox.removeClass('d-none');
                 // Scroll to top of modal body
-                document.querySelector('#addGroupModal .modal-body').scrollTo({ top: 0, behavior: 'smooth' });
+                // The MODAL scrolls (not its body), so scroll that to show the error list.
+                document.getElementById('addGroupModal').scrollTo({ top: 0, behavior: 'smooth' });
             }
         });
 
@@ -2188,8 +2248,32 @@ function renderNameList($members, $showGender = true) {
             $('#am_leaders_error').addClass('d-none');
             $('#am_lgleaders_error').addClass('d-none');
             $('#am_attendees_error').addClass('d-none');
+            $('#am_interns_error').addClass('d-none');
+            $('#ag_notify_error').addClass('d-none');
+            $('#ag_notify').removeClass('is-invalid');
         });
     })();
+
+    /** '' when fine; otherwise the reason. Required, and every address must be valid. */
+    function notifyEmailError(raw) {
+        var parts = String(raw || '').split(/[\s,;]+/).filter(Boolean);
+        if (!parts.length) return 'Please enter the leader\'s email address.';
+        var bad = parts.filter(function (e) { return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); });
+        return bad.length ? 'This does not look like an email address: ' + bad.join(', ') : '';
+    }
+
+    // Edit form: the same two rules, checked before it is sent (the server checks them too).
+    document.getElementById('editGroupForm').addEventListener('submit', function (e) {
+        if ($('#eg_kind').val() === 'leadership_group') return;
+        var problems = [];
+        $('#em_interns_error').addClass('d-none'); $('#eg_notify_error').addClass('d-none'); $('#eg_notify').removeClass('is-invalid');
+        var hasIntern = false;
+        $('#em-interns .member-name-select').each(function () { if ($(this).val()) { hasIntern = true; return false; } });
+        if (!hasIntern) { problems.push(1); $('#em_interns_error').removeClass('d-none'); }
+        var nErr = notifyEmailError($('#eg_notify').val());
+        if (nErr) { problems.push(2); $('#eg_notify').addClass('is-invalid'); $('#eg_notify_error').text(nErr).removeClass('d-none'); }
+        if (problems.length) { e.preventDefault(); var first = document.querySelector('#editGroupModal .text-danger:not(.d-none)'); if (first) first.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    });
 
     // ── VG Statistics Charts ──────────────────────────────────────────────────
     var STATS_DATA = <?php echo json_encode(array_values($statsForChart ?? [])); ?>;

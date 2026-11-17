@@ -29,7 +29,7 @@ $gbRefresh  = !empty($gbRefresh);
         <span class="hm-pill"><i class="bi bi-person-badge me-1" aria-hidden="true"></i><?php echo htmlspecialchars($gbRole); ?></span>
         <span class="hm-pill"><i class="bi bi-calendar-event me-1" aria-hidden="true"></i><?php echo date('l, F j'); ?></span>
         <?php foreach ($gbActions as $a): ?>
-        <a href="<?php echo htmlspecialchars($a['url']); ?>" class="hm-pill hm-pill-btn">
+        <a href="<?php echo htmlspecialchars($a['url']); ?>" class="hm-pill hm-pill-btn"<?php echo !empty($a['blank']) ? ' target="_blank" rel="noopener"' : ''; ?>>
             <i class="bi <?php echo htmlspecialchars($a['icon']); ?> me-1" aria-hidden="true"></i><?php echo htmlspecialchars($a['label']); ?>
         </a>
         <?php endforeach; ?>

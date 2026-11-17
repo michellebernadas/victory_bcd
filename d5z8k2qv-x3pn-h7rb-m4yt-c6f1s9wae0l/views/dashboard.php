@@ -135,6 +135,7 @@ include 'shared/header.php';
             $gbRefresh  = true;
             $gbActions  = [['url' => 'index.php?action=churchHealthExport&range=' . $sundayRange, 'icon' => 'bi-file-earmark-excel', 'label' => 'Export Excel']];
             $gbActions[] = ['url' => '#', 'icon' => 'bi-printer', 'label' => 'Print / PDF'];
+            $gbActions[] = ['url' => '../groups.php', 'icon' => 'bi-globe2', 'label' => 'Public site', 'blank' => true];
             $gbStats = [];
             if (!empty($sundayLatest['date'])) {
                 $gbStats[] = ['n' => number_format((int)$sundayLatest['total']), 'l' => 'Latest Sunday attendance',
