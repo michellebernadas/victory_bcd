@@ -2,7 +2,7 @@
 /**
  * "Back to Member" banner.
  *
- * Leadership 1-1-3 and Spiritual Foundations are too complex for a modal — each
+ * Leadership 113 and Spiritual Foundations are too complex for a modal — each
  * needs a per-session / per-topic grid — so the Member Profile sends the admin
  * here in the SAME browser tab. Without a way back, a non-technical admin is
  * stranded on a list of every participant with no obvious route to the person

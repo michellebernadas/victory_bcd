@@ -85,7 +85,17 @@ class VictoryGroup {
     }
 
     // Fetch all vg_members for a set of groups and attach as arrays
+    /** True once migration 2026_11_17_06 has added vg_members.email / phone (so older databases keep working). */
+    private function hasContactCols(): bool {
+        static $has = null;
+        if ($has !== null) return $has;
+        try { $has = (bool)$this->db->query("SHOW COLUMNS FROM vg_members LIKE 'email'")->fetch(); }
+        catch (PDOException $e) { $has = false; }
+        return $has;
+    }
+
     private function attachMembers(array $groups) {
+        $contactSel = $this->hasContactCols() ? ', vm.email, vm.phone' : '';
         $groupIds = array_column($groups, 'id');
         $placeholders = implode(',', array_fill(0, count($groupIds), '?'));
 
@@ -105,7 +115,7 @@ class VictoryGroup {
                     vm.gender, vm.role, vm.member_id, vm.link_status,
                     vm.is_couple, vm.member_id_2, vm.link_status_2,
                     m.full_name  AS member_name,
-                    m2.full_name AS member2_name
+                    m2.full_name AS member2_name$contactSel
              FROM vg_members vm
              LEFT JOIN members m  ON vm.member_id   = m.id
              LEFT JOIN members m2 ON vm.member_id_2 = m2.id
@@ -324,10 +334,11 @@ class VictoryGroup {
         }
 
         $this->db->prepare("DELETE FROM vg_members WHERE group_id = ?")->execute([$groupId]);
+        $withContact = $this->hasContactCols();
         $stmt = $this->db->prepare(
             "INSERT INTO vg_members (group_id, member_id, member_id_2, name, display_name, is_couple,
-                                     gender, role, link_status, link_status_2, sort_order)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                                     gender, role, link_status, link_status_2, sort_order" . ($withContact ? ', email, phone' : '') . ")
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?" . ($withContact ? ', ?, ?' : '') . ")"
         );
         $all = [
             'leader'    => $leaders,
@@ -349,10 +360,17 @@ class VictoryGroup {
 
                 [$mid2, $status2] = $keepSlot2[$role . '|' . mb_strtolower($name, 'UTF-8')] ?? [null, 'needs_link'];
 
-                $stmt->execute([
+                $params = [
                     $groupId, $memberId ?: null, $mid2, $name, $name, $isCouple ? 1 : 0,
                     trim($m['gender'] ?? ''), $role, $linkStatus, $status2, $i,
-                ]);
+                ];
+                if ($withContact) {
+                    $em = trim((string)($m['email'] ?? ''));
+                    $params[] = ($em !== '' && filter_var($em, FILTER_VALIDATE_EMAIL)) ? mb_substr($em, 0, 190) : null;
+                    $ph = trim((string)($m['phone'] ?? ''));
+                    $params[] = ($ph !== '' && preg_match('/^[0-9+()\\-\\s.]{5,40}$/', $ph)) ? $ph : null;
+                }
+                $stmt->execute($params);
             }
         }
     }
@@ -566,6 +584,9 @@ class VictoryGroup {
                         IF(vm.link_status = 'linked', vm.member_id, NULL)   AS member_id,
                         IF(vm.is_couple = 1 AND vm.link_status_2 = 'linked', vm.member_id_2, NULL) AS member_id_2,
                         m.full_name AS member_name, m2.full_name AS member2_name,
+                        m.email AS member_email, m.contact_number AS member_phone,
+                        m2.email AS member2_email, m2.contact_number AS member2_phone,
+                        " . ($this->hasContactCols() ? 'vm.email AS vm_email, vm.phone AS vm_phone,' : 'NULL AS vm_email, NULL AS vm_phone,') . "
                         vg.id AS group_id, vg.group_kind, vg.name AS group_name, vg.day_of_week,
                         vg.meeting_time, vg.location, vg.group_status
                    FROM vg_members vm

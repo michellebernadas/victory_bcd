@@ -63,7 +63,6 @@ const PERMISSION_GROUPS = [
     ],
     'Discipleship' => [
         'members'              => ['Members',            'View, add and edit members and their profiles.'],
-        'attendance_records'   => ['Attendance Records', 'The all-classes Attendance Records page. Individual class pages are granted separately below.'],
         'serve_teams'          => ['Serve Teams',        'Serve teams and their members.'],
         'service_attendance'   => ['Sunday Attendance',  'Sunday service attendance.'],
     ],
@@ -78,11 +77,12 @@ const PERMISSION_GROUPS = [
         'students_hangout' => ['Students\' Hangout', 'Students\' Hangout attendance (Friday).'],
     ],
     'Classes' => [
-        'class_victory_weekend'       => ['Victory Weekend',       'Victory Weekend attendance records.'],
+        'class_victory_weekend'       => ['Victory Day',       'Victory Day attendance records.'],
+        'class_water_baptism'         => ['Water Baptism',         'Water Baptism records.'],
         'class_church_community'      => ['Church Community',      'Church Community attendance records.'],
         'class_making_disciples'      => ['Making Disciples',      'Making Disciples attendance records.'],
         'class_empowering_leaders'    => ['Empowering Leaders',    'Empowering Leaders attendance records.'],
-        'class_leadership_113'        => ['Leadership 1-1-3',      'Leadership 1-1-3 records.'],
+        'class_leadership_113'        => ['Leadership 113',      'Leadership 113 records.'],
         'class_spiritual_foundations' => ['Spiritual Foundations', 'Spiritual Foundations records.'],
     ],
     'Public site' => [
@@ -108,7 +108,7 @@ const PERMISSION_GROUPS = [
 const LEGACY_PERMISSION_MAP = [
     'victory_groups'       => ['group_vg', 'group_lg', 'group_campus', 'group_leaders'],
     'gathering_attendance' => ['prayer_meeting', 'students_hangout'],
-    'classes'              => ['class_victory_weekend', 'class_church_community', 'class_making_disciples',
+    'classes'              => ['class_victory_weekend', 'class_water_baptism', 'class_church_community', 'class_making_disciples',
                             'class_empowering_leaders', 'class_leadership_113', 'class_spiritual_foundations'],
 ];
 
@@ -171,7 +171,7 @@ function allRoles() {
     }
     if (!$roles) {
         $all = array_keys(permissionCatalog());
-        $facBase = array_merge(['dashboard','members','attendance_records','serve_teams','service_attendance','facility_view','facility_submit'], LEGACY_PERMISSION_MAP['victory_groups'], LEGACY_PERMISSION_MAP['gathering_attendance'], LEGACY_PERMISSION_MAP['classes']);
+        $facBase = array_merge(['dashboard','members','serve_teams','service_attendance','facility_view','facility_submit'], LEGACY_PERMISSION_MAP['victory_groups'], LEGACY_PERMISSION_MAP['gathering_attendance'], LEGACY_PERMISSION_MAP['classes']);
         $roles = [
             ROLE_ADMIN      => ['id'=>0,'slug'=>ROLE_ADMIN,      'label'=>'Admin',                'description'=>'', 'is_system'=>1, 'permissions'=>$all],
             ROLE_EDITOR     => ['id'=>0,'slug'=>ROLE_EDITOR,     'label'=>'Editor',               'description'=>'', 'is_system'=>1, 'permissions'=>$facBase],
@@ -303,9 +303,9 @@ function permLookup($table, $column, $id) {
 /** The permission a class page needs, from its program_type; '' = the all-classes page. */
 function classPermission($programType) {
     $programType = (string)$programType;
-    if ($programType === '') return 'attendance_records';
+    if ($programType === '') return 'class_unknown';   // not a real permission: only Admin passes
     $key = 'class_' . $programType;
-    return isset(permissionCatalog()[$key]) ? $key : 'attendance_records';
+    return isset(permissionCatalog()[$key]) ? $key : 'class_unknown';
 }
 
 /**
@@ -351,6 +351,7 @@ function requiredPermissionsFor($action) {
 
         // ── Class attendance records, one permission per class ───────────────
         case 'attendanceRecords':
+            if ($val('program_type') === '') return null;   // no all-classes page: the controller redirects to Members
             return ['all', [classPermission($val('program_type'))]];
         case 'addAttendance':
             return ['all', [classPermission($post['program_type'] ?? '')]];
@@ -411,7 +412,7 @@ function hasAllPermissions(array $permissions, $role = null) {
  * it — but a role limited to Facility Booking cannot search the membership.
  */
 function memberDataPermissions() {
-    $keys = ['members', 'attendance_records', 'serve_teams', 'service_attendance'];
+    $keys = ['members', 'serve_teams', 'service_attendance'];
     foreach (['Groups', 'Gatherings', 'Classes'] as $g) $keys = array_merge($keys, array_keys(PERMISSION_GROUPS[$g]));
     return $keys;
 }

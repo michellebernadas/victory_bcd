@@ -1897,7 +1897,7 @@ function renderNameList($members, $showGender = true) {
     }
 
     // Build a member row with a Select2-enabled name picker
-    function createMemberRow(type, name, gender, memberId) {
+    function createMemberRow(type, name, gender, memberId, email, phone) {
         var div = document.createElement('div');
         div.className = 'd-flex gap-2 mb-2 align-items-center member-row';
         var nameInput = '<select name="' + (type === 'attendee' ? 'attendee' : type) + '_name[]"'
@@ -1916,7 +1916,12 @@ function renderNameList($members, $showGender = true) {
         } else {
             var genderInput = '<input type="text" name="' + type + '_gender[]" class="form-control form-control-sm flex-shrink-0"'
                 + ' style="max-width:110px" value="' + esc(gender) + '" placeholder="Gender/Role" list="genderList">';
-            div.innerHTML = nameInput + genderInput + unreg + removeBtn;
+            // Email and phone for this leader / intern line (typed here; shown on the Leaders page and used to notify them).
+            var contactInputs = '<input type="email" name="' + type + '_email[]" class="form-control form-control-sm flex-shrink-0"'
+                + ' style="max-width:200px" value="' + esc(email) + '" placeholder="Email" autocomplete="off">'
+                + '<input type="text" name="' + type + '_phone[]" class="form-control form-control-sm flex-shrink-0"'
+                + ' style="max-width:140px" value="' + esc(phone) + '" placeholder="Phone" autocomplete="off">';
+            div.innerHTML = nameInput + genderInput + contactInputs + unreg + removeBtn;
         }
         return div;
     }
@@ -1960,7 +1965,7 @@ function renderNameList($members, $showGender = true) {
         c.innerHTML = '';
         if (members && members.length > 0) {
             members.forEach(function(m) {
-                var div = createMemberRow(type, m.name || '', m.gender || '', m.member_id || null);
+                var div = createMemberRow(type, m.name || '', m.gender || '', m.member_id || null, m.email || '', m.phone || '');
                 c.appendChild(div);
                 initMemberRowSelect2(div, m.name || '', m.member_id || null);
             });

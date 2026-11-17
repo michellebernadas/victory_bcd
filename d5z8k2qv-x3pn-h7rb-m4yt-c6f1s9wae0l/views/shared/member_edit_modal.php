@@ -85,8 +85,7 @@ $memberEditReturn = $memberEditReturn ?? '';
                             <div class="alert alert-info py-2 mb-0 small">
                                 <i class="bi bi-shield-check me-1"></i>
                                 Discipleship Journey is managed automatically from attendance and class
-                                completion records. Historical completions can be managed by an administrator
-                                under <strong>Settings &rarr; Historical Completions</strong>.
+                                completion records. To change it, add or edit a class record on this member's profile or on the Classes pages.
                             </div>
                         </div>
                         <div class="col-12">

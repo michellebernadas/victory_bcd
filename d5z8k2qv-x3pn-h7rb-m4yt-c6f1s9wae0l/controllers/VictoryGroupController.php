@@ -62,14 +62,17 @@ class VictoryGroupController {
     }
 
     // Parse parallel name[] / gender[] arrays from POST into [{name, gender}, ...]
-    private function parseMembersFromPost($nameKey, $genderKey = null) {
+    private function parseMembersFromPost($nameKey, $genderKey = null, $emailKey = null, $phoneKey = null) {
         $names   = $_POST[$nameKey]   ?? [];
         $genders = $genderKey ? ($_POST[$genderKey] ?? []) : [];
+        $emails  = $emailKey  ? ($_POST[$emailKey]  ?? []) : [];
+        $phones  = $phoneKey  ? ($_POST[$phoneKey]  ?? []) : [];
         $result  = [];
         foreach ($names as $i => $name) {
             $name = trim($name);
             if ($name !== '') {
-                $result[] = ['name' => $name, 'gender' => trim($genders[$i] ?? '')];
+                $result[] = ['name' => $name, 'gender' => trim($genders[$i] ?? ''),
+                             'email' => trim($emails[$i] ?? ''), 'phone' => trim($phones[$i] ?? '')];
             }
         }
         return $result;
@@ -92,10 +95,10 @@ class VictoryGroupController {
     }
 
     public function addGroup($data) {
-        $leaders   = $this->parseMembersFromPost('leader_name', 'leader_gender');
-        $interns   = $this->parseMembersFromPost('intern_name', 'intern_gender');
+        $leaders   = $this->parseMembersFromPost('leader_name', 'leader_gender', 'leader_email', 'leader_phone');
+        $interns   = $this->parseMembersFromPost('intern_name', 'intern_gender', 'intern_email', 'intern_phone');
         $attendees = $this->parseMembersFromPost('attendee_name');
-        $lgLeaders = $this->parseMembersFromPost('lg_leader_name', 'lg_leader_gender');
+        $lgLeaders = $this->parseMembersFromPost('lg_leader_name', 'lg_leader_gender', 'lg_leader_email', 'lg_leader_phone');
         $tab = $this->tabForKind($data['group_kind'] ?? '');
 
         $isLeadership = ($data['group_kind'] ?? '') === 'leadership_group';
@@ -143,10 +146,10 @@ class VictoryGroupController {
     }
 
     public function updateGroup($id, $data) {
-        $leaders   = $this->parseMembersFromPost('leader_name', 'leader_gender');
-        $interns   = $this->parseMembersFromPost('intern_name', 'intern_gender');
+        $leaders   = $this->parseMembersFromPost('leader_name', 'leader_gender', 'leader_email', 'leader_phone');
+        $interns   = $this->parseMembersFromPost('intern_name', 'intern_gender', 'intern_email', 'intern_phone');
         $attendees = $this->parseMembersFromPost('attendee_name');
-        $lgLeaders = $this->parseMembersFromPost('lg_leader_name', 'lg_leader_gender');
+        $lgLeaders = $this->parseMembersFromPost('lg_leader_name', 'lg_leader_gender', 'lg_leader_email', 'lg_leader_phone');
         $tab = $this->tabForKind($data['group_kind'] ?? '');
 
         if (($reqErr = $this->requiredFieldsError($data, $interns)) !== '') {

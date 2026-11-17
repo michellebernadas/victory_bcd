@@ -6,13 +6,9 @@ $scBatchNames   = $scBatchNames   ?? [];
 $sfWeeks        = $sfWeeks        ?? [];
 $sfRequiredWeeks = $sfRequiredWeeks ?? $sfWeeks;
 
-// Year options: DB years + current and previous year, most recent first.
-$_yearOpts = array_map('intval', $availableYears);
-$_curYear  = (int)date('Y');
-foreach ([$_curYear - 1, $_curYear] as $_y) {
-    if (!in_array($_y, $_yearOpts)) $_yearOpts[] = $_y;
-}
-rsort($_yearOpts);
+// Year options: every year from now back to ProgramAttendance::CLASS_MIN_YEAR
+require_once __DIR__ . '/../../models/ProgramAttendance.php';
+include __DIR__ . '/class_year_options.php';
 ?>
 <div class="row g-3">
     <!-- Participant Name -->
@@ -52,6 +48,8 @@ rsort($_yearOpts);
         <label class="form-label fw-semibold">Contact Number <span class="text-muted fw-normal small">(optional)</span></label>
         <input type="text" name="contact_number" class="form-control sf-contact" placeholder="09XXXXXXXXX">
     </div>
+
+    <?php include __DIR__ . '/completed_year_only.php'; ?>
 
     <!-- Linked Member -->
     <div class="col-12">

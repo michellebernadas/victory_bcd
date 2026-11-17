@@ -5,7 +5,7 @@ require_once 'models/Member.php';
 /**
  * Shared controller for "session classes" — discipleship classes whose
  * attendance is a per-session grid stored in program_attendances.extra_data
- * (Leadership 1-1-3 and Spiritual Foundations today).
+ * (Leadership 113 and Spiritual Foundations today).
  *
  * Subclasses only declare what differs: the program_type, the route action
  * name, the display label and the expected number of sessions. Everything
@@ -72,7 +72,7 @@ abstract class SessionClassController {
         // Match-status filter persists across page navigation via the `match` URL parameter.
         $activeMatch      = in_array($_GET['match'] ?? '', ['matched', 'unmatched'], true) ? $_GET['match'] : 'all';
 
-        // Back-compat aliases so the existing Leadership 1-1-3 view keeps working unchanged.
+        // Back-compat aliases so the existing Leadership 113 view keeps working unchanged.
         $l113BatchNames = $scBatchNames;
         $l113Statuses   = $scStatuses;
 

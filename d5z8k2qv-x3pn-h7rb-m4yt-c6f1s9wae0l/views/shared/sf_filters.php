@@ -31,9 +31,6 @@ $_keep = function (array $skip = []) use ($activeYear, $activeBatch, $activeSear
                style="<?php echo $sfFilterCount > 0 ? '' : 'display:none'; ?>">
                 <i class="bi bi-x-circle me-1"></i>Clear Filters
             </a>
-            <a href="index.php?action=attendanceRecords" class="btn btn-sm btn-outline-light">
-                <i class="bi bi-layout-three-columns me-1"></i>All Classes
-            </a>
             <button class="btn btn-sm btn-outline-light" type="button"
                     data-bs-toggle="collapse" data-bs-target="#sfFilterBody" aria-expanded="true">
                 <i class="bi bi-chevron-down"></i>

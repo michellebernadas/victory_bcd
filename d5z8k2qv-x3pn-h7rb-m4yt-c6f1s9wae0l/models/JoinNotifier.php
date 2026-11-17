@@ -46,7 +46,10 @@ class JoinNotifier {
             // Leaders: names for the greeting, emails from linked member records.
             $leaderNames = []; $leaderEmails = self::emails($r['notify_email'] ?? '');
             if ($r['group_id']) {
-                $ls = $db->prepare("SELECT COALESCE(NULLIF(vm.display_name,''), vm.name) AS nm, m1.email AS e1, m2.email AS e2
+                // vm.email is the address typed for this leader on the group form (needs migration 2026_11_17_06).
+                $hasVm = false;
+                try { $hasVm = (bool)$db->query("SHOW COLUMNS FROM vg_members LIKE 'email'")->fetch(); } catch (PDOException $e) {}
+                $ls = $db->prepare("SELECT COALESCE(NULLIF(vm.display_name,''), vm.name) AS nm, m1.email AS e1, m2.email AS e2, " . ($hasVm ? 'vm.email' : 'NULL') . " AS e0
                                       FROM vg_members vm
                                       LEFT JOIN members m1 ON m1.id = vm.member_id
                                       LEFT JOIN members m2 ON m2.id = vm.member_id_2
@@ -54,7 +57,7 @@ class JoinNotifier {
                 $ls->execute([(int)$r['group_id']]);
                 foreach ($ls->fetchAll() as $l) {
                     if (trim($l['nm']) !== '') $leaderNames[] = trim($l['nm']);
-                    foreach ([$l['e1'], $l['e2']] as $e) foreach (self::emails($e) as $k => $v) $leaderEmails[$k] = $v;
+                    foreach ([$l['e0'], $l['e1'], $l['e2']] as $e) foreach (self::emails($e) as $k => $v) $leaderEmails[$k] = $v;
                 }
             }
 

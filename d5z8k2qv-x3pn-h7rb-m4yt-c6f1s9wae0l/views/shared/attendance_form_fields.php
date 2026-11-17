@@ -2,13 +2,9 @@
 // Shared form fields for Add and Edit Attendance modals.
 // Requires in scope: $PROGRAM_DEFS, $allCounselors, $availableYears
 $allCounselors  = $allCounselors  ?? [];
-// Build year options: DB years + current and previous year, most recent first
-$_yearOpts = array_map('intval', $availableYears ?? []);
-$_curYear  = (int)date('Y');
-foreach ([$_curYear - 1, $_curYear] as $_y) {
-    if (!in_array($_y, $_yearOpts)) $_yearOpts[] = $_y;
-}
-rsort($_yearOpts);
+// Year options: every year from now back to ProgramAttendance::CLASS_MIN_YEAR (1985 etc. must be selectable)
+require_once __DIR__ . '/../../models/ProgramAttendance.php';
+include __DIR__ . '/class_year_options.php';
 ?>
 <div class="row g-3">
     <!-- Name -->
@@ -87,37 +83,11 @@ rsort($_yearOpts);
         </div>
     </div>
 
-    <!-- Contact & Water Baptism -->
+    <!-- Contact -->
     <div class="col-md-5">
         <label class="form-label fw-semibold">Contact Number</label>
         <input type="text" name="contact_number" class="form-control at-contact" placeholder="09XXXXXXXXX">
     </div>
-    <div class="col-md-4 at-field-wbap">
-        <label class="form-label fw-semibold">
-            <i class="bi bi-droplet-fill text-primary me-1"></i>Underwent Water Baptism? <span class="text-danger">*</span>
-        </label>
-        <select name="water_baptism" class="form-select at-wbap" style="width:100%">
-            <option value="0">No</option>
-            <option value="1">Yes</option>
-        </select>
-    </div>
-
-    <!-- Water Baptism remarks — belongs to the Water Baptism answer above (the
-         program_attendances.water_baptism flag), NOT to Victory Weekend. It is
-         only shown once Water Baptism = Yes, and the model clears it whenever
-         Water Baptism is set back to No. -->
-    <div class="col-12 at-field-wbap-remarks" style="display:none">
-        <label class="form-label fw-semibold">
-            <i class="bi bi-droplet-fill text-primary me-1"></i>Water Baptism Remarks / Notes
-            <span class="text-muted fw-normal small">(optional — where and how the person was baptized)</span>
-        </label>
-        <textarea name="water_baptism_remarks" class="form-control at-wbap-remarks" rows="2"
-                  placeholder="e.g. Sea baptism at Punta Taytay, officiated by Ptr. Juan"></textarea>
-        <div class="form-text small">
-            <i class="bi bi-info-circle me-1"></i>Attached to this record's <strong>Water Baptism</strong> entry.
-        </div>
-    </div>
-
     <!-- Counselor -->
     <div class="col-md-5 at-field-counselor">
         <label class="form-label fw-semibold">Counselor Name</label>
@@ -185,7 +155,7 @@ rsort($_yearOpts);
     <div class="col-12 at-extra-l113" style="display:none">
         <div class="card border-danger">
             <div class="card-header py-2 bg-danger text-white small fw-semibold d-flex align-items-center">
-                <i class="bi bi-trophy me-1"></i>Leadership 1-1-3 — Session Attendance
+                <i class="bi bi-trophy me-1"></i>Leadership 113 — Session Attendance
             </div>
             <div class="card-body py-2 small">
                 <p class="text-muted mb-2"><i class="bi bi-info-circle me-1"></i>
@@ -193,7 +163,7 @@ rsort($_yearOpts);
                 <strong>You can still save the basic record (name, year, batch, etc.) here</strong> — it'll appear on the L113 page where you can add the session details.
                 </p>
                 <a href="index.php?action=leadership113" target="_blank" class="btn btn-sm btn-outline-danger">
-                    <i class="bi bi-box-arrow-up-right me-1"></i>Open Leadership 1-1-3 page
+                    <i class="bi bi-box-arrow-up-right me-1"></i>Open Leadership 113 page
                 </a>
             </div>
         </div>

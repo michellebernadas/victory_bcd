@@ -430,7 +430,7 @@ class Member {
             error_log("getStats error: " . $e->getMessage());
         }
         // Keys the dashboard reads unconditionally.
-        foreach (['victory_weekend','church_community','making_disciples','empowering_leaders','leadership_113'] as $k) {
+        foreach (['victory_weekend','water_baptism','church_community','making_disciples','empowering_leaders','leadership_113'] as $k) {
             $stats[$k] = $stats[$k] ?? 0;
         }
         return $stats;

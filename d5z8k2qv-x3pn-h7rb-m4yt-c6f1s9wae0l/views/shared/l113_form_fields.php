@@ -4,13 +4,9 @@
 $availableYears = $availableYears ?? [];
 $l113BatchNames = $l113BatchNames ?? [];
 
-// Build year options: DB years + current and previous year, most recent first
-$_yearOpts = array_map('intval', $availableYears);
-$_curYear  = (int)date('Y');
-foreach ([$_curYear - 1, $_curYear] as $_y) {
-    if (!in_array($_y, $_yearOpts)) $_yearOpts[] = $_y;
-}
-rsort($_yearOpts);
+// Year options: every year from now back to ProgramAttendance::CLASS_MIN_YEAR
+require_once __DIR__ . '/../../models/ProgramAttendance.php';
+include __DIR__ . '/class_year_options.php';
 
 ?>
 <div class="row g-3">
@@ -27,12 +23,12 @@ rsort($_yearOpts);
     <!-- Class / Year / Batch -->
     <?php // The class is fixed by the page. It used to be a dropdown listing every
           // class, which meant one mis-click could convert an L113 participant —
-          // session grid and all — into a Victory Weekend record. ?>
+          // session grid and all — into a Victory Day record. ?>
     <input type="hidden" name="program_type" value="leadership_113">
     <div class="col-md-5">
         <label class="form-label fw-semibold">Class</label>
         <div class="form-control-plaintext fw-semibold text-danger">
-            <i class="bi bi-trophy me-1"></i>Leadership 1-1-3
+            <i class="bi bi-trophy me-1"></i>Leadership 113
         </div>
     </div>
     <div class="col-md-2">
@@ -58,6 +54,8 @@ rsort($_yearOpts);
         <label class="form-label fw-semibold">Contact Number <span class="text-muted fw-normal small">(optional)</span></label>
         <input type="text" name="contact_number" class="form-control l113-contact" placeholder="09XXXXXXXXX">
     </div>
+
+    <?php include __DIR__ . '/completed_year_only.php'; ?>
 
     <!-- Linked Member -->
     <div class="col-12">

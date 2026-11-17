@@ -6,14 +6,15 @@ include 'shared/header.php';
  * Classes this page can CREATE. A plain attendance row is the whole completion
  * evidence for these four.
  *
- * Leadership 1-1-3 and Spiritual Foundations are deliberately absent: their
+ * Leadership 113 and Spiritual Foundations are deliberately absent: their
  * completion depends on a per-session / per-topic grid, so a generic row could
  * never be valid evidence and would only create a record the dedicated module
  * then has to repair. They are created in their own modules instead
  * (AttendanceController rejects them server-side too).
  */
 $PROGRAM_DEFS = [
-    'victory_weekend'    => ['label' => 'Victory Weekend',    'color' => 'primary',   'icon' => 'bi-sun',         'short' => 'VW'],
+    'victory_weekend'    => ['label' => 'Victory Day',    'color' => 'primary',   'icon' => 'bi-sun',         'short' => 'VD'],
+    'water_baptism'      => ['label' => 'Water Baptism',  'color' => 'info',      'icon' => 'bi-droplet',     'short' => 'WB'],
     'church_community'   => ['label' => 'Church Community',   'color' => 'secondary', 'icon' => 'bi-building',    'short' => 'CC'],
     'making_disciples'   => ['label' => 'Making Disciples',   'color' => 'success',   'icon' => 'bi-person-plus', 'short' => 'MD'],
     'empowering_leaders' => ['label' => 'Empowering Leaders', 'color' => 'warning',   'icon' => 'bi-star',        'short' => 'EL'],
@@ -25,7 +26,7 @@ $PROGRAM_DEFS = [
  * label, colour and icon rather than falling back to a raw program_type.
  */
 $DEDICATED_DEFS = [
-    'leadership_113'        => ['label' => 'Leadership 1-1-3',      'color' => 'danger', 'icon' => 'bi-trophy', 'short' => 'L113', 'action' => 'leadership113'],
+    'leadership_113'        => ['label' => 'Leadership 113',      'color' => 'danger', 'icon' => 'bi-trophy', 'short' => 'L113', 'action' => 'leadership113'],
     'spiritual_foundations' => ['label' => 'Spiritual Foundations', 'color' => 'purple', 'icon' => 'bi-shield', 'short' => 'SF',   'action' => 'spiritualFoundations'],
 ];
 
@@ -41,6 +42,8 @@ $allEventLabels      = $allEventLabels      ?? [];
 $allCounselors       = $allCounselors       ?? [];
 $availableEventDates = $availableEventDates ?? [];
 $activeTab      = $_GET['tab']    ?? 'records';
+// Water Baptism is a simple record list: it has no Statistics tab.
+if (($_GET['program_type'] ?? '') === 'water_baptism') $activeTab = 'records';
 // Active class helpers
 $activePt       = $activeFilters['program_type'] ?? '';
 $activePtDef    = $activePt ? ($ALL_CLASS_DEFS[$activePt] ?? null) : null;
@@ -49,6 +52,7 @@ $isVWView       = $activePt === 'victory_weekend';
 $isCCView       = $activePt === 'church_community';
 $isMDView       = $activePt === 'making_disciples';
 $isELView       = $activePt === 'empowering_leaders';
+$isWBView       = $activePt === 'water_baptism';
 $isL113View     = $activePt === 'leadership_113';
 // Column visibility
 $colProgram     = $isAllView;
@@ -56,7 +60,7 @@ $colWaterBap    = $isAllView || $isVWView;
 $colDoneVW      = $isAllView || $isVWView;
 $colMdCols      = $isMDView;
 $colExtraInfo   = $isAllView || $isL113View;
-$colCounselor   = !$isCCView && !$isMDView && !$isELView;
+$colCounselor   = !$isCCView && !$isMDView && !$isELView && !$isWBView;
 // Show Batch column only if any record in the active view has a batch_label.
 // (Right now only L113 has values — the column quietly stays hidden for VW/CC/MD/EL
 // until somebody manually fills in those classes' batches.)
@@ -141,12 +145,14 @@ if (!$isL113View) {
                         <i class="bi bi-table me-1"></i>Records
                     </a>
                 </li>
+                <?php if (!$isWBView): ?>
                 <li class="nav-item">
                     <a class="nav-link <?php echo $activeTab === 'stats' ? 'active' : ''; ?>"
                        href="index.php?action=attendanceRecords&tab=stats<?php echo $activePt ? '&program_type='.urlencode($activePt) : ''; ?>">
                         <i class="bi bi-bar-chart-line me-1"></i>Statistics
                     </a>
                 </li>
+                <?php endif; ?>
             </ul>
 
             <!-- Notifications -->
@@ -204,16 +210,6 @@ if (!$isL113View) {
                         </div>
                     </div>
                 </div>
-                <?php if ($isVWView): ?>
-                <div class="col-6 col-md-3 col-xl">
-                    <div class="card text-center h-100">
-                        <div class="card-body py-2 px-1">
-                            <div class="h4 fw-bold text-primary mb-0"><?php echo $statWBap; ?></div>
-                            <div style="font-size:11px;" class="text-muted"><i class="bi bi-droplet-fill me-1"></i>Water Baptism</div>
-                        </div>
-                    </div>
-                </div>
-                <?php endif; ?>
                 <div class="col-6 col-md-3 col-xl">
                     <div class="card text-center h-100">
                         <div class="card-body py-2 px-1">
@@ -330,11 +326,6 @@ if (!$isL113View) {
                            onclick="filterAtClassYear('', 0); filterAtMatchStatus('all'); var s=document.getElementById('atFilterSearch'); if(s)s.value=''; <?php echo $atFilterCount > 0 ? 'return true' : 'if(window.atTable){window.atTable.search(\'\').draw();} return false'; ?>;">
                             <i class="bi bi-x-circle me-1"></i>Clear Filters
                         </a>
-                        <?php if ($activePt): ?>
-                        <a href="index.php?action=attendanceRecords" class="btn btn-sm btn-outline-light">
-                            <i class="bi bi-layout-three-columns me-1"></i>All Classes
-                        </a>
-                        <?php endif; ?>
                         <button class="btn btn-sm btn-outline-light" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#atFilterBody" aria-expanded="true">
                             <i class="bi bi-chevron-down"></i>
@@ -391,7 +382,7 @@ if (!$isL113View) {
                             <?php foreach ($availableEventDates as $_evDate):
                                 $isEvActive = ($activeDateFrom === $_evDate);
                                 $dt1 = new DateTime($_evDate);
-                                // For 2-day events (Victory Weekend), show both days
+                                // For 2-day events (Victory Day), show both days
                                 if ($activePt === 'victory_weekend') {
                                     $dt2 = (clone $dt1)->modify('+1 day');
                                     if ($dt1->format('M') === $dt2->format('M')) {
@@ -526,11 +517,12 @@ if (!$isL113View) {
             $allMemberTotal      = $allMemberTotal      ?? 0;
 
             $overviewCards = [
-                ['key' => 'victory_weekend',       'label' => 'Victory Weekend',       'color' => 'primary',   'icon' => 'bi-sun'],
+                ['key' => 'victory_weekend',       'label' => 'Victory Day',       'color' => 'primary',   'icon' => 'bi-sun'],
+                ['key' => 'water_baptism',         'label' => 'Water Baptism',         'color' => 'info',      'icon' => 'bi-droplet'],
                 ['key' => 'church_community',      'label' => 'Church Community',      'color' => 'secondary', 'icon' => 'bi-building'],
                 ['key' => 'making_disciples',      'label' => 'Making Disciples',      'color' => 'success',   'icon' => 'bi-person-plus'],
                 ['key' => 'empowering_leaders',    'label' => 'Empowering Leaders',    'color' => 'warning',   'icon' => 'bi-star'],
-                ['key' => 'leadership_113',        'label' => 'Leadership 1-1-3',      'color' => 'danger',    'icon' => 'bi-trophy'],
+                ['key' => 'leadership_113',        'label' => 'Leadership 113',      'color' => 'danger',    'icon' => 'bi-trophy'],
                 ['key' => 'spiritual_foundations', 'label' => 'Spiritual Foundations', 'color' => 'purple',    'icon' => 'bi-shield'],
             ];
             $ovDenom = max(1, $activeMemberTotal);
@@ -590,9 +582,7 @@ if (!$isL113View) {
             <div class="card mb-3 border-0" style="background:#f6f8fc;">
                 <div class="card-body py-2 px-3" id="atCompletionSummary">
                     <span class="text-muted small me-2"><i class="bi bi-bar-chart-fill me-1"></i>Showing:</span>
-                    <?php if ($isVWView): ?>
-                    <span class="me-3 small"><i class="bi bi-droplet-fill text-primary me-1"></i>Water Baptism: <strong id="atSumWaterBap">0/0</strong> <span class="text-muted">(<span id="atSumWaterBapPct">0%</span>)</span></span>
-                    <?php elseif ($isMDView): ?>
+                    <?php if ($isMDView): ?>
                     <span class="me-3 small"><i class="bi bi-1-circle text-success me-1"></i>Part 1: <strong id="atSumMdP1">0/0</strong> <span class="text-muted">(<span id="atSumMdP1Pct">0%</span>)</span></span>
                     <span class="me-3 small"><i class="bi bi-2-circle text-success me-1"></i>Part 2: <strong id="atSumMdP2">0/0</strong> <span class="text-muted">(<span id="atSumMdP2Pct">0%</span>)</span></span>
                     <span class="me-3 small"><i class="bi bi-check-circle-fill text-success me-1"></i>Both parts: <strong id="atSumMdBoth">0/0</strong> <span class="text-muted">(<span id="atSumMdBothPct">0%</span>)</span></span>
@@ -608,7 +598,8 @@ if (!$isL113View) {
                     <span class="text-white fw-semibold d-flex align-items-center flex-wrap gap-2">
                         <?php
                         $tableTitleMap = [
-                            'victory_weekend'    => 'Victory Weekend Records',
+                            'victory_weekend'    => 'Victory Day Records',
+                            'water_baptism'      => 'Water Baptism Records',
                             'church_community'   => 'Church Community Records',
                             'making_disciples'   => 'Making Disciples Records',
                             'empowering_leaders' => 'Empowering Leaders Records',
@@ -672,12 +663,12 @@ if (!$isL113View) {
                                 <?php if ($isAllView): /* All Classes — pivot view: one row per member, all class columns */ ?>
                                     <th>#</th>
                                     <th>Participant Name</th>
-                                    <th class="text-center"><i class="bi bi-sun me-1 text-primary"></i>Victory Weekend</th>
-                                    <th class="text-center"><i class="bi bi-droplet-fill me-1 text-primary"></i>Baptized</th>
+                                    <th class="text-center"><i class="bi bi-sun me-1 text-primary"></i>Victory Day</th>
+                                    <th class="text-center"><i class="bi bi-droplet me-1 text-info"></i>Water Baptism</th>
                                     <th class="text-center"><i class="bi bi-building me-1 text-secondary"></i>Church Community</th>
                                     <th class="text-center"><i class="bi bi-person-plus me-1 text-success"></i>Making Disciples</th>
                                     <th class="text-center"><i class="bi bi-star me-1 text-warning"></i>Empowering Leaders</th>
-                                    <th class="text-center"><i class="bi bi-trophy me-1 text-danger"></i>Leadership 1-1-3</th>
+                                    <th class="text-center"><i class="bi bi-trophy me-1 text-danger"></i>Leadership 113</th>
                                     <th>Contact #</th>
                                     <th>Matched Member</th>
                                     <th class="text-center" title="Number of classes this participant has any record for, out of 5 total (VW, CC, MD, EL, L113).">Progress</th>
@@ -685,8 +676,6 @@ if (!$isL113View) {
                                 <?php elseif ($isVWView): ?>
                                     <th>#</th>
                                     <th>Participant Name</th>
-                                    <th class="text-center"><i class="bi bi-droplet-fill me-1 text-primary"></i>Baptized</th>
-                                    <th title="Remarks attached to this record's Water Baptism entry">Water Baptism Remarks</th>
                                     <th>Event Date</th>
                                     <?php if ($showBatchCol): ?><th>Batch</th><?php endif; ?>
                                     <th>Counselor</th>
@@ -716,7 +705,7 @@ if (!$isL113View) {
                                     <?php if ($showNotesCol): ?><th>Notes</th><?php endif; ?>
                                     <th class="text-center">Status</th>
                                     <th class="text-center">Actions</th>
-                                <?php elseif ($isELView): ?>
+                                <?php elseif ($isELView || $isWBView): ?>
                                     <th>#</th>
                                     <th>Participant Name</th>
                                     <th>Event Date</th>
@@ -758,9 +747,9 @@ if (!$isL113View) {
                                                 'member_name'     => $rec['member_name'] ?? '',
                                                 'member_ministry' => $rec['member_ministry'] ?? '',
                                                 'contact'         => $rec['contact_number'],
-                                                'classes'         => ['victory_weekend'=>null,'church_community'=>null,'making_disciples'=>null,'empowering_leaders'=>null,'leadership_113'=>null],
+                                                'classes'         => ['victory_weekend'=>null,'water_baptism'=>null,'church_community'=>null,'making_disciples'=>null,'empowering_leaders'=>null,'leadership_113'=>null],
                                                 // Year(s) the member has records for, per class — drives the per-class year filter.
-                                                'class_years'     => ['victory_weekend'=>[],'church_community'=>[],'making_disciples'=>[],'empowering_leaders'=>[],'leadership_113'=>[]],
+                                                'class_years'     => ['victory_weekend'=>[],'water_baptism'=>[],'church_community'=>[],'making_disciples'=>[],'empowering_leaders'=>[],'leadership_113'=>[]],
                                                 'rec_ids'         => [],
                                             ];
                                         }
@@ -788,6 +777,7 @@ if (!$isL113View) {
                                     // P1/P2 (for MD) and session info (for L113).
                                     $cls = $p['classes'];
                                     $vwRec   = $cls['victory_weekend'];   $vwExtra   = ($vwRec   && $vwRec['extra_data'])   ? json_decode($vwRec['extra_data'],   true) : null;
+                                    $wbRec   = $cls['water_baptism'];
                                     $ccRec   = $cls['church_community'];
                                     $mdRec   = $cls['making_disciples'];  $mdExtra   = ($mdRec   && $mdRec['extra_data'])   ? json_decode($mdRec['extra_data'],   true) : null;
                                     $elRec   = $cls['empowering_leaders'];
@@ -822,7 +812,7 @@ if (!$isL113View) {
                                     <?php foreach ($p['class_years'] as $_clsKey => $_yrs): ?>
                                     data-yr-<?php echo $_clsKey; ?>="<?php echo htmlspecialchars(implode(',', array_keys($_yrs))); ?>"
                                     <?php endforeach; ?>
-                                    data-water-bap="<?php echo $vwRec ? (int)$vwRec['water_baptism'] : 0; ?>"
+                                    data-water-bap="<?php echo $wbRec ? 1 : 0; ?>"
                                     data-md-p1="<?php echo $mdP1; ?>" data-md-p2="<?php echo $mdP2; ?>">
                                     <td class="text-muted small at-row-num"><?php echo ++$rowNum; ?></td>
                                     <td class="fw-semibold">
@@ -840,18 +830,12 @@ if (!$isL113View) {
                                             <?php echo _atDateLine($vwRec); ?>
                                         <?php else: ?><span class="text-muted">—</span><?php endif; ?>
                                     </td>
-                                    <!-- Baptized: water droplet icon if baptized, with the baptism
-                                         remarks shown underneath (the remark belongs to the water
-                                         baptism entry, so it travels with it here too). -->
+                                    <!-- Water Baptism: ✓ + date, with the note (where / how) underneath -->
                                     <td class="text-center small">
-                                        <?php if ($vwRec && (int)$vwRec['water_baptism']):
-                                            $pvRemark = trim((string)($vwRec['water_baptism_remarks'] ?? ''));
-                                        ?>
-                                            <i class="bi bi-droplet-fill text-primary" style="font-size:1.2rem;"
-                                               title="Underwent water baptism<?php echo $pvRemark !== '' ? ' — ' . htmlspecialchars($pvRemark) : ''; ?>"></i>
-                                            <?php if ($pvRemark !== ''): ?>
-                                            <div class="text-muted text-start" style="font-size:10px;"><?php echo htmlspecialchars($pvRemark); ?></div>
-                                            <?php endif; ?>
+                                        <?php if ($wbRec): $pvRemark = trim((string)($wbRec['notes'] ?? '')); ?>
+                                            <span class="badge bg-info"><i class="bi bi-droplet-fill"></i></span>
+                                            <?php echo _atDateLine($wbRec); ?>
+                                            <?php if ($pvRemark !== ''): ?><div class="text-muted text-start" style="font-size:10px;"><?php echo htmlspecialchars($pvRemark); ?></div><?php endif; ?>
                                         <?php else: ?><span class="text-muted">—</span><?php endif; ?>
                                     </td>
                                     <!-- CC -->
@@ -1019,26 +1003,7 @@ if (!$isL113View) {
                                     };
                                     ?>
 
-                                    <?php if ($isVWView): /* Victory Weekend record view */ ?>
-                                    <!-- Baptized -->
-                                    <td class="text-center small">
-                                        <?php if ((int)$rec['water_baptism']): ?>
-                                            <i class="bi bi-droplet-fill text-primary" style="font-size:1.2rem;" title="Underwent water baptism"></i>
-                                        <?php else: ?><span class="text-muted">—</span><?php endif; ?>
-                                    </td>
-                                    <!-- Water Baptism remarks — tied to this record's water_baptism
-                                         entry, so it only shows when the person was actually baptized. -->
-                                    <td class="small" style="max-width:220px;">
-                                        <?php
-                                        $wbapRemark = (int)$rec['water_baptism'] ? trim((string)($rec['water_baptism_remarks'] ?? '')) : '';
-                                        if ($wbapRemark !== ''): ?>
-                                            <i class="bi bi-droplet-fill text-primary me-1"></i><?php echo nl2br(htmlspecialchars($wbapRemark)); ?>
-                                        <?php elseif ((int)$rec['water_baptism']): ?>
-                                            <span class="text-muted" title="Baptized — no remarks recorded">—</span>
-                                        <?php else: ?>
-                                            <span class="text-muted" title="Not baptized on this record">—</span>
-                                        <?php endif; ?>
-                                    </td>
+                                    <?php if ($isVWView): /* Victory Day record view */ ?>
                                     <td class="small"><?php echo $renderDate($eventDateDisplay); ?></td>
                                     <?php if ($showBatchCol): ?><td class="small"><?php echo $renderBatch($batchDisplay); ?></td><?php endif; ?>
 
@@ -1067,7 +1032,7 @@ if (!$isL113View) {
                                     </td>
                                     <?php if ($showBatchCol): ?><td class="small"><?php echo $renderBatch($batchDisplay); ?></td><?php endif; ?>
 
-                                    <?php elseif ($isELView): /* Empowering Leaders record view */ ?>
+                                    <?php elseif ($isELView || $isWBView): /* Empowering Leaders / Water Baptism record view */ ?>
                                     <td class="small"><?php echo $renderDate($eventDateDisplay); ?></td>
                                     <?php if ($showBatchCol): ?><td class="small"><?php echo $renderBatch($batchDisplay); ?></td><?php endif; ?>
                                     <?php endif; ?>
@@ -1215,11 +1180,11 @@ if (!$isL113View) {
             $allMemberTotal      = $allMemberTotal      ?? 0;
 
             $completionCards = [
-                ['key' => 'victory_weekend',       'label' => 'Victory Weekend',       'short' => 'VW',   'color' => 'primary',   'icon' => 'bi-sun',         'link' => 'index.php?action=attendanceRecords&program_type=victory_weekend'],
+                ['key' => 'victory_weekend',       'label' => 'Victory Day',       'short' => 'VD',   'color' => 'primary',   'icon' => 'bi-sun',         'link' => 'index.php?action=attendanceRecords&program_type=victory_weekend'],
                 ['key' => 'church_community',      'label' => 'Church Community',      'short' => 'CC',   'color' => 'secondary', 'icon' => 'bi-building',    'link' => 'index.php?action=attendanceRecords&program_type=church_community'],
                 ['key' => 'making_disciples',      'label' => 'Making Disciples',      'short' => 'MD',   'color' => 'success',   'icon' => 'bi-person-plus', 'link' => 'index.php?action=attendanceRecords&program_type=making_disciples'],
                 ['key' => 'empowering_leaders',    'label' => 'Empowering Leaders',    'short' => 'EL',   'color' => 'warning',   'icon' => 'bi-star',        'link' => 'index.php?action=attendanceRecords&program_type=empowering_leaders'],
-                ['key' => 'leadership_113',        'label' => 'Leadership 1-1-3',      'short' => 'L113', 'color' => 'danger',    'icon' => 'bi-trophy',      'link' => 'index.php?action=leadership113',          'dedicated' => true],
+                ['key' => 'leadership_113',        'label' => 'Leadership 113',      'short' => 'L113', 'color' => 'danger',    'icon' => 'bi-trophy',      'link' => 'index.php?action=leadership113',          'dedicated' => true],
                 ['key' => 'spiritual_foundations', 'label' => 'Spiritual Foundations', 'short' => 'SF',   'color' => 'purple',    'icon' => 'bi-shield',      'link' => 'index.php?action=spiritualFoundations',  'dedicated' => true],
             ];
             $compDenom = max(1, $activeMemberTotal);
@@ -1306,7 +1271,7 @@ if (!$isL113View) {
 
             <?php if ($isVWView): ?>
             <?php
-            /* ── Victory Weekend statistics computation ── */
+            /* ── Victory Day statistics computation ── */
             $vwTotal    = 0; $vwBaptized = 0; $vwMatched = 0;
             $vwByBatch  = []; // [event_date => [year, total, baptized, matched]]
             $vwByYear   = []; // [year        => [total, baptized, matched]]
@@ -1358,14 +1323,6 @@ if (!$isL113View) {
                         <div class="card-body text-center py-3">
                             <div class="display-6 fw-bold text-success mb-0"><?php echo $vwSessions; ?></div>
                             <div class="small text-muted mt-1">Sessions</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="card h-100">
-                        <div class="card-body text-center py-3">
-                            <div class="display-6 fw-bold text-info mb-0"><?php echo $vwBaptized; ?></div>
-                            <div class="small text-muted mt-1">Water Baptism</div>
                         </div>
                     </div>
                 </div>
@@ -1454,7 +1411,6 @@ if (!$isL113View) {
                                     <th>Session</th>
                                     <th>Year</th>
                                     <th class="text-center">Total</th>
-                                    <th class="text-center">Baptized</th>
                                     <th class="text-center">Linked</th>
                                 </tr>
                             </thead>
@@ -1464,7 +1420,6 @@ if (!$isL113View) {
                                     <td class="fw-semibold"><?php echo htmlspecialchars($vwBatchLabels[$bk]); ?></td>
                                     <td><?php echo $bv['year'] ?: '—'; ?></td>
                                     <td class="text-center fw-bold"><?php echo $bv['total']; ?></td>
-                                    <td class="text-center"><?php echo $bv['baptized']; ?></td>
                                     <td class="text-center"><?php echo $bv['matched']; ?></td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -1472,7 +1427,6 @@ if (!$isL113View) {
                                     <td>Total</td>
                                     <td></td>
                                     <td class="text-center"><?php echo $vwTotal; ?></td>
-                                    <td class="text-center"><?php echo $vwBaptized; ?></td>
                                     <td class="text-center"><?php echo $vwMatched; ?></td>
                                 </tr>
                             </tbody>
@@ -1914,7 +1868,7 @@ if (!$isL113View) {
                 </div>
             </div>
 
-            <?php elseif ($isL113View): /* ── Leadership 1-1-3 statistics ── */ ?>
+            <?php elseif ($isL113View): /* ── Leadership 113 statistics ── */ ?>
             <?php
             $l113Total = 0; $l113Complete = 0; $l113Matched = 0;
             $l113ByBatch = []; // [batch_key => [batch, year, total, completed, notCompleted]]
@@ -2222,7 +2176,7 @@ if (!$isL113View) {
                             <button class="btn btn-sm btn-outline-light" onclick="exportDiscipleshipPipelinePng()" title="Download PNG"><i class="bi bi-download me-1"></i>PNG</button>
                         </div>
                         <div class="card-body pb-2">
-                            <p class="text-muted small mb-3">Total attendees per class — bars scaled to the largest class. Percentages are relative to Victory Weekend (entry point).</p>
+                            <p class="text-muted small mb-3">Total attendees per class — bars scaled to the largest class. Percentages are relative to Victory Day (entry point).</p>
                             <div class="row g-3">
                             <?php foreach ($ALL_CLASS_DEFS as $_pt => $_pd):
                                 $_cnt    = $pipelineTotals[$_pt];
@@ -2239,7 +2193,7 @@ if (!$isL113View) {
                                     </span>
                                     <span class="d-flex align-items-center gap-2">
                                         <?php if ($_pt !== 'victory_weekend'): ?>
-                                        <span class="text-muted small"><?php echo $_vwPct; ?>% of VW</span>
+                                        <span class="text-muted small"><?php echo $_vwPct; ?>% of Victory Day</span>
                                         <?php else: ?>
                                         <span class="text-muted small">entry point</span>
                                         <?php endif; ?>
@@ -2410,7 +2364,7 @@ function updateAtExtraFields(form) {
     $(form).find('.at-extra-md').toggle(pt === 'making_disciples');
     $(form).find('.at-extra-l113').toggle(pt === 'leadership_113');
     // Hide water baptism & counselor fields for Church Community, Making Disciples, and Empowering Leaders
-    var isCC = (pt === 'church_community');
+    var isCC = (pt === 'church_community' || pt === 'water_baptism');   // Water Baptism has no counselor either
     var isMD = (pt === 'making_disciples');
     var isEL = (pt === 'empowering_leaders');
     $(form).find('.at-field-wbap').toggle(!isCC && !isMD && !isEL);
@@ -2692,7 +2646,6 @@ document.addEventListener('DOMContentLoaded', function() {
             labels: VW_BATCH_LABELS,
             datasets: [
                 { label:'Total',         data: batchTotals,   backgroundColor:'rgba(13,110,253,.8)',  borderColor:'rgb(13,110,253)',  borderWidth:1 },
-                { label:'Water Baptized',data: batchBaptized, backgroundColor:'rgba(13,202,240,.7)',  borderColor:'rgb(13,202,240)',  borderWidth:1 },
             ]
         },
         options: {
@@ -2703,13 +2656,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Chart 2: Year-over-Year — Total + Water Baptism only
+    // Chart 2: Year-over-Year — Total
     var yearTotals   = VW_YEAR_DATA.map(function(y){ return y.total; });
     var yearBaptized = VW_YEAR_DATA.map(function(y){ return y.baptized; });
     var hasAny = function(arr){ return arr.some(function(v){ return v > 0; }); };
     var yearDatasets = [
         { label:'Total',         data: yearTotals,   backgroundColor:'rgba(13,110,253,.8)', borderWidth:1 },
-        { label:'Water Baptism', data: yearBaptized, backgroundColor:'rgba(13,202,240,.7)', borderWidth:1 },
     ].filter(function(ds){ return hasAny(ds.data); });
     new Chart(document.getElementById('vwYearChart'), {
         type: 'bar',
@@ -2746,7 +2698,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ── VW Session Summary table export helpers ────────────────────────────────────────────
 function _vwBatchTableData() {
     // Linked column stays visible in the UI but is excluded from CSV / Excel / PDF / Print exports.
-    var headers = ['Session','Year','Total','Baptized'];
+    var headers = ['Session','Year','Total'];
     var rows = [];
     document.querySelectorAll('#vwBatchTable tbody tr').forEach(function(tr) {
         var tds = tr.querySelectorAll('td');
@@ -2788,7 +2740,7 @@ function exportVwBatchPdf() {
     var d = _vwBatchTableData();
     var doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
     doc.setFontSize(13);
-    doc.text('Victory Weekend — Session Summary', 40, 36);
+    doc.text('Victory Day — Session Summary', 40, 36);
     doc.setFontSize(9); doc.setTextColor(120);
     doc.text('Exported: ' + new Date().toLocaleDateString(), 40, 52);
     doc.autoTable({
@@ -2819,7 +2771,7 @@ function printVwBatch() {
         + 'tr:last-child{font-weight:bold;background:#e9ecef}'
         + '@media print{@page{size:landscape}}'
         + '</style></head><body>'
-        + '<h2>Victory Weekend — Session Summary</h2>'
+        + '<h2>Victory Day — Session Summary</h2>'
         + '<p>Printed: '+new Date().toLocaleDateString()+' &nbsp;|&nbsp; '+(d.rows.length - 1)+' session(s)</p>'
         + '<table><thead>'+thead+'</thead><tbody>'+tbody+'</tbody></table>'
         + '</body></html>';
@@ -3241,7 +3193,7 @@ function exportArL113BatchPdf() {
     if (typeof window.jspdf==='undefined'){alert('PDF library not loaded.');return;}
     var d = _arL113BatchTableData();
     var doc = new window.jspdf.jsPDF({orientation:'landscape',unit:'pt',format:'a4'});
-    doc.setFontSize(13); doc.text('Leadership 1-1-3 — Batch Summary',40,36);
+    doc.setFontSize(13); doc.text('Leadership 113 — Batch Summary',40,36);
     doc.setFontSize(9); doc.setTextColor(120); doc.text('Exported: '+new Date().toLocaleDateString(),40,52);
     doc.autoTable({
         head:[d.headers],body:d.rows,startY:62,
@@ -3261,7 +3213,7 @@ function printArL113Batch() {
         +'table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 6px;text-align:left}'
         +'th{background:#c0392b;color:#fff}tr:nth-child(even){background:#f5f7fa}tr:last-child{font-weight:bold;background:#e9ecef}'
         +'</style></head><body>'
-        +'<h2>Leadership 1-1-3 — Batch Summary</h2>'
+        +'<h2>Leadership 113 — Batch Summary</h2>'
         +'<p>Printed: '+new Date().toLocaleDateString()+'</p>'
         +'<table><thead>'+thead+'</thead><tbody>'+tbody+'</tbody></table>'
         +'</body></html>';
@@ -3277,6 +3229,7 @@ var MONTHLY_BY_YEAR = <?php echo json_encode($monthlyByYear ?? []); ?>;
 var PROG_DEFS   = <?php echo json_encode(array_map(fn($p) => ['label'=>$p['label'],'color'=>$p['color'],'short'=>$p['short']], $ALL_CLASS_DEFS)); ?>;
 var CHART_COLORS = {
     victory_weekend:    {fill:'rgba(13,110,253,.8)',   border:'rgb(13,110,253)',   area:'rgba(13,110,253,.12)'},
+    water_baptism:      {fill:'rgba(13,202,240,.8)',   border:'rgb(13,202,240)',   area:'rgba(13,202,240,.12)'},
     church_community:   {fill:'rgba(25,135,84,.8)',    border:'rgb(25,135,84)',    area:'rgba(25,135,84,.12)'},
     making_disciples:   {fill:'rgba(13,202,240,.8)',   border:'rgb(13,202,240)',   area:'rgba(13,202,240,.12)'},
     empowering_leaders: {fill:'rgba(255,193,7,.8)',    border:'rgb(255,193,7)',    area:'rgba(255,193,7,.12)'},
@@ -3648,12 +3601,12 @@ function filterAtClassYear(pt, yr) {
     if (typeof window.updateAtFilterBadge === 'function') window.updateAtFilterBadge();
     // Update client-side filter badge
     var progLabels = {
-        victory_weekend: 'Victory Weekend', church_community: 'Church Community',
+        victory_weekend: 'Victory Day', water_baptism: 'Water Baptism', church_community: 'Church Community',
         making_disciples: 'Making Disciples', empowering_leaders: 'Empowering Leaders',
         leadership_113: 'Leadership 113'
     };
     var progColors = {
-        victory_weekend: 'primary', church_community: 'secondary',
+        victory_weekend: 'primary', water_baptism: 'info', church_community: 'secondary',
         making_disciples: 'success', empowering_leaders: 'warning',
         leadership_113: 'danger'
     };

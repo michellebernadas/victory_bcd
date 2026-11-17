@@ -4,7 +4,7 @@ require_once 'models/SfTopic.php';
 require_once 'models/SfProgress.php';
 
 /**
- * Spiritual Foundations — same session-grid structure as Leadership 1-1-3,
+ * Spiritual Foundations — same session-grid structure as Leadership 113,
  * plus its own curriculum (sf_topics) and cumulative cross-batch completion.
  */
 class SpiritualFoundationsController extends SessionClassController {

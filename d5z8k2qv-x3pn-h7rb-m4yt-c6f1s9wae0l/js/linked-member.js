@@ -7,7 +7,7 @@
  * longer silently disagree with the member it is linked to.
  *
  * Applies to the three class workflows that share this shape:
- *   Attendance Records (VW / CC / MD / EL), Leadership 1-1-3, Spiritual Foundations.
+ *   Attendance Records (VW / CC / MD / EL), Leadership 113, Spiritual Foundations.
  *
  * BEHAVIOUR
  *   - Member selected   -> name fields are filled, locked read-only, and

@@ -12,6 +12,12 @@ class AttendanceController {
     }
 
     public function listAttendances() {
+        // There is no all-classes page any more (it duplicated the Members page, which already shows each
+        // person's completion). Only the per-class pages remain.
+        if (empty($_GET['program_type'])) {
+            header('Location: index.php?action=members');
+            exit();
+        }
         $filters = [
             'program_type'    => $_GET['program_type']    ?? '',
             'program_year'    => $_GET['program_year']    ?? '',
@@ -58,14 +64,14 @@ class AttendanceController {
      * Classes the generic attendance form may create, and the module that owns
      * each of the rest.
      *
-     * Leadership 1-1-3 and Spiritual Foundations completion is decided by a
+     * Leadership 113 and Spiritual Foundations completion is decided by a
      * per-session / per-topic grid that this form cannot capture, so a generic
      * row for them would never be valid completion evidence — it would just be
      * a record the dedicated module has to repair. They are rejected here as
      * well as hidden from the dropdown, so a crafted POST can't slip one in.
      */
     private const DEDICATED_MODULES = [
-        'leadership_113'        => ['label' => 'Leadership 1-1-3',      'action' => 'leadership113'],
+        'leadership_113'        => ['label' => 'Leadership 113',      'action' => 'leadership113'],
         'spiritual_foundations' => ['label' => 'Spiritual Foundations', 'action' => 'spiritualFoundations'],
     ];
 
@@ -185,11 +191,11 @@ class AttendanceController {
 
     /**
      * REMOVED: this used to run `UPDATE members SET victory_weekend = 1` when a
-     * Victory Weekend record had water_baptism=1.
+     * Victory Day record had water_baptism=1.
      *
      * That was a second source of truth, and a write-only one — it could set the
      * flag but never clear it, so deleting the record left the member showing
-     * Victory Weekend complete forever. The flag is now derived from the
+     * Victory Day complete forever. The flag is now derived from the
      * attendance record itself by DiscipleshipProgressService, which handles the
      * water-baptism case automatically (the VW record IS the evidence) and
      * correctly reverts the step if that record is removed.

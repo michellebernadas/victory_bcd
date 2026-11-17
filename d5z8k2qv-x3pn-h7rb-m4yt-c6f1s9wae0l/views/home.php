@@ -69,12 +69,12 @@ foreach (GATHERING_PERMISSIONS as $gType => $gPerm) {
          ($gs && $gs['latest_date']) ? 'on ' . $hmDate($gs['latest_date']) : 'nothing recorded yet');
 }
 $classCards = [
-    ['attendance_records', 'index.php?action=attendanceRecords', 'bi-calendar-check', 'Attendance Records', 'Every class in one place.'],
-    ['class_victory_weekend', 'index.php?action=attendanceRecords&program_type=victory_weekend', 'bi-sun', 'Victory Weekend', 'Attendance records.'],
+    ['class_victory_weekend', 'index.php?action=attendanceRecords&program_type=victory_weekend', 'bi-sun', 'Victory Day', 'Attendance records.'],
+    ['class_water_baptism', 'index.php?action=attendanceRecords&program_type=water_baptism', 'bi-droplet', 'Water Baptism', 'Baptism records.'],
     ['class_church_community', 'index.php?action=attendanceRecords&program_type=church_community', 'bi-building', 'Church Community', 'Attendance records.'],
     ['class_making_disciples', 'index.php?action=attendanceRecords&program_type=making_disciples', 'bi-person-plus', 'Making Disciples', 'Attendance records.'],
     ['class_empowering_leaders', 'index.php?action=attendanceRecords&program_type=empowering_leaders', 'bi-star', 'Empowering Leaders', 'Attendance records.'],
-    ['class_leadership_113', 'index.php?action=leadership113', 'bi-trophy', 'Leadership 1-1-3', 'Leadership records.'],
+    ['class_leadership_113', 'index.php?action=leadership113', 'bi-trophy', 'Leadership 113', 'Leadership records.'],
     ['class_spiritual_foundations', 'index.php?action=spiritualFoundations', 'bi-shield', 'Spiritual Foundations', 'Weekly lessons and progress.'],
 ];
 foreach ($classCards as [$perm, $url, $icon, $title, $blurb]) $add($perm, $url, $icon, $title, $blurb, 'indigo');

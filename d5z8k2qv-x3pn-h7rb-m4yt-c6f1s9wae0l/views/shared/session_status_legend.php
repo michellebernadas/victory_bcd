@@ -1,6 +1,6 @@
 <?php
 /**
- * Shared status legend for session-based classes (Leadership 1-1-3 and
+ * Shared status legend for session-based classes (Leadership 113 and
  * Spiritual Foundations). Colours come from ProgramAttendance::statusStyle(),
  * so the legend can never drift from the badges it describes.
  *

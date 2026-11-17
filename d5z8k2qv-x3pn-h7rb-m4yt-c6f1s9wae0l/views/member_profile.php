@@ -420,30 +420,10 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                                         <div class="fw-semibold"><?php echo htmlspecialchars($step['name']); ?></div>
                                         <?php if ($done && $src): ?>
                                         <div class="text-muted" style="font-size:11px;">
-                                            <?php if ($src === 'attendance'): ?>
-                                            <i class="bi bi-journal-check me-1 text-success"></i>Source: Attendance
-                                            <?php elseif (($prog['historical_verification_status'] ?? '') === 'verified'): ?>
-                                            <i class="bi bi-clock-history me-1 text-success"></i>Source: Historical — Verified
-                                            <?php if (!empty($prog['completed_at'])): ?>
-                                                &middot; <?php echo date('M Y', strtotime($prog['completed_at'])); ?>
-                                            <?php endif; ?>
-                                            <?php if (!empty($prog['notes'])): ?>
-                                            <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip"
-                                               title="<?php echo htmlspecialchars($prog['notes']); ?>"></i>
-                                            <?php endif; ?>
-                                            <?php else: ?>
-                                            <i class="bi bi-clock-history me-1 text-warning"></i>Source: Historical — Needs Verification
-                                            <?php if (!empty($prog['completed_at'])): ?>
-                                                &middot; <?php echo date('M Y', strtotime($prog['completed_at'])); ?>
-                                            <?php endif; ?>
-                                            <?php if (!empty($prog['notes'])): ?>
-                                            <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip"
-                                               title="<?php echo htmlspecialchars($prog['notes']); ?>"></i>
-                                            <?php endif; ?>
-                                            <?php endif; ?>
+                                            <i class="bi bi-journal-check me-1 text-success"></i>From a class record
                                         </div>
                                         <?php elseif (!$done): ?>
-                                        <div class="text-muted" style="font-size:11px;">No attendance or historical record</div>
+                                        <div class="text-muted" style="font-size:11px;">No class record yet</div>
                                         <?php endif; ?>
                                         <?php if (!empty($yearsAttended)): ?>
                                         <div class="mt-1">
@@ -463,7 +443,7 @@ $dayOrder = ['Sunday'=>0,'Monday'=>1,'Tuesday'=>2,'Wednesday'=>3,'Thursday'=>4,'
                             </ul>
                             <div class="card-footer bg-transparent small text-muted">
                                 <i class="bi bi-shield-check me-1"></i>
-                                Derived from attendance records, plus admin-approved historical completions.
+                                Worked out automatically from this member's class records.
                             </div>
                         </div>
                     </div>

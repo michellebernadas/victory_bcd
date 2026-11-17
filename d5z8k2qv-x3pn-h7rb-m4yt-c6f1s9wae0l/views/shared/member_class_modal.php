@@ -7,8 +7,8 @@
  * member they had just been looking at.
  *
  * Scope is deliberately narrow — only the four simple classes:
- *     Victory Weekend, Church Community, Making Disciples, Empowering Leaders
- * Leadership 1-1-3 and Spiritual Foundations are driven by a per-session grid
+ *     Victory Day, Church Community, Making Disciples, Empowering Leaders
+ * Leadership 113 and Spiritual Foundations are driven by a per-session grid
  * that cannot be captured in a small modal, so those navigate in the SAME tab
  * and carry a "Back to Member" action instead.
  *
@@ -24,7 +24,8 @@ $mcMemberId = (int)$member['id'];
 // The four classes the generic attendance form owns. Keys match
 // program_attendances.program_type; labels/icons mirror ProgramAttendance.
 $mcClasses = [
-    'victory_weekend'    => ['label' => 'Victory Weekend',    'icon' => 'bi-sun',         'color' => 'primary'],
+    'victory_weekend'    => ['label' => 'Victory Day',    'icon' => 'bi-sun',         'color' => 'primary'],
+    'water_baptism'      => ['label' => 'Water Baptism',      'icon' => 'bi-droplet',     'color' => 'info'],
     'church_community'   => ['label' => 'Church Community',   'icon' => 'bi-building',    'color' => 'secondary'],
     'making_disciples'   => ['label' => 'Making Disciples',   'icon' => 'bi-person-plus', 'color' => 'success'],
     'empowering_leaders' => ['label' => 'Empowering Leaders', 'icon' => 'bi-star',        'color' => 'warning'],
@@ -121,25 +122,6 @@ $mcYears   = range($mcCurYear, $mcCurYear - 5);
                                    placeholder="Who walked them through this class">
                         </div>
 
-                        <!-- Water baptism belongs to Victory Weekend only. -->
-                        <div class="col-md-6" id="mcBaptismField" style="display:none">
-                            <label class="form-label fw-semibold">
-                                <i class="bi bi-droplet-fill text-primary me-1"></i>Underwent Water Baptism?
-                            </label>
-                            <select name="water_baptism" class="form-select" id="mcBaptism">
-                                <option value="0">No</option>
-                                <option value="1">Yes</option>
-                            </select>
-                        </div>
-
-                        <div class="col-12" id="mcBaptismRemarks" style="display:none">
-                            <label class="form-label fw-semibold">
-                                Water Baptism Remarks <span class="text-muted fw-normal small">(optional)</span>
-                            </label>
-                            <textarea name="water_baptism_remarks" id="mcBapRemarks" class="form-control" rows="2"
-                                      placeholder="e.g. Sea baptism at Punta Taytay"></textarea>
-                        </div>
-
                         <div class="col-12">
                             <label class="form-label fw-semibold">
                                 Notes <span class="text-muted fw-normal small">(optional)</span>
@@ -169,26 +151,13 @@ $mcYears   = range($mcCurYear, $mcCurYear - 5);
 </div>
 
 <script>
-// Victory Weekend is the only class that asks about water baptism, and the
-// remarks box only matters once the answer is Yes.
+// Water Baptism is its own class now (pick it in the Class list); Victory Day no longer asks about it.
 (function () {
     var typeSel   = document.getElementById('mcProgramType');
-    var bapField  = document.getElementById('mcBaptismField');
-    var bapSel    = document.getElementById('mcBaptism');
-    var bapNotes  = document.getElementById('mcBaptismRemarks');
     var dupBox    = document.getElementById('mcDuplicateWarning');
     var dupText   = document.getElementById('mcDuplicateText');
     var form      = document.getElementById('addClassRecordForm');
     if (!typeSel || !form) return;
-
-    function syncBaptism() {
-        var isVw = typeSel.value === 'victory_weekend';
-        bapField.style.display = isVw ? '' : 'none';
-        bapNotes.style.display = (isVw && bapSel.value === '1') ? '' : 'none';
-        if (!isVw) bapSel.value = '0';
-    }
-    typeSel.addEventListener('change', syncBaptism);
-    bapSel.addEventListener('change', syncBaptism);
 
     // Reuses the duplicate-check endpoint the Attendance Records page already uses.
     function checkDuplicate() {
@@ -223,7 +192,7 @@ $mcYears   = range($mcCurYear, $mcCurYear - 5);
         document.getElementById('mcSaveText').textContent  = edit ? 'Save Changes' : 'Save Record';
         document.getElementById('mcWhoText').textContent   = edit ? 'You are editing this member\'s record.' : 'This record will be added to this member.';
         keepIds.forEach(function (id) { document.getElementById(id).disabled = !edit; });
-        if (!edit) { form.reset(); syncBaptism(); dupBox.style.display = 'none'; return; }
+        if (!edit) { form.reset(); dupBox.style.display = 'none'; return; }
         typeSel.value = rec.program_type || '';
         var yr = document.getElementById('mcYear');
         if (rec.program_year && !Array.prototype.some.call(yr.options, function (o) { return o.value == rec.program_year; })) {
@@ -234,13 +203,10 @@ $mcYears   = range($mcCurYear, $mcCurYear - 5);
         setVal('mcBatch', rec.batch_label);
         setVal('mcCounselor', rec.counselor_name);
         setVal('mcNotes', rec.notes);
-        bapSel.value = String(rec.water_baptism) === '1' ? '1' : '0';
-        setVal('mcBapRemarks', rec.water_baptism_remarks);
         setVal('mcCounselorContact', rec.counselor_contact);
         setVal('mcContactNumber', rec.contact_number);
         setVal('mcMdPart1', String(rec.md_part1) === '1' ? '1' : '');
         setVal('mcMdPart2', String(rec.md_part2) === '1' ? '1' : '');
-        syncBaptism();
         dupBox.style.display = 'none';
     }
     // Any "Add" opener resets to add mode; an [data-class-edit] opener fills it.
@@ -249,7 +215,7 @@ $mcYears   = range($mcCurYear, $mcCurYear - 5);
         var rec = null;
         if (btn && btn.dataset && btn.dataset.classEdit) { try { rec = JSON.parse(btn.dataset.classEdit); } catch (x) {} }
         setMode(rec);
-        if (!rec && btn && btn.dataset && btn.dataset.preselect) { typeSel.value = btn.dataset.preselect; syncBaptism(); checkDuplicate(); }
+        if (!rec && btn && btn.dataset && btn.dataset.preselect) { typeSel.value = btn.dataset.preselect; checkDuplicate(); }
     });
 })();
 </script>

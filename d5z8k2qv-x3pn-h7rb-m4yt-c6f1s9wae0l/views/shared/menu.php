@@ -28,13 +28,6 @@
             </a>
         </li>
         <?php endif; ?>
-        <?php if (hasPermission('attendance_records')): ?>
-        <li class="nav-item">
-            <a href="index.php?action=attendanceRecords" class="nav-link <?php echo (isset($_GET['action']) && $_GET['action'] == 'attendanceRecords' && empty($_GET['program_type'])) ? 'active' : ''; ?>">
-                <i class="bi bi-calendar-check me-2"></i>Attendance Records
-            </a>
-        </li>
-        <?php endif; ?>
         <?php
         // Every item is its own permission (PERMISSION_GROUPS in config/permissions.php):
         // Victory Groups / Leadership Groups / Campus / Leaders, Prayer Meeting and
@@ -77,11 +70,12 @@
         </li>
         <?php
         $isAtRecs = $mnAction === 'attendanceRecords';
-        $mnLink('class_victory_weekend',    'index.php?action=attendanceRecords&amp;program_type=victory_weekend',    'bi-sun',         'Victory Weekend',       $isAtRecs && $mnProgram === 'victory_weekend');
+        $mnLink('class_victory_weekend',    'index.php?action=attendanceRecords&amp;program_type=victory_weekend',    'bi-sun',         'Victory Day',       $isAtRecs && $mnProgram === 'victory_weekend');
+        $mnLink('class_water_baptism',      'index.php?action=attendanceRecords&amp;program_type=water_baptism',      'bi-droplet',     'Water Baptism',         $isAtRecs && $mnProgram === 'water_baptism');
         $mnLink('class_church_community',   'index.php?action=attendanceRecords&amp;program_type=church_community',   'bi-building',    'Church Community',      $isAtRecs && $mnProgram === 'church_community');
         $mnLink('class_making_disciples',   'index.php?action=attendanceRecords&amp;program_type=making_disciples',   'bi-person-plus', 'Making Disciples',      $isAtRecs && $mnProgram === 'making_disciples');
         $mnLink('class_empowering_leaders', 'index.php?action=attendanceRecords&amp;program_type=empowering_leaders', 'bi-star',        'Empowering Leaders',    $isAtRecs && $mnProgram === 'empowering_leaders');
-        $mnLink('class_leadership_113',     'index.php?action=leadership113',                                         'bi-trophy',      'Leadership 1-1-3',      $mnAction === 'leadership113' || ($isAtRecs && $mnProgram === 'leadership_113'));
+        $mnLink('class_leadership_113',     'index.php?action=leadership113',                                         'bi-trophy',      'Leadership 113',      $mnAction === 'leadership113' || ($isAtRecs && $mnProgram === 'leadership_113'));
         $mnLink('class_spiritual_foundations', 'index.php?action=spiritualFoundations',                               'bi-shield',      'Spiritual Foundations', $mnAction === 'spiritualFoundations' || ($isAtRecs && $mnProgram === 'spiritual_foundations'));
         ?>
         <?php endif; ?>

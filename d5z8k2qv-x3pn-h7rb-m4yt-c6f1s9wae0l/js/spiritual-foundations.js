@@ -1,7 +1,7 @@
 /**
  * Spiritual Foundations page behaviour.
  *
- * Mirrors the Leadership 1-1-3 page (DataTable + client-side filter hooks +
+ * Mirrors the Leadership 113 page (DataTable + client-side filter hooks +
  * Select2 modals + CSV/Excel/PDF/print export) and adds the topic/session
  * filter. Certificate eligibility is decided server-side and rendered into the
  * row; nothing here re-derives it.
@@ -113,6 +113,7 @@
             var el = form.querySelector('[name="' + k + '"]');
             if (el) el.value = rec[k] || '';
         });
+        var cm = form.querySelector('[name="completed_manual"]'); if (cm) cm.checked = !!parseInt(rec.completed_manual || 0, 10);
 
         function setSelect2(name, value, label) {
             var $sel = $(form).find('[name="' + name + '"]');

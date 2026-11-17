@@ -2,7 +2,8 @@
 /**
  * Leaders: every VG / LG / Campus leader and intern line, one row per person
  * (or couple, as written) per group. Filters are client-side; every export
- * (Excel, CSV, PDF, Print) uses exactly the rows the filters leave visible.
+ * (Excel, CSV, PDF, Print) is a contact list (Name, Email, Phone, Status) of the
+ * people in the rows the filters leave visible.
  */
 if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
 include 'shared/header.php';
@@ -110,7 +111,7 @@ $glPreRole = ['vg_leader' => 'VG Leader', 'vg_intern' => 'VG Intern', 'lg_leader
             <div class="card"><div class="card-body p-0"><div class="table-responsive">
                 <table class="table table-hover align-middle mb-0" id="glTable">
                     <thead class="table-light"><tr>
-                        <th>Name</th><th>Role</th><th>Group type</th><th>Group</th><th>Day &amp; time</th><th>Venue</th><th>Connected?</th>
+                        <th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Group type</th><th>Group</th><th>Day &amp; time</th><th>Venue</th><th>Connected?</th>
                     </tr></thead>
                     <tbody>
                     <?php foreach ($leaderRows as $r):
@@ -119,7 +120,29 @@ $glPreRole = ['vg_leader' => 'VG Leader', 'vg_intern' => 'VG Intern', 'lg_leader
                         $glConn = $r['connected'] >= $r['people'] ? 'Yes' : ($r['connected'] > 0 ? 'Partly' : 'No');
                         $glSolo = (int)$r['people'] === 1 && !empty($r['member_id']);
                     ?>
-                    <tr data-kind="<?php echo htmlspecialchars($r['kind_label']); ?>" data-role="<?php echo htmlspecialchars($r['role_label']); ?>"
+                    <?php
+                    // The people in this row, for the contact export. Contact details: the connected member's own
+                    // email / phone when there is one, otherwise what was typed for this leader on the group form.
+                    // An unconnected name is exported as written.
+                    $glFormEmail = trim((string)($r['vm_email'] ?? ''));
+                    $glFormPhone = trim((string)($r['vm_phone'] ?? ''));
+                    $glPeople = [];
+                    foreach ([['member_id', 'member_name', 'member_email', 'member_phone'], ['member_id_2', 'member2_name', 'member2_email', 'member2_phone']] as $glI => [$ci, $cn, $ce, $cp]) {
+                        if (empty($r[$ci])) continue;
+                        $glPeople[] = ['k' => 'm' . (int)$r[$ci],
+                                       'n' => ($r['people'] === 1 ? (string)$r['written_name'] : (string)$r[$cn]),
+                                       'e' => trim((string)$r[$ce]) !== '' ? trim((string)$r[$ce]) : ($glI === 0 ? $glFormEmail : ''),
+                                       'p' => trim((string)$r[$cp]) !== '' ? trim((string)$r[$cp]) : ($glI === 0 ? $glFormPhone : '')];
+                    }
+                    if (!$glPeople) {
+                        $glPeople = [['k' => 'n' . mb_strtolower(trim((string)$r['written_name']), 'UTF-8'), 'n' => (string)$r['written_name'], 'e' => $glFormEmail, 'p' => $glFormPhone]];
+                    } elseif ($r['people'] === 2 && count($glPeople) < 2) {
+                        // A couple with only one spouse connected: keep the other in the export, as written, instead of dropping them.
+                        $glPeople[] = ['k' => 'n' . mb_strtolower(trim((string)$r['written_name']), 'UTF-8'), 'n' => (string)$r['written_name'] . ' (partner not connected)', 'e' => '', 'p' => ''];
+                    }
+                    ?>
+                    <tr data-people="<?php echo htmlspecialchars(json_encode($glPeople, JSON_UNESCAPED_UNICODE), ENT_QUOTES); ?>" data-gstatus="<?php echo $r['group_status'] === 'active' ? 'active' : 'inactive'; ?>"
+                        data-kind="<?php echo htmlspecialchars($r['kind_label']); ?>" data-role="<?php echo htmlspecialchars($r['role_label']); ?>"
                         data-day="<?php echo htmlspecialchars((string)$r['day_of_week']); ?>" data-conn="<?php echo $glConn === 'Yes' ? 'Yes' : 'No'; ?>">
                         <td data-export="<?php echo htmlspecialchars($r['written_name'] . ($r['people'] === 2 ? ' (2 people)' : '')); ?>">
                             <?php if ($glSolo): ?>
@@ -136,6 +159,16 @@ $glPreRole = ['vg_leader' => 'VG Leader', 'vg_intern' => 'VG Intern', 'lg_leader
                             <?php if ($r['multi']): ?>
                             <span class="badge bg-info-subtle text-info-emphasis border ms-1" title="Leads or interns 2 or more groups">leads 2+ groups</span>
                             <?php endif; ?>
+                        </td>
+                        <td class="small">
+                            <?php $glAny = false; foreach ($glPeople as $gp): if ($gp['e'] === '') continue; $glAny = true; ?>
+                            <div><a href="mailto:<?php echo htmlspecialchars($gp['e']); ?>" class="text-decoration-none"><i class="bi bi-envelope me-1"></i><?php echo htmlspecialchars($gp['e']); ?></a></div>
+                            <?php endforeach; if (!$glAny): ?><span class="text-muted" title="Add it on the group (Edit group), or connect this leader to a member profile">&mdash;</span><?php endif; ?>
+                        </td>
+                        <td class="small text-nowrap">
+                            <?php $glAny = false; foreach ($glPeople as $gp): if ($gp['p'] === '') continue; $glAny = true; ?>
+                            <div><i class="bi bi-telephone me-1"></i><?php echo htmlspecialchars($gp['p']); ?></div>
+                            <?php endforeach; if (!$glAny): ?><span class="text-muted">&mdash;</span><?php endif; ?>
                         </td>
                         <td><?php echo htmlspecialchars($r['role_label']); ?></td>
                         <td><?php echo htmlspecialchars($r['kind_label']); ?></td>
@@ -183,15 +216,24 @@ $glPreRole = ['vg_leader' => 'VG Leader', 'vg_intern' => 'VG Intern', 'lg_leader
     });
     apply();
 
-    // Exactly the visible (filtered) rows; data-export holds the plain-text cell value.
+    // The export is a CONTACT LIST: one row per person, for the rows the filters leave visible.
+    //   Name | Email | Phone | Status
+    // A person who leads several groups appears once. Status is Active when they lead / intern at least one
+    // ACTIVE group (looked at across ALL rows, not only the filtered ones), otherwise Inactive.
+    // A couple linked to two member records becomes two rows; an unlinked name is exported as written.
+    function people(tr) { try { return JSON.parse(tr.dataset.people || '[]'); } catch (e) { return []; } }
     function data() {
-        var head = Array.prototype.map.call(table.tHead.rows[0].cells, function (c) { return c.textContent.trim(); });
-        var body = rows.filter(function (tr) { return !tr.classList.contains('d-none'); }).map(function (tr) {
-            return Array.prototype.map.call(tr.cells, function (c) {
-                return (c.dataset.export !== undefined ? c.dataset.export : c.textContent).replace(/\s+/g, ' ').trim();
+        var active = {};
+        rows.forEach(function (tr) { people(tr).forEach(function (p) { if (tr.dataset.gstatus === 'active') active[p.k] = true; }); });
+        var seen = {}, list = [];
+        rows.filter(function (tr) { return !tr.classList.contains('d-none'); }).forEach(function (tr) {
+            people(tr).forEach(function (p) {
+                if (seen[p.k]) return; seen[p.k] = true;
+                list.push([p.n, p.e, p.p, active[p.k] ? 'Active' : 'Inactive']);
             });
         });
-        return { head: head, body: body };
+        list.sort(function (a, b) { return a[0].toLowerCase() < b[0].toLowerCase() ? -1 : 1; });
+        return { head: ['Name', 'Email', 'Phone', 'Status'], body: list };
     }
     function fname(ext) { return 'leaders_' + new Date().toISOString().slice(0, 10) + '.' + ext; }
     function download(blob, name) {
@@ -215,7 +257,7 @@ $glPreRole = ['vg_leader' => 'VG Leader', 'vg_intern' => 'VG Intern', 'lg_leader
             var doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
             doc.setFontSize(13); doc.text('Leaders', 40, 36);
             doc.setFontSize(9); doc.setTextColor(120);
-            doc.text(d.body.length + ' rows · exported ' + new Date().toLocaleDateString(), 40, 52);
+            doc.text(d.body.length + ' people · exported ' + new Date().toLocaleDateString(), 40, 52);
             doc.autoTable({ head: [d.head], body: d.body, startY: 62, styles: { fontSize: 8, cellPadding: 3 },
                             headStyles: { fillColor: [23, 66, 245], textColor: 255 } });
             doc.save(fname('pdf'));
@@ -224,7 +266,7 @@ $glPreRole = ['vg_leader' => 'VG Leader', 'vg_intern' => 'VG Intern', 'lg_leader
             if (!w) return;
             w.document.write('<!DOCTYPE html><html><head><title>Leaders</title><style>body{font-family:sans-serif;font-size:12px}'
                 + 'table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 6px;text-align:left}th{background:#eef}</style></head><body>'
-                + '<h2>Leaders</h2><p>' + d.body.length + ' rows</p><table><thead><tr>' + d.head.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('')
+                + '<h2>Leaders</h2><p>' + d.body.length + ' people</p><table><thead><tr>' + d.head.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('')
                 + '</tr></thead><tbody>' + d.body.map(function (r) { return '<tr>' + r.map(function (v) { return '<td>' + esc(v) + '</td>'; }).join('') + '</tr>'; }).join('')
                 + '</tbody></table></body></html>');
             w.document.close(); w.focus(); w.print();

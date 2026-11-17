@@ -6,7 +6,7 @@ if (!isset($_SESSION['user']['accounttype']) || $_SESSION['user']['accounttype']
 include 'shared/header.php';
 
 $activeTab = $_GET['tab'] ?? 'ministries';
-if (!in_array($activeTab, ['ministries', 'services', 'discipleship', 'vgoptions', 'historical'])) {
+if (!in_array($activeTab, ['ministries', 'services', 'discipleship', 'vgoptions'])) {
     $activeTab = 'ministries';
 }
 
@@ -41,7 +41,6 @@ $ICONS  = [
                     'services'     => ['label' => 'Church service',    'where' => 'in the Service Attending dropdown wherever members are added or edited', 'records' => 'all members attending this service'],
                     'discipleship' => ['label' => 'Discipleship step', 'where' => 'in the Discipleship Steps list across the admin panel',                  'records' => 'all members linked to this step'],
                     'vgoptions'    => ['label' => 'VG option',         'where' => 'in the related Victory Group dropdowns wherever groups are added or edited', 'records' => 'all victory groups using this value'],
-                    'historical'   => ['label' => 'Historical completion', 'where' => 'on the member profile Discipleship Journey', 'records' => 'that member derived progress'],
                 ][$activeTab] ?? ['label' => 'Item', 'where' => 'across the admin panel', 'records' => 'related records'];
                 $messages = [
                     'add'        => $resCfg['label'] . ' has been added successfully. It is now available ' . $resCfg['where'] . '.',
@@ -49,15 +48,7 @@ $ICONS  = [
                     'deactivate' => $resCfg['label'] . ' has been deactivated successfully. Press the activate button to enable it again.',
                     'activate'   => $resCfg['label'] . ' has been reactivated successfully.',
                     'delete'     => $resCfg['label'] . ' has been deleted successfully. The record has been removed from the list.',
-                    'hist_add'    => 'Historical completion approved. The Discipleship Journey has been recalculated.',
-                    'hist_verify' => 'Historical completion verified. The member remains completed with confirmed historical evidence.',
-                    'hist_reject' => 'Historical completion rejected. The step now reflects the attendance evidence only — the review is kept on file.',
-                    'hist_reopen' => 'Historical completion reopened for review. It is back to Needs Verification and still counts as completed while pending.',
-                    'hist_restore' => 'Historical completion restored for review. It is back to Needs Verification and counts as completed again while pending.',
-                    'hist_recalc' => 'Recalculated ' . (int)($_GET['n'] ?? 0) . ' members — '
-                                     . (int)($_GET['c'] ?? 0) . ' completed steps ('
-                                     . (int)($_GET['a'] ?? 0) . ' from attendance, '
-                                     . (int)($_GET['h'] ?? 0) . ' historical).',
+                    'recalc'     => 'Recalculated ' . (int)($_GET['n'] ?? 0) . ' members. ' . (int)($_GET['c'] ?? 0) . ' completed steps in total.',
                 ];
             ?>
             <div class="alert alert-success alert-dismissible fade show">
@@ -100,17 +91,7 @@ $ICONS  = [
                         <i class="bi bi-sliders me-1"></i>VG Options
                     </a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link <?php echo $activeTab === 'historical' ? 'active' : ''; ?>"
-                       href="index.php?action=settings&tab=historical">
-                        <i class="bi bi-clock-history me-1"></i>Historical Completions
-                    </a>
-                </li>
             </ul>
-
-            <?php if ($activeTab === 'historical'): ?>
-            <?php include 'shared/settings_historical_tab.php'; ?>
-            <?php endif; ?>
 
             <!-- ──────────────────────────────────────────────────────── -->
             <!-- MINISTRIES TAB                                          -->
@@ -283,11 +264,35 @@ $ICONS  = [
             <!-- DISCIPLESHIP STEPS TAB                                  -->
             <!-- ──────────────────────────────────────────────────────── -->
             <?php if ($activeTab === 'discipleship'): ?>
+            <!-- Recalculate progress: confirmation -->
+            <div class="modal fade" id="recalcConfirmModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i>Recalculate discipleship progress?</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="small">Re-checks every member's class records (and Leadership 113 / Spiritual Foundations completion) and updates their Discipleship Journey on the Members page.</p>
+                        <p class="small text-muted mb-0">Nothing is deleted. It is a maintenance tool: normal class changes already update progress automatically. Use it after a data import or a migration. It may take a few seconds.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <a id="recalcConfirmBtn" href="index.php?action=recalculateProgress" class="btn btn-primary"
+                           onclick="this.innerHTML='<span class=&quot;spinner-border spinner-border-sm me-1&quot;></span>Recalculating…'; this.classList.add('disabled');">
+                            <i class="bi bi-arrow-repeat me-1"></i>Recalculate
+                        </a>
+                    </div>
+                </div></div>
+            </div>
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-bar-chart-steps me-2"></i>Discipleship Steps <span class="badge bg-light text-dark ms-1"><?php echo count($steps); ?></span></span>
                     <div class="d-flex align-items-center gap-2">
                         <span class="col-toggle" data-table="stepsTable" data-locked="0,1"></span>
+                        <button type="button" class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#recalcConfirmModal"
+                                title="Re-derive every member's Discipleship Journey from their class records">
+                            <i class="bi bi-arrow-repeat me-1"></i>Recalculate progress
+                        </button>
                         <button class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#addStepModal">
                             <i class="bi bi-plus-lg me-1"></i>Add Step
                         </button>
@@ -642,7 +647,7 @@ $ICONS  = [
                     <div class="row g-3">
                         <div class="col-md-8">
                             <label class="form-label fw-semibold">Step Name <span class="text-danger">*</span></label>
-                            <input type="text" name="name" class="form-control" required placeholder="e.g. Victory Weekend">
+                            <input type="text" name="name" class="form-control" required placeholder="e.g. Victory Day">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Abbreviation <span class="text-danger">*</span></label>

@@ -1,7 +1,7 @@
 <?php
 // Dashboard — Discipleship classes, average attendance.
 //
-// CLASS attendance (program_attendances: Victory Weekend, Church Community,
+// CLASS attendance (program_attendances: Victory Day, Church Community,
 // Making Disciples...), not Sunday attendance. It used to sit at the top of
 // Church Health, where a row of zeros after the 2026 reset read as "nobody
 // came to church"; it now lives beside the Discipleship Journey Overview
@@ -39,7 +39,7 @@ $dcScopeLabel = ($dashClass ? ProgramAttendance::PROGRAM_LABELS[$dashClass] . ' 
             <i class="bi bi-mortarboard display-6 d-block mb-2 opacity-50"></i>
             <div class="fw-semibold">No class attendance recorded yet for <?php echo htmlspecialchars($dcScopeLabel); ?>.</div>
             <div class="small">Averages per week, month, quarter and year appear here once class attendance is added on
-                <a href="index.php?action=attendanceRecords">Attendance Records</a>.</div>
+                the <strong>Classes</strong> pages in the sidebar.</div>
         </div>
         <?php else: ?>
         <!-- ── Average attendance ── -->

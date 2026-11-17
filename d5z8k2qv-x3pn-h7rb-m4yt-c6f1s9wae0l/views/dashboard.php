@@ -299,11 +299,12 @@ include 'shared/header.php';
                             $activeTotal = (int)($activeStats['total'] ?? 0);
                             $total = max($activeTotal, 1);
                             $steps = [
-                                ['label' => 'Victory Weekend',       'key' => 'victory_weekend',       'color' => 'primary',   'icon' => 'bi-sun',         'link' => 'index.php?action=attendanceRecords&program_type=victory_weekend'],
+                                ['label' => 'Victory Day',       'key' => 'victory_weekend',       'color' => 'primary',   'icon' => 'bi-sun',         'link' => 'index.php?action=attendanceRecords&program_type=victory_weekend'],
+                                ['label' => 'Water Baptism',         'key' => 'water_baptism',         'color' => 'info',      'icon' => 'bi-droplet',     'link' => 'index.php?action=attendanceRecords&program_type=water_baptism'],
                                 ['label' => 'Church Community',      'key' => 'church_community',      'color' => 'secondary', 'icon' => 'bi-building',    'link' => 'index.php?action=attendanceRecords&program_type=church_community'],
                                 ['label' => 'Making Disciples',      'key' => 'making_disciples',      'color' => 'success',   'icon' => 'bi-person-plus', 'link' => 'index.php?action=attendanceRecords&program_type=making_disciples'],
                                 ['label' => 'Empowering Leaders',    'key' => 'empowering_leaders',    'color' => 'warning',   'icon' => 'bi-star',        'link' => 'index.php?action=attendanceRecords&program_type=empowering_leaders'],
-                                ['label' => 'Leadership 1-1-3',      'key' => 'leadership_113',        'color' => 'danger',    'icon' => 'bi-trophy',      'link' => 'index.php?action=leadership113'],
+                                ['label' => 'Leadership 113',      'key' => 'leadership_113',        'color' => 'danger',    'icon' => 'bi-trophy',      'link' => 'index.php?action=leadership113'],
                                 ['label' => 'Spiritual Foundations', 'key' => 'spiritual_foundations', 'color' => 'purple',    'icon' => 'bi-shield',      'link' => 'index.php?action=spiritualFoundations'],
                             ];
                             foreach ($steps as $step):
@@ -371,17 +372,12 @@ include 'shared/header.php';
                                 <?php endforeach; ?>
                             </div>
                             <?php endif; ?>
-                            <?php if (anyClassPermission() || hasPermission('attendance_records')): ?>
+                            <?php if (anyClassPermission()): ?>
                             <h6 class="text-muted small fw-bold mb-2 mt-3">CLASSES</h6>
                             <div class="d-grid gap-2 mb-3">
-                                <?php if (hasPermission('attendance_records')): ?>
-                                <a href="index.php?action=attendanceRecords" class="btn btn-sm btn-outline-success">
-                                    <i class="bi bi-calendar-check me-1"></i> Attendance Records
-                                </a>
-                                <?php endif; ?>
                                 <?php if (hasPermission('class_leadership_113')): ?>
                                 <a href="index.php?action=leadership113" class="btn btn-sm btn-outline-danger">
-                                    <i class="bi bi-trophy me-1"></i> Leadership 1-1-3
+                                    <i class="bi bi-trophy me-1"></i> Leadership 113
                                 </a>
                                 <?php endif; ?>
                                 <?php if (hasPermission('class_spiritual_foundations')): ?>
@@ -459,7 +455,7 @@ include 'shared/header.php';
                             }
                             ksort($allYears);
                             $allYears = array_keys($allYears);
-                            $programOrder = ['victory_weekend', 'church_community', 'making_disciples', 'empowering_leaders', 'leadership_113', 'spiritual_foundations'];
+                            $programOrder = ['victory_weekend', 'water_baptism', 'church_community', 'making_disciples', 'empowering_leaders', 'leadership_113', 'spiritual_foundations'];
                             if (!empty($allYears)):
                             ?>
                             <div class="table-responsive">
@@ -541,7 +537,7 @@ include 'shared/header.php';
                             <?php else: ?>
                             <p class="text-muted mb-0 text-center py-3">
                                 <i class="bi bi-info-circle me-1"></i>No class records yet.
-                                Add them from <a href="index.php?action=attendanceRecords">Attendance Records</a>,
+                                Add them from the <strong>Classes</strong> pages in the sidebar,
                                 or start by <a href="index.php?action=members">adding members</a>.
                             </p>
                             <?php endif; ?>

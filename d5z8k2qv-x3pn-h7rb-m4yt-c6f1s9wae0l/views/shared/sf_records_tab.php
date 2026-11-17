@@ -158,6 +158,7 @@
                             'member_name'    => $rec['member_name'] ?? '',
                             'member_ministry'=> $rec['member_ministry'] ?? '',
                             'sc_batch'       => trim($rec['batch_label'] ?? ''),
+                            'completed_manual' => (int)($rec['completed_manual'] ?? 0),
                             'weeks'          => $weekMap,
                             // Dates keyed in grid order, so the modal can restore the date column.
                             'sessions'       => array_column(
@@ -170,7 +171,8 @@
                         data-cert="<?php echo !empty($overall['eligible']) ? '1' : '0'; ?>"
                         data-weeks="<?php echo htmlspecialchars(json_encode($weekMap), ENT_QUOTES); ?>">
                         <td class="text-muted small"><?php echo $i + 1; ?></td>
-                        <td class="fw-semibold"><?php echo htmlspecialchars($rec['full_name_display']); ?></td>
+                        <td class="fw-semibold"><?php echo htmlspecialchars($rec['full_name_display']); ?>
+                            <?php if (!empty($rec['completed_manual'])): ?><span class="badge bg-success-subtle text-success-emphasis border border-success-subtle ms-1" title="Marked completed with just the year; no session record"><i class="bi bi-check2-circle me-1"></i>Completed (year only)</span><?php endif; ?></td>
                         <td class="small text-nowrap">
                             <?php if (!empty($rec['program_year'])): ?>
                             <i class="bi bi-calendar3 text-muted me-1"></i><?php echo (int)$rec['program_year']; ?>

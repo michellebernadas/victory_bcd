@@ -857,13 +857,13 @@ $activeServiceNames  = array_flip(array_column($services,   'name'));
                         <div class="col-12">
                             <label class="form-label fw-semibold d-block">Discipleship Journey</label>
                             <?php // Read-only: completion is derived by DiscipleshipProgressService
-                                  // from attendance evidence plus admin-approved historical records.
+                                  // from the member's class records.
                                   // No editable control here can set it. ?>
                             <div class="alert alert-info py-2 mb-0 small">
                                 <i class="bi bi-shield-check me-1"></i>
-                                Discipleship Journey is managed automatically from attendance and class
-                                completion records. Historical completions can be managed by an administrator
-                                under <strong>Settings &rarr; Historical Completions</strong>.
+                                Discipleship Journey is worked out automatically from this member's class
+                                records. To change it, add or edit a class record on their profile or on the
+                                Classes pages.
                             </div>
                         </div>
                         <div class="col-12">

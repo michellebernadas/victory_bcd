@@ -34,7 +34,7 @@ require_once 'models/SfProgress.php';
 class DiscipleshipProgressService {
     /** Steps whose evidence is "any valid attendance row for this program_type". */
     const SIMPLE_ATTENDANCE_STEPS = [
-        'victory_weekend', 'church_community', 'making_disciples', 'empowering_leaders',
+        'victory_weekend', 'water_baptism', 'church_community', 'making_disciples', 'empowering_leaders',
     ];
 
     private $db;
@@ -111,7 +111,22 @@ class DiscipleshipProgressService {
             }
         }
 
-        // Leadership 1-1-3 — unchanged rule: a record whose session grid has no
+        // Leadership 113 / Spiritual Foundations: a record marked "completed, I only know the year"
+        // (program_attendances.completed_manual) counts as completed without any session grid.
+        if ($columnKey === 'leadership_113' || $columnKey === 'spiritual_foundations') {
+            try {
+                $stmt = $this->db->prepare(
+                    "SELECT id FROM program_attendances
+                      WHERE member_id = ? AND program_type = ? AND completed_manual = 1
+                        AND is_deleted = 0 AND status = 'active' ORDER BY program_year ASC, id ASC LIMIT 1"
+                );
+                $stmt->execute([$memberId, $columnKey]);
+                $id = $stmt->fetchColumn();
+                if ($id !== false) return (int)$id;
+            } catch (PDOException $e) { /* column not migrated yet: fall through to the session rules */ }
+        }
+
+        // Leadership 113 — unchanged rule: a record whose session grid has no
         // missed session. Batch lengths vary, so no expected-count check (0).
         if ($columnKey === 'leadership_113') {
             try {

@@ -2,8 +2,18 @@
 class ProgramAttendance {
     private $db;
 
+    /** Earliest year a class can be recorded for (people finished classes long before the portal). */
+    const CLASS_MIN_YEAR = 1950;
+
+    /** The year as an int when it is a plausible class year (CLASS_MIN_YEAR … next year), else 0. */
+    public static function validYear($v): int {
+        $y = (int)$v;
+        return ($y >= self::CLASS_MIN_YEAR && $y <= (int)date('Y') + 1) ? $y : 0;
+    }
+
     const PROGRAM_LABELS = [
-        'victory_weekend'       => 'Victory Weekend',
+        'victory_weekend'       => 'Victory Day',
+        'water_baptism'         => 'Water Baptism',
         'church_community'      => 'Church Community',
         'making_disciples'      => 'Making Disciples',
         'empowering_leaders'    => 'Empowering Leaders',
@@ -13,6 +23,7 @@ class ProgramAttendance {
 
     const PROGRAM_COLORS = [
         'victory_weekend'       => 'primary',
+        'water_baptism'         => 'info',
         'church_community'      => 'secondary',
         'making_disciples'      => 'success',
         'empowering_leaders'    => 'warning',
@@ -22,6 +33,7 @@ class ProgramAttendance {
 
     const PROGRAM_ICONS = [
         'victory_weekend'       => 'bi-sun',
+        'water_baptism'         => 'bi-droplet',
         'church_community'      => 'bi-building',
         'making_disciples'      => 'bi-person-plus',
         'empowering_leaders'    => 'bi-star',
@@ -31,7 +43,7 @@ class ProgramAttendance {
 
     /**
      * Session-status vocabulary shared by every session-based class
-     * (Leadership 1-1-3, Spiritual Foundations, …).
+     * (Leadership 113, Spiritual Foundations, …).
      *
      * ATTENDED_STATUSES  count towards completion.
      * NO_CLASS_STATUSES  are skipped entirely — neither attended nor required.
@@ -50,14 +62,14 @@ class ProgramAttendance {
 
     /**
      * The class itself did not take place on that date, so it applies to every
-     * participant in the batch. Verified in the Leadership 1-1-3 data: these
+     * participant in the batch. Verified in the Leadership 113 data: these
      * values always appear on ALL participants sharing a date.
      */
     const CLASS_CANCELLED_STATUSES = ['NO CLASS', 'HOLY WEEK', 'DC 2023'];
 
     /**
      * Per-participant "this session is not counted for this person" — used by
-     * Leadership 1-1-3 for someone who joined a batch late (the class ran, they
+     * Leadership 113 for someone who joined a batch late (the class ran, they
      * simply weren't enrolled yet), which is why it is excluded from THEIR
      * required total but not from their classmates'. Historical meaning; kept
      * as-is so existing L113 records are not re-interpreted.
@@ -83,7 +95,7 @@ class ProgramAttendance {
     }
 
     /**
-     * ONE definition of the status colour language, shared by Leadership 1-1-3
+     * ONE definition of the status colour language, shared by Leadership 113
      * and Spiritual Foundations so the same status never means two things
      * visually.
      *
@@ -186,7 +198,7 @@ class ProgramAttendance {
      * When $expectedSessions is given (Spiritual Foundations passes its 10
      * curriculum weeks) it is the authoritative denominator: a no-class value
      * sitting on one person's row can never shrink what is required of them.
-     * With 0 (Leadership 1-1-3, whose batches vary in length) the denominator
+     * With 0 (Leadership 113, whose batches vary in length) the denominator
      * comes from the grid, which is what its historical records rely on.
      *
      * @return array{eligible:bool,attended:int,required:int,expected:int,missed:array,reason:string}
@@ -559,7 +571,8 @@ class ProgramAttendance {
     }
 
     private static $defaultLabels = [
-        'victory_weekend'       => 'VICTORY WEEKEND',
+        'victory_weekend'       => 'VICTORY DAY',
+        'water_baptism'         => 'WATER BAPTISM',
         'church_community'      => 'CHURCH COMMUNITY',
         'making_disciples'      => 'MAKING DISCIPLES',
         'empowering_leaders'    => 'EMPOWERING LEADERS',
@@ -569,6 +582,9 @@ class ProgramAttendance {
 
     public function add(array $data): int|false {
         try {
+            // The year is required and must be real. It used to default silently to this year.
+            $year = self::validYear($data['program_year'] ?? 0);
+            if ($year === 0) { error_log('ProgramAttendance::add refused: missing or invalid program_year'); return false; }
             $fn = trim(($data['raw_first_name'] ?? '') . ' ' . ($data['raw_last_name'] ?? ''));
             if (!$fn) $fn = trim($data['full_name_display'] ?? '');
             $pt = $data['program_type'] ?? '';
@@ -607,7 +623,7 @@ class ProgramAttendance {
                 trim($data['raw_first_name'] ?? ''),
                 $fn,
                 $pt,
-                (int)($data['program_year'] ?? date('Y')),
+                $year,
                 trim($data['program_label'] ?? ''),
                 ($data['event_date'] ?? '') ?: null,
                 trim($data['counselor_name'] ?? ''),
@@ -621,7 +637,9 @@ class ProgramAttendance {
                 $notes !== '' ? $notes : null,
                 $extraData,
             ]);
-            return (int)$this->db->lastInsertId();
+            $newId = (int)$this->db->lastInsertId();
+            $this->saveCompletedManual($newId, $data);
+            return $newId;
         } catch (PDOException $e) {
             error_log("ProgramAttendance::add error: " . $e->getMessage());
             return false;
@@ -630,6 +648,17 @@ class ProgramAttendance {
 
     public function update(int $id, array $data): bool {
         try {
+            $year = self::validYear($data['program_year'] ?? 0);
+            if ($year === 0) { error_log('ProgramAttendance::update refused: missing or invalid program_year'); return false; }
+            // Water baptism is its own class now, so the forms no longer post these two. Keep whatever an older
+            // Victory Day record already holds instead of overwriting it with blanks.
+            if (!array_key_exists('water_baptism', $data)) {
+                $old = $this->getById($id);
+                if ($old) {
+                    $data['water_baptism'] = (int)($old['water_baptism'] ?? 0);
+                    if (!array_key_exists('water_baptism_remarks', $data)) $data['water_baptism_remarks'] = $old['water_baptism_remarks'] ?? '';
+                }
+            }
             $fn = trim(($data['raw_first_name'] ?? '') . ' ' . ($data['raw_last_name'] ?? ''));
             if (!$fn) $fn = trim($data['full_name_display'] ?? '');
             $pt = $data['program_type'] ?? '';
@@ -698,7 +727,7 @@ class ProgramAttendance {
                 trim($data['raw_first_name'] ?? ''),
                 $fn,
                 $pt,
-                (int)($data['program_year'] ?? date('Y')),
+                $year,
                 trim($data['program_label'] ?? ''),
                 ($data['event_date'] ?? '') ?: null,
                 trim($data['counselor_name'] ?? ''),
@@ -714,10 +743,26 @@ class ProgramAttendance {
             $params[] = $extraDataVal;
             $params[] = $id;
             $stmt->execute($params);
+            $this->saveCompletedManual($id, $data);
             return true;
         } catch (PDOException $e) {
             error_log("ProgramAttendance::update error: " . $e->getMessage());
             return false;
+        }
+    }
+
+    /**
+     * "Completed, I only know the year" (Leadership 113 / Spiritual Foundations only).
+     * Its own statement inside its own try: if the column does not exist yet (migration
+     * not run) the record itself must still save.
+     */
+    private function saveCompletedManual(int $id, array $data): void {
+        $pt = (string)($data['program_type'] ?? '');
+        $on = (!empty($data['completed_manual']) && in_array($pt, self::SESSION_PROGRAMS, true)) ? 1 : 0;
+        try {
+            $this->db->prepare("UPDATE program_attendances SET completed_manual = ? WHERE id = ?")->execute([$on, $id]);
+        } catch (PDOException $e) {
+            if ($on) error_log('ProgramAttendance::saveCompletedManual (run migration 2026_11_17_04): ' . $e->getMessage());
         }
     }
 

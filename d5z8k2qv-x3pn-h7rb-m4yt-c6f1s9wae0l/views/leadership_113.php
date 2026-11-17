@@ -112,8 +112,8 @@ foreach ($records as $rec) {
             <!-- Header -->
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h1 class="h3 mb-0"><i class="bi bi-trophy me-2 text-danger"></i>Leadership 1-1-3</h1>
-                    <p class="text-muted mb-0">Session attendance records for the Leadership 1-1-3 class</p>
+                    <h1 class="h3 mb-0"><i class="bi bi-trophy me-2 text-danger"></i>Leadership 113</h1>
+                    <p class="text-muted mb-0">Session attendance records for the Leadership 113 class</p>
                 </div>
                 <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#addL113Modal">
                     <i class="bi bi-plus-circle me-1"></i>Add Leadership 113 Record
@@ -141,11 +141,11 @@ foreach ($records as $rec) {
             <div class="alert alert-success alert-dismissible fade show">
                 <i class="bi bi-check-circle-fill me-2"></i>
                 <?php $msgs = [
-                    'add'        => 'Leadership 1-1-3 record has been added successfully.',
-                    'update'     => 'Leadership 1-1-3 record has been updated successfully. Changes are now reflected on the records.',
-                    'deactivate' => 'Leadership 1-1-3 record has been deactivated successfully. Press the activate button to enable it again.',
-                    'activate'   => 'Leadership 1-1-3 record has been reactivated successfully.',
-                    'delete'     => 'Leadership 1-1-3 record has been deleted successfully. The record has been removed from the Leadership 1-1-3 records list.',
+                    'add'        => 'Leadership 113 record has been added successfully.',
+                    'update'     => 'Leadership 113 record has been updated successfully. Changes are now reflected on the records.',
+                    'deactivate' => 'Leadership 113 record has been deactivated successfully. Press the activate button to enable it again.',
+                    'activate'   => 'Leadership 113 record has been reactivated successfully.',
+                    'delete'     => 'Leadership 113 record has been deleted successfully. The record has been removed from the Leadership 113 records list.',
                 ]; echo $msgs[$_GET['notif']] ?? 'Done.'; ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
@@ -235,9 +235,6 @@ foreach ($records as $rec) {
                     <div class="d-flex align-items-center gap-2">
                         <a href="<?php echo $l113ClearUrl; ?>" class="btn btn-sm btn-outline-light" id="l113ClearFiltersBtn" style="<?php echo $l113FilterCount > 0 ? '' : 'display:none'; ?>">
                             <i class="bi bi-x-circle me-1"></i>Clear Filters
-                        </a>
-                        <a href="index.php?action=attendanceRecords" class="btn btn-sm btn-outline-light">
-                            <i class="bi bi-layout-three-columns me-1"></i>All Classes
                         </a>
                         <button class="btn btn-sm btn-outline-light" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#l113FilterBody" aria-expanded="true">
@@ -436,7 +433,7 @@ foreach ($records as $rec) {
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span class="text-white fw-semibold d-flex align-items-center flex-wrap gap-2">
-                        <i class="bi bi-table me-2"></i>Leadership 1-1-3 Records
+                        <i class="bi bi-table me-2"></i>Leadership 113 Records
                         <span class="badge bg-white text-dark border" id="l113CountBadge"><?php echo $totalRecords; ?></span>
                         <?php if ($activeYear): ?>
                         <span class="badge bg-light text-dark border"><i class="bi bi-calendar me-1"></i>Year: <?php echo htmlspecialchars($activeYear); ?></span>
@@ -476,7 +473,7 @@ foreach ($records as $rec) {
                     <?php if (empty($records)): ?>
                     <div class="text-center text-muted py-5">
                         <i class="bi bi-trophy display-4 mb-3 d-block"></i>
-                        No Leadership 1-1-3 records found.
+                        No Leadership 113 records found.
                     </div>
                     <?php else: ?>
                     <div class="table-responsive">
@@ -521,7 +518,8 @@ foreach ($records as $rec) {
                                     data-cert="<?php echo $cert['eligible'] ? '1' : '0'; ?>"
                                     data-matched="<?php echo $rec['member_id'] ? '1' : '0'; ?>">
                                     <td class="text-muted small"><?php echo $i + 1; ?></td>
-                                    <td class="fw-semibold"><?php echo htmlspecialchars($rec['full_name_display']); ?></td>
+                                    <td class="fw-semibold"><?php echo htmlspecialchars($rec['full_name_display']); ?>
+                                        <?php if (!empty($rec['completed_manual'])): ?><span class="badge bg-success-subtle text-success-emphasis border border-success-subtle ms-1" title="Marked completed with just the year; no session record"><i class="bi bi-check2-circle me-1"></i>Completed (year only)</span><?php endif; ?></td>
                                     <td class="small text-nowrap">
                                         <?php if (!empty($rec['program_year'])): ?>
                                         <i class="bi bi-calendar3 text-muted me-1"></i><?php echo (int)$rec['program_year']; ?>
@@ -635,6 +633,7 @@ foreach ($records as $rec) {
                                                 'member_name'     => $rec['member_name'] ?? '',
                                                 'member_ministry' => $rec['member_ministry'] ?? '',
                                                 'l113_batch'      => $batch,
+                                                'completed_manual' => (int)($rec['completed_manual'] ?? 0),
                                                 'sessions'       => $sessions,
                                             ];
                                         ?>
@@ -994,6 +993,8 @@ function openEditL113Modal(rec) {
     var form = document.getElementById('editL113Form');
     form.action = 'index.php?action=updateL113Record&id=' + rec.id;
 
+    var cm = form.querySelector('[name="completed_manual"]'); if (cm) cm.checked = !!parseInt(rec.completed_manual || 0, 10);
+
     // Plain text inputs
     var plainFields = {
         raw_first_name: rec.raw_first_name,
@@ -1273,9 +1274,9 @@ function exportL113Pdf() {
 
 function printL113() {
     var d = _l113TableData();
-    var html = '<html><head><title>Leadership 1-1-3 Records</title>';
+    var html = '<html><head><title>Leadership 113 Records</title>';
     html += '<style>body{font-family:sans-serif;font-size:11px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 6px;vertical-align:top}th{background:#c0392b;color:#fff}tr:nth-child(even){background:#f9f9f9}.sess-dates{font-size:9px;color:#555;margin-top:2px}</style>';
-    html += '</head><body><h2 style="color:#c0392b">Leadership 1-1-3 Records</h2>';
+    html += '</head><body><h2 style="color:#c0392b">Leadership 113 Records</h2>';
     html += '<table><thead><tr>' + d.headers.map(function(h){return '<th>'+h+'</th>';}).join('') + '</tr></thead><tbody>';
     d.rows.forEach(function(r){
         html += '<tr>' + r.map(function(c) {
@@ -1339,7 +1340,7 @@ function printL113Batch() {
     var d = _l113BatchTableData();
     var html = '<html><head><title>L113 Batch Summary</title>';
     html += '<style>body{font-family:sans-serif;font-size:11px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 6px}th{background:#c0392b;color:#fff}tr:nth-child(even){background:#f9f9f9}</style>';
-    html += '</head><body><h2 style="color:#c0392b">Leadership 1-1-3 — Batch Summary</h2>';
+    html += '</head><body><h2 style="color:#c0392b">Leadership 113 — Batch Summary</h2>';
     html += '<table><thead><tr>' + d.headers.map(function(h){return '<th>'+h+'</th>';}).join('') + '</tr></thead><tbody>';
     d.rows.forEach(function(r){ html += '<tr>'+r.map(function(c){return '<td>'+(c||'')+'</td>';}).join('')+'</tr>'; });
     html += '</tbody></table></body></html>';
@@ -1585,7 +1586,7 @@ $(function() {
 
     // Select2 for all L113 modal fields
     if (typeof $.fn.select2 !== 'undefined') {
-        // (Class picker removed \u2014 the class is fixed to Leadership 1-1-3 by the page.)
+        // (Class picker removed \u2014 the class is fixed to Leadership 113 by the page.)
 
         // Year (tags — can type new)
         $('.l113-year-select2').each(function() {
