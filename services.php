@@ -60,7 +60,7 @@ pub_header('Sunday service times', 'services.php', 'Sunday service times at Vict
     <div class="vp-card p-4 p-md-5 mt-5 text-center" style="background:linear-gradient(135deg,#f7f9ff,#eef2ff)">
         <h2 class="h4 fw-bold">Ready to take the next step?</h2>
         <p class="text-muted mb-4">Find a Victory Group near you, or let us help you find the right one.</p>
-        <a class="btn vp-cta btn-lg" href="join.php"><i class="bi bi-heart me-1" aria-hidden="true"></i>I&rsquo;m interested in a Victory Group</a>
+        <a class="btn vp-cta btn-lg" href="join.php"><i class="bi bi-heart me-1" aria-hidden="true"></i>Get Connected</a>
         <a class="btn btn-outline-primary btn-lg ms-md-2 mt-2 mt-md-0 rounded-pill" href="groups.php">Browse groups</a>
     </div>
 </main>

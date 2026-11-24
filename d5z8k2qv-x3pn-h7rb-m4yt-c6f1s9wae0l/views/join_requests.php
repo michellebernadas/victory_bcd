@@ -7,6 +7,7 @@ $counts   = $counts   ?? [];
 $status   = isset(JoinRequest::STATUSES[$_GET['status'] ?? '']) ? $_GET['status'] : '';
 $search   = trim((string)($_GET['q'] ?? ''));
 $total    = array_sum($counts);
+$activeTab = $activeTab ?? 'list';
 ?>
 <body>
     <?php include 'shared/menu.php'; ?>
@@ -15,8 +16,11 @@ $total    = array_sum($counts);
 
             <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
                 <div>
-                    <h1 class="h3 mb-0"><i class="bi bi-inbox me-2 text-primary"></i>Interested in Joining</h1>
+                    <h1 class="h3 mb-0"><i class="bi bi-inbox me-2 text-primary"></i>Get Connected Inbox</h1>
                     <p class="text-muted mb-0">People who said they are interested in a Victory Group on the public website. Reach out and welcome them.</p>
+                    <p class="small text-muted mb-0">
+                        <?php $jrFirst = true; foreach (JoinRequest::STATUSES as $k => $m): ?><?php echo $jrFirst ? '' : ' <i class="bi bi-arrow-right mx-1" aria-hidden="true"></i> '; $jrFirst = false; ?><span class="badge bg-<?php echo $m['badge']; ?>"><?php echo htmlspecialchars($m['label']); ?></span> <?php echo htmlspecialchars($m['hint']); ?><?php endforeach; ?>
+                    </p>
                 </div>
                 <div class="d-flex gap-2">
                     <a class="btn btn-outline-secondary" href="../join.php" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>Open the public form</a>
@@ -36,6 +40,15 @@ $total    = array_sum($counts);
             <div class="alert alert-danger alert-dismissible fade show"><i class="bi bi-exclamation-triangle-fill me-2"></i><?php echo htmlspecialchars($_GET['error']); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
             <?php endif; ?>
 
+            <!-- Tabs (same pair as the Members page) -->
+            <ul class="nav nav-tabs mb-4">
+                <li class="nav-item"><a class="nav-link <?php echo $activeTab === 'list' ? 'active' : ''; ?>" href="index.php?action=joinRequests"><i class="bi bi-table me-1"></i>Requests</a></li>
+                <li class="nav-item"><a class="nav-link <?php echo $activeTab === 'stats' ? 'active' : ''; ?>" href="index.php?action=joinRequests&amp;tab=stats"><i class="bi bi-bar-chart-line me-1"></i>Statistics</a></li>
+            </ul>
+
+            <?php if ($activeTab === 'stats'): ?>
+                <?php include 'shared/join_stats_tab.php'; ?>
+            <?php else: ?>
             <div class="card">
                 <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <ul class="nav nav-pills small">
@@ -109,6 +122,7 @@ $total    = array_sum($counts);
                     </table>
                 </div>
             </div>
+            <?php endif; // tab ?>
         </div>
     </div>
 
@@ -120,7 +134,8 @@ $total    = array_sum($counts);
                 <div class="mb-3"><label class="form-label fw-semibold" for="jrStatus">Status</label>
                     <select class="form-select" name="status" id="jrStatus">
                         <?php foreach (JoinRequest::STATUSES as $k => $m): ?><option value="<?php echo $k; ?>"><?php echo htmlspecialchars($m['label']); ?></option><?php endforeach; ?>
-                    </select></div>
+                    </select>
+                    <div class="form-text"><?php echo implode(' &middot; ', array_map(function ($m) { return '<strong>' . htmlspecialchars($m['label']) . ':</strong> ' . htmlspecialchars(lcfirst($m['hint'])); }, JoinRequest::STATUSES)); ?></div></div>
                 <div class="mb-1"><label class="form-label fw-semibold" for="jrNotes">Staff notes <span class="text-muted fw-normal">(only staff see this)</span></label>
                     <textarea class="form-control" name="staff_notes" id="jrNotes" rows="3" maxlength="1000" placeholder="e.g. Called Nov 18, placed with the Mandalagan VG"></textarea></div>
             </div>
@@ -131,7 +146,7 @@ $total    = array_sum($counts);
         <form method="post" id="jrDelForm" action="">
             <div class="modal-header"><h5 class="modal-title"><i class="bi bi-trash me-2"></i>Delete request</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body"><input type="hidden" name="_status" value="<?php echo htmlspecialchars($status); ?>">
-                <p>Delete the request from <strong id="jrDelName"></strong>? This removes their personal details and cannot be undone. To just finish with it, set the status to <em>Closed</em> instead.</p></div>
+                <p>Delete the request from <strong id="jrDelName"></strong>? This removes their personal details and cannot be undone. Once they are connected to a Victory Group, set the status to <em>Connected to a Victory Group</em> instead: that is what finishes a request.</p></div>
             <div class="modal-footer"><button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button><button class="btn btn-danger btn-sm">Delete</button></div>
         </form></div></div></div>
 

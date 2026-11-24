@@ -15,7 +15,7 @@ uksort($days, function ($a, $b) use ($order) { return ($order[$a] ?? 9) <=> ($or
 $nVg     = count(array_filter($groups, function ($g) { return $g['group_kind'] === 'victory_group'; }));
 $nCampus = count($groups) - $nVg;
 
-pub_header('Find a group', 'groups.php', 'Find a Victory Group or Campus group near you and tell us you are interested.');
+pub_header('Find a Victory Group', 'groups.php', 'Find a Victory Group or Campus group near you and tell us you are interested.');
 ?>
 <header class="vp-hero" style="padding-bottom:4.2rem">
     <div class="container vp-fade">
@@ -81,7 +81,7 @@ pub_header('Find a group', 'groups.php', 'Find a Victory Group or Campus group n
                     <div class="vp-leaders"><span class="vp-avatar" aria-hidden="true"><?php echo pub_e(pub_initials($g['leaders'][0])); ?></span>
                         <div><small>Led by</small><?php echo pub_e(implode(', ', $g['leaders'])); ?></div></div>
                     <?php endif; ?>
-                    <a class="btn vp-cta mt-3" href="join.php?group=<?php echo (int)$g['id']; ?>"><i class="bi bi-heart me-1" aria-hidden="true"></i>I&rsquo;m interested</a>
+                    <a class="btn vp-cta mt-3" href="join.php?group=<?php echo (int)$g['id']; ?>"><i class="bi bi-heart me-1" aria-hidden="true"></i>Get Connected</a>
                 </div>
             </article>
         </div>

@@ -307,7 +307,10 @@ a.stat-card:hover::after,
   z-index: 1040;
 }
 
-#main-menu a {
+/* :not(.btn) because the profile modal lives inside #main-menu: this id-level
+   rule otherwise beats Bootstrap's button colours (dark text on the blue
+   "Edit Profile" button, dark text on the outline "Change Password" one). */
+#main-menu a:not(.btn) {
   color: #272626;
   font-size: 15px;
 }

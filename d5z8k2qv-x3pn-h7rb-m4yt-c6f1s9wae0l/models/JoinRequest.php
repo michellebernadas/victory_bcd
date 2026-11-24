@@ -8,10 +8,10 @@ class JoinRequest {
     private $db;
 
     const STATUSES = [
-        'new'       => ['label' => 'New',       'badge' => 'danger'],
-        'contacted' => ['label' => 'Contacted', 'badge' => 'primary'],
-        'placed'    => ['label' => 'Placed in a group', 'badge' => 'success'],
-        'closed'    => ['label' => 'Closed',    'badge' => 'secondary'],
+        'new'       => ['label' => 'New',       'badge' => 'danger',  'hint' => 'Just submitted the form'],
+        'open'      => ['label' => 'Open',      'badge' => 'warning text-dark', 'hint' => 'Seen, not contacted yet'],
+        'contacted' => ['label' => 'Contacted', 'badge' => 'primary', 'hint' => 'A leader has reached them'],
+        'placed'    => ['label' => 'Connected to a Victory Group', 'badge' => 'success', 'hint' => 'Done: the request is closed'],
     ];
 
     public function __construct($db) { $this->db = $db; }
@@ -34,7 +34,7 @@ class JoinRequest {
                 $like = '%' . $search . '%';
                 array_push($params, $like, $like, $like, $like);
             }
-            $sql .= " ORDER BY FIELD(jr.status, 'new', 'contacted', 'placed', 'closed'), jr.created_at DESC LIMIT 500";
+            $sql .= " ORDER BY FIELD(jr.status, 'new', 'open', 'contacted', 'placed'), jr.created_at DESC LIMIT 500";
             $stmt = $this->db->prepare($sql);
             $stmt->execute($params);
             return $this->attachNotices($stmt->fetchAll() ?: []);
@@ -69,9 +69,51 @@ class JoinRequest {
         return $out;
     }
 
-    /** New requests, for the sidebar badge. 0 when the table does not exist yet. */
+    /**
+     * Numbers for the Statistics tab, over EVERY request (the list is capped at 500).
+     * "Connected" = status placed, the goal. Returns:
+     *   total, byStatus, last30, waiting7 (new/open for 7+ days),
+     *   months [ym => [received, connected]]  last 12 months, oldest first; connected = of those received that month,
+     *   lifeStage / gender [key => [received, connected]],
+     *   asked [label => count]  which kind of group they asked about.
+     */
+    public function stats() {
+        $out = ['total' => 0, 'byStatus' => $this->counts(), 'last30' => 0, 'waiting7' => 0,
+                'months' => [], 'lifeStage' => [], 'gender' => [], 'asked' => []];
+        $out['total'] = array_sum($out['byStatus']);
+        try {
+            $r = $this->db->query("SELECT SUM(created_at >= NOW() - INTERVAL 30 DAY) l30,
+                                          SUM(status IN ('new','open') AND created_at < NOW() - INTERVAL 7 DAY) w7
+                                     FROM join_requests")->fetch();
+            $out['last30'] = (int)($r['l30'] ?? 0);
+            $out['waiting7'] = (int)($r['w7'] ?? 0);
+
+            // Last 12 calendar months, every month present even when empty.
+            for ($i = 11; $i >= 0; $i--) $out['months'][date('Y-m', strtotime("first day of -$i month"))] = [0, 0];
+            foreach ($this->db->query("SELECT DATE_FORMAT(created_at, '%Y-%m') ym, COUNT(*) n, SUM(status = 'placed') c
+                                         FROM join_requests WHERE created_at >= DATE_FORMAT(NOW() - INTERVAL 11 MONTH, '%Y-%m-01')
+                                        GROUP BY ym")->fetchAll() as $m) {
+                if (isset($out['months'][$m['ym']])) $out['months'][$m['ym']] = [(int)$m['n'], (int)$m['c']];
+            }
+
+            foreach (['lifeStage' => 'life_stage', 'gender' => 'gender'] as $key => $col) {
+                foreach ($this->db->query("SELECT COALESCE(NULLIF($col, ''), '') k, COUNT(*) n, SUM(status = 'placed') c FROM join_requests GROUP BY k ORDER BY n DESC")->fetchAll() as $row) {
+                    $out[$key][$row['k']] = [(int)$row['n'], (int)$row['c']];
+                }
+            }
+
+            foreach ($this->db->query("SELECT CASE WHEN vg.id IS NULL THEN 'Not sure yet (needs help finding a group)'
+                                                   WHEN vg.group_kind = 'campus' THEN 'A Campus group' ELSE 'A Victory Group' END k, COUNT(*) n
+                                         FROM join_requests jr LEFT JOIN victory_groups vg ON vg.id = jr.group_id GROUP BY k ORDER BY n DESC")->fetchAll() as $row) {
+                $out['asked'][$row['k']] = (int)$row['n'];
+            }
+        } catch (PDOException $e) { error_log('JoinRequest::stats ' . $e->getMessage()); }
+        return $out;
+    }
+
+    /** Requests nobody has reached yet (New + Open), for the sidebar badge. 0 when the table does not exist yet. */
     public function countNew() {
-        try { return (int)$this->db->query("SELECT COUNT(*) FROM join_requests WHERE status = 'new'")->fetchColumn(); }
+        try { return (int)$this->db->query("SELECT COUNT(*) FROM join_requests WHERE status IN ('new', 'open')")->fetchColumn(); }
         catch (PDOException $e) { return 0; }
     }
 

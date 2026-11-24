@@ -202,5 +202,137 @@ class User {
             return false;
         }
     }
+
+    // ─── Passwords: change, force-change, forgot / reset ─────────────────────
+
+    const MIN_PASSWORD_LENGTH = 8;
+    const RESET_TTL_MINUTES   = 60;
+    const RESET_MAX_PER_ACCOUNT_HOUR = 3;
+    const RESET_MAX_PER_IP_HOUR      = 10;
+
+    /** The one password rule, used by every path that sets a password. Returns an error message, or null when fine. */
+    public static function passwordProblem($password) {
+        $password = (string)$password;
+        if (strlen($password) < self::MIN_PASSWORD_LENGTH) {
+            return 'Password must be at least ' . self::MIN_PASSWORD_LENGTH . ' characters.';
+        }
+        if (strlen($password) > 72) {            // bcrypt ignores everything past 72 bytes
+            return 'Password must be 72 characters or fewer.';
+        }
+        return null;
+    }
+
+    /** A readable one-time password for an admin to hand over: no 0/O/1/l/I lookalikes. */
+    public static function generateTempPassword($length = 10) {
+        $chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $out = '';
+        for ($i = 0; $i < $length; $i++) $out .= $chars[random_int(0, strlen($chars) - 1)];
+        return $out;
+    }
+
+    public function verifyPassword($id, $password) {
+        try {
+            $stmt = $this->db->prepare("SELECT password FROM accounts WHERE id = ?");
+            $stmt->execute([$id]);
+            $hash = $stmt->fetchColumn();
+            return $hash !== false && password_verify((string)$password, $hash);
+        } catch (PDOException $e) {
+            error_log('verifyPassword: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Set a password. $mustChange = true when someone OTHER than the owner chose
+     * it (admin add / admin reset): the owner is then made to pick their own.
+     */
+    public function setPassword($id, $password, $mustChange) {
+        try {
+            $stmt = $this->db->prepare("UPDATE accounts SET password = ?, must_change_password = ?, password_changed_at = " . ($mustChange ? 'NULL' : 'NOW()') . " WHERE id = ?");
+            $stmt->execute([password_hash($password, PASSWORD_DEFAULT), $mustChange ? 1 : 0, $id]);
+            return true;
+        } catch (PDOException $e) {
+            error_log('setPassword: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function setMustChange($id, $flag) {
+        try {
+            $this->db->prepare("UPDATE accounts SET must_change_password = ? WHERE id = ?")->execute([$flag ? 1 : 0, $id]);
+            return true;
+        } catch (PDOException $e) {
+            error_log('setMustChange: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /** Active accounts matching a username or an email (an email can be shared, so several). */
+    public function findActiveByLogin($login) {
+        try {
+            $stmt = $this->db->prepare("SELECT id, username, email FROM accounts WHERE accountstatus = 'active' AND (username = ? OR (email <> '' AND email = ?)) LIMIT 3");
+            $stmt->execute([$login, $login]);
+            return $stmt->fetchAll();
+        } catch (PDOException $e) {
+            error_log('findActiveByLogin: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Make a reset token for an account. Returns the raw token (emailed, never
+     * stored — only its hash is), or null when this account / IP is over the
+     * hourly limit. The caller shows the same message either way.
+     */
+    public function createResetToken($accountId, $ip) {
+        try {
+            $q = $this->db->prepare("SELECT COUNT(*) FROM password_resets WHERE account_id = ? AND created_at > (NOW() - INTERVAL 1 HOUR)");
+            $q->execute([$accountId]);
+            if ((int)$q->fetchColumn() >= self::RESET_MAX_PER_ACCOUNT_HOUR) return null;
+            if ($ip) {
+                $q = $this->db->prepare("SELECT COUNT(*) FROM password_resets WHERE ip = ? AND created_at > (NOW() - INTERVAL 1 HOUR)");
+                $q->execute([$ip]);
+                if ((int)$q->fetchColumn() >= self::RESET_MAX_PER_IP_HOUR) return null;
+            }
+            $token = bin2hex(random_bytes(32));
+            $this->db->prepare("INSERT INTO password_resets (account_id, token_hash, ip, created_at, expires_at) VALUES (?, ?, ?, NOW(), NOW() + INTERVAL " . self::RESET_TTL_MINUTES . " MINUTE)")
+                     ->execute([$accountId, hash('sha256', $token), $ip]);
+            return $token;
+        } catch (PDOException $e) {
+            error_log('createResetToken: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /** The account a still-valid (unused, unexpired, active) token belongs to, or false. */
+    public function findValidReset($token) {
+        if (!is_string($token) || !preg_match('/^[a-f0-9]{64}$/', $token)) return false;
+        try {
+            $stmt = $this->db->prepare("SELECT a.id, a.username, r.id AS reset_id FROM password_resets r JOIN accounts a ON a.id = r.account_id
+                                        WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at > NOW() AND a.accountstatus = 'active'");
+            $stmt->execute([hash('sha256', $token)]);
+            return $stmt->fetch();
+        } catch (PDOException $e) {
+            error_log('findValidReset: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /** Set the new password and spend the token (and every other open one for that account). */
+    public function completeReset($token, $password) {
+        $row = $this->findValidReset($token);
+        if (!$row) return false;
+        try {
+            $this->db->beginTransaction();
+            if (!$this->setPassword($row['id'], $password, false)) throw new PDOException('setPassword failed');
+            $this->db->prepare("UPDATE password_resets SET used_at = NOW() WHERE account_id = ? AND used_at IS NULL")->execute([$row['id']]);
+            $this->db->commit();
+            return $row;
+        } catch (PDOException $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            error_log('completeReset: ' . $e->getMessage());
+            return false;
+        }
+    }
 }
 ?>

@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $sent   = !empty($_GET['sent']);
 $groups = $sent ? [] : pub_groups($db);
 
-pub_header('I\'m interested in a Victory Group', 'join.php', 'Tell us a little about you and a leader will reach out to welcome you to a Victory Group.');
+pub_header('Get Connected', 'join.php', 'Tell us a little about you and a leader will reach out to welcome you to a Victory Group.');
 ?>
 <header class="vp-hero">
     <div class="container vp-fade">
@@ -183,7 +183,7 @@ pub_header('I\'m interested in a Victory Group', 'join.php', 'Tell us a little a
         <div class="form-check mb-4"><input class="form-check-input" type="checkbox" id="consent" name="consent" value="1" required>
             <label class="form-check-label small" for="consent">I agree that Victory Bacolod may contact me, and share these details with the group leader, about joining a group. <span class="text-danger">*</span></label>
             <div class="invalid-feedback">Please tick this box so we may contact you.</div></div>
-        <button class="btn vp-cta btn-lg w-100" type="submit"><i class="bi bi-heart me-1" aria-hidden="true"></i>Yes, I&rsquo;m interested</button>
+        <button class="btn vp-cta btn-lg w-100" type="submit"><i class="bi bi-heart me-1" aria-hidden="true"></i>Get Connected</button>
     </form>
   </div>
   <aside class="col-lg-5">

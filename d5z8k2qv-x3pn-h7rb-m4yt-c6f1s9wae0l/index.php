@@ -66,15 +66,29 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 // request (one indexed lookup) so role changes apply immediately.
 if (isset($_SESSION['user']['id'])) {
     try {
-        $roleStmt = $db->prepare("SELECT accounttype FROM accounts WHERE id = ?");
+        $roleStmt = $db->prepare("SELECT accounttype, must_change_password FROM accounts WHERE id = ?");
         $roleStmt->execute([$_SESSION['user']['id']]);
-        $freshType = $roleStmt->fetchColumn();
-        if ($freshType !== false) $_SESSION['user']['accounttype'] = $freshType;
+        $freshRow = $roleStmt->fetch();
+        if ($freshRow !== false) {
+            $_SESSION['user']['accounttype'] = $freshRow['accounttype'];
+            // An admin reset takes effect on the very next request, even mid-session.
+            $_SESSION['user']['must_change_password'] = (int)$freshRow['must_change_password'];
+        }
     } catch (PDOException $e) {
         error_log('role refresh: ' . $e->getMessage());
     }
 }
 $currentUserType = $_SESSION['user']['accounttype'] ?? null;
+
+// A password an admin typed or generated is only temporary: until the owner
+// has chosen their own, the only things they can reach are the change-password
+// page and sign-out.
+if (!empty($_SESSION['user']['must_change_password']) && !in_array($action, ['changePassword', 'logout'], true)) {
+    $isAjaxAction = strpos($action, 'ajax') === 0 || !empty($_POST['ajax']) || $action === 'updateVglStatOrder';
+    if ($isAjaxAction) { http_response_code(403); exit(); }
+    header('Location: index.php?action=changePassword');
+    exit();
+}
 
 function sanitizeInput($value) {
     return filter_var($value, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
@@ -119,6 +133,21 @@ switch ($action) {
             unset($_SESSION['login_error'], $_SESSION['info_message']);
             include 'views/login.php';
         }
+        break;
+
+    // Forgot password (from the sign-in page) and the emailed reset link: no session needed.
+    case 'forgotPassword':
+        $userController->forgotPassword();
+        break;
+
+    case 'resetPassword':
+        $userController->resetPassword();
+        break;
+
+    // Any signed-in user changes their own password (profile; also the forced first-sign-in change).
+    case 'changePassword':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        $userController->changePassword();
         break;
 
     case 'logout':
@@ -496,6 +525,13 @@ switch ($action) {
         } else {
             $userController->updateUser($_POST['username'], $_POST['password'], $_POST['email'], $_POST['accounttype'], $_GET['id']);
         }
+        break;
+
+    case 'resetUserPassword':
+        if (!isset($_SESSION['user'])) { header('Location: index.php?action=login'); exit(); }
+        if ($currentUserType !== 'admin') { header('Location: index.php'); exit(); }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_GET['uuid'])) { header('Location: index.php?action=users'); exit(); }
+        $userController->adminResetPassword($_GET['uuid']);
         break;
 
     case 'deleteUser':

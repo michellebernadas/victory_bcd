@@ -86,7 +86,7 @@ const PERMISSION_GROUPS = [
         'class_spiritual_foundations' => ['Spiritual Foundations', 'Spiritual Foundations records.'],
     ],
     'Public site' => [
-        'join_requests' => ['Interested people (join inbox)', 'The inbox of people who said they are interested in joining a Victory Group on the public website. Contains names and contact details.'],
+        'join_requests' => ['Get Connected (join inbox)', 'The inbox of people who said they are interested in joining a Victory Group on the public website. Contains names and contact details.'],
     ],
     'Facility Booking' => [
         'facility_view'    => ['View calendar & requests',  'See the calendar, requests, history and the setup sheet.'],

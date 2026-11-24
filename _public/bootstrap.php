@@ -166,7 +166,7 @@ function pub_groups($db, $onlyId = null) {
 // ── Layout ───────────────────────────────────────────────────────────────────
 
 function pub_header($title, $active = '', $meta = '') {
-    $nav = ['services.php' => ['Service times', 'bi-clock'], 'groups.php' => ['Find a group', 'bi-people-fill']];
+    $nav = ['services.php' => ['Service times', 'bi-clock'], 'groups.php' => ['Find a Victory Group', 'bi-people-fill']];
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<title>' . pub_e($title) . ' &middot; Victory Bacolod</title>'
@@ -185,7 +185,7 @@ function pub_header($title, $active = '', $meta = '') {
     foreach ($nav as $href => $n) {
         echo '<li class="nav-item"><a class="nav-link' . ($active === $href ? ' active" aria-current="page' : '') . '" href="' . $href . '"><i class="bi ' . $n[1] . ' me-1" aria-hidden="true"></i>' . pub_e($n[0]) . '</a></li>';
     }
-    echo '<li class="nav-item ms-md-2 py-2 py-md-0"><a class="btn vp-cta" href="join.php"><i class="bi bi-heart me-1" aria-hidden="true"></i>I&rsquo;m interested</a></li>'
+    echo '<li class="nav-item ms-md-2 py-2 py-md-0"><a class="btn vp-cta" href="join.php"><i class="bi bi-heart me-1" aria-hidden="true"></i>Get Connected</a></li>'
        . '</ul></div></div></nav>';
 }
 
@@ -197,7 +197,7 @@ function pub_footer($db, $js = '') {
        . '<p class="mb-2">Honor God. Make Disciples.</p>'
        . '<p class="small mb-0">We are a church family in Bacolod. Wherever you are in life, there is a place for you to belong.</p></div>'
        . '<div class="col-6 col-md-3"><h2>Explore</h2><ul>'
-       . '<li><a href="services.php">Service times</a></li><li><a href="groups.php">Find a group</a></li><li><a href="join.php">I&rsquo;m interested in a Victory Group</a></li></ul></div>'
+       . '<li><a href="services.php">Service times</a></li><li><a href="groups.php">Find a Victory Group</a></li><li><a href="join.php">Get Connected</a></li></ul></div>'
        . '<div class="col-6 col-md-4"><h2>Sunday services</h2><ul>';
     if ($services) { foreach ($services as $s) echo '<li><i class="bi bi-clock me-2" aria-hidden="true"></i>' . pub_e($s['name']) . '</li>'; }
     else { echo '<li>Times coming soon</li>'; }

@@ -20,8 +20,10 @@ class JoinRequestController {
         $this->guard();
         $status = isset(JoinRequest::STATUSES[$_GET['status'] ?? '']) ? $_GET['status'] : '';
         $search = trim((string)($_GET['q'] ?? ''));
-        $requests = $this->model->getAll($status, $search);
+        $activeTab = (($_GET['tab'] ?? '') === 'stats') ? 'stats' : 'list';
+        $requests = $activeTab === 'list' ? $this->model->getAll($status, $search) : [];
         $counts   = $this->model->counts();
+        $jrStats  = $activeTab === 'stats' ? $this->model->stats() : null;
         include 'views/join_requests.php';
     }
 

@@ -47,7 +47,10 @@
                             </div>
 
                             <div class="mb-4">
-                                <label for="password" class="form-label fw-semibold">Password</label>
+                                <div class="d-flex justify-content-between align-items-baseline">
+                                    <label for="password" class="form-label fw-semibold">Password</label>
+                                    <a href="index.php?action=forgotPassword" class="small">Forgot password?</a>
+                                </div>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-lock"></i></span>
                                     <input type="password" class="form-control" id="password" name="password" required

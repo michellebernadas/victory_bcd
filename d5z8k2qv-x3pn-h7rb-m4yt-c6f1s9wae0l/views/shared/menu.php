@@ -59,8 +59,8 @@
                 if (isset($GLOBALS['db']) && $GLOBALS['db'] instanceof PDO) $mnJr = (new JoinRequest($GLOBALS['db']))->countNew();
             }
             echo '<li class="nav-item"><a href="index.php?action=joinRequests" class="nav-link d-flex align-items-center ' . ($mnAction === 'joinRequests' ? 'active' : '') . '">'
-               . '<i class="bi bi-inbox me-2"></i>Interested People'
-               . ($mnJr > 0 ? '<span class="badge rounded-pill bg-danger ms-auto" title="' . (int)$mnJr . ' new">' . (int)$mnJr . '</span>' : '')
+               . '<i class="bi bi-inbox me-2"></i>Get Connected inbox'
+               . ($mnJr > 0 ? '<span class="badge rounded-pill bg-danger ms-auto" title="' . (int)$mnJr . ' not contacted yet">' . (int)$mnJr . '</span>' : '')
                . '</a></li>' . "\n";
         }
         ?>
@@ -112,7 +112,7 @@
         <li class="mt-2 mb-1">
             <small class="text-muted px-3 fw-bold" style="font-size: 11px; letter-spacing: 1px;">PUBLIC SITE</small>
         </li>
-        <?php foreach ([['../services.php', 'bi-clock', 'Service times'], ['../groups.php', 'bi-people-fill', 'Find a group'], ['../join.php', 'bi-heart', 'Interested form']] as [$psUrl, $psIcon, $psLabel]): ?>
+        <?php foreach ([['../services.php', 'bi-clock', 'Service times'], ['../groups.php', 'bi-people-fill', 'Find a Victory Group'], ['../join.php', 'bi-heart', 'Get Connected form']] as [$psUrl, $psIcon, $psLabel]): ?>
         <li class="nav-item">
             <a href="<?php echo $psUrl; ?>" target="_blank" rel="noopener" class="nav-link d-flex align-items-center">
                 <i class="bi <?php echo $psIcon; ?> me-2"></i><?php echo $psLabel; ?>
@@ -156,6 +156,7 @@
         </a>
         <ul class="dropdown-menu text-small shadow">
             <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#profileModal"><i class="bi bi-person-circle me-2"></i>Profile</a></li>
+            <li><a class="dropdown-item" href="index.php?action=changePassword"><i class="bi bi-key me-2"></i>Change Password</a></li>
             <li><hr class="dropdown-divider"></li>
             <li><a class="dropdown-item text-danger" href="index.php?action=logout"><i class="bi bi-box-arrow-right me-2"></i>Sign out</a></li>
         </ul>
@@ -191,6 +192,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <a href="index.php?action=changePassword" class="btn btn-outline-primary"><i class="bi bi-key me-1"></i>Change Password</a>
                     <?php if (canAdminister()): ?>
                     <a href="index.php?action=editUser&id=<?php echo $_SESSION['user']['id'] ?? ''; ?>" class="btn btn-primary">Edit Profile</a>
                     <?php endif; ?>

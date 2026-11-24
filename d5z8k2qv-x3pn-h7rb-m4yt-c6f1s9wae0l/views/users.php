@@ -45,7 +45,17 @@ $editUser = $editUser ?? null;
                 ?>
                 <div class="alert <?php echo $alertClass; ?> alert-dismissible fade show" role="alert">
                     <i class="<?php echo $iconClass; ?> me-2"></i>
-                    User <?php echo ucfirst($notif); ?>d successfully!
+                    <?php
+                    // Fixed wording per action ("add" + "d" gave "Addd"), and nothing from the URL is echoed.
+                    $notifText = [
+                        'add'        => 'User added successfully!',
+                        'update'     => 'User updated successfully!',
+                        'delete'     => 'User deleted successfully!',
+                        'activate'   => 'User activated successfully!',
+                        'deactivate' => 'User deactivated successfully!',
+                    ];
+                    echo htmlspecialchars($notifText[$notif] ?? 'Done.');
+                    ?>
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
             <?php endif; ?>
@@ -107,6 +117,12 @@ $editUser = $editUser ?? null;
                                             onclick="openEditUserModal(<?php echo htmlspecialchars(json_encode($u)); ?>)">
                                             <i class="bi bi-pencil"></i>
                                         </button>
+                                        <?php if ($u['id'] != $_SESSION['user']['id']): ?>
+                                        <button class="btn btn-sm btn-outline-secondary me-1" title="Reset password"
+                                            onclick="confirmResetPassword('<?php echo $u['uuid']; ?>', '<?php echo htmlspecialchars(addslashes($u['username'])); ?>')">
+                                            <i class="bi bi-key"></i>
+                                        </button>
+                                        <?php endif; ?>
                                         <?php if ($u['accountstatus'] === 'active'): ?>
                                         <a href="index.php?action=deactivateUser&uuid=<?php echo $u['uuid']; ?>" class="btn btn-sm btn-outline-warning me-1" title="Deactivate"
                                            data-confirm="Deactivate this user?">
@@ -157,11 +173,12 @@ $editUser = $editUser ?? null;
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Password <span class="text-danger">*</span></label>
                         <div class="input-group">
-                            <input type="password" name="password" id="add_password" class="form-control" required placeholder="Enter password">
+                            <input type="password" name="password" id="add_password" class="form-control" required minlength="<?php echo (int)User::MIN_PASSWORD_LENGTH; ?>" placeholder="Enter a temporary password">
                             <button class="btn btn-outline-secondary toggle-password" type="button" data-target="#add_password">
                                 <i class="bi bi-eye"></i>
                             </button>
                         </div>
+                        <div class="form-text">At least <?php echo (int)User::MIN_PASSWORD_LENGTH; ?> characters. It is only temporary: they will be asked to choose their own the first time they sign in.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
@@ -210,6 +227,7 @@ $editUser = $editUser ?? null;
                                 <i class="bi bi-eye"></i>
                             </button>
                         </div>
+                        <div class="form-text">If you set one, this user must choose their own at next sign-in. Or use the <i class="bi bi-key"></i> Reset password button on the row to generate one.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
@@ -229,6 +247,66 @@ $editUser = $editUser ?? null;
             </div>
         </div>
     </div>
+
+    <!-- Reset password: confirm -->
+    <div class="modal fade" id="resetPwModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-key me-2"></i>Reset Password</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST" id="resetPwForm" action="">
+                <div class="modal-body">
+                    <p>Generate a new temporary password for <strong id="resetPwUsername"></strong>?</p>
+                    <p class="text-muted small mb-0">Their current password stops working right away. You will see the new one once, to give to them. They will be asked to choose their own when they sign in.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-key me-1"></i>Reset password</button>
+                </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <?php
+    // Shown exactly once, right after an admin reset. Read-and-clear so a refresh does not show it again.
+    $tempPw = $_SESSION['temp_password'] ?? null;
+    unset($_SESSION['temp_password']);
+    if ($tempPw): ?>
+    <div class="modal fade" id="tempPwModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-check-circle me-2 text-success"></i>Password reset</h5>
+                </div>
+                <div class="modal-body">
+                    <p>New temporary password for <strong><?php echo htmlspecialchars($tempPw['username']); ?></strong>:</p>
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control font-monospace fs-5" id="tempPwValue" value="<?php echo htmlspecialchars($tempPw['password']); ?>" readonly>
+                        <button class="btn btn-outline-secondary" type="button" id="tempPwCopy"><i class="bi bi-clipboard me-1"></i>Copy</button>
+                    </div>
+                    <p class="text-muted small mb-0">This is the only time it is shown. Give it to them privately: they will choose their own when they sign in.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        new bootstrap.Modal(document.getElementById('tempPwModal')).show();
+        document.getElementById('tempPwCopy').addEventListener('click', function () {
+            var i = document.getElementById('tempPwValue');
+            i.select();
+            if (navigator.clipboard) navigator.clipboard.writeText(i.value); else document.execCommand('copy');
+            this.innerHTML = '<i class="bi bi-check-lg me-1"></i>Copied';
+        });
+    });
+    </script>
+    <?php endif; ?>
 
     <!-- Delete Modal -->
     <div class="modal fade" id="deleteUserModal" tabindex="-1" aria-hidden="true">
@@ -259,6 +337,11 @@ $editUser = $editUser ?? null;
         document.getElementById('editUserForm').action = 'index.php?action=updateUser&uuid=' + u.uuid;
         var modal = new bootstrap.Modal(document.getElementById('editUserModal'));
         modal.show();
+    }
+    function confirmResetPassword(uuid, username) {
+        document.getElementById('resetPwUsername').textContent = username;
+        document.getElementById('resetPwForm').action = 'index.php?action=resetUserPassword&uuid=' + uuid;
+        new bootstrap.Modal(document.getElementById('resetPwModal')).show();
     }
     function confirmDeleteUser(uuid, username) {
         document.getElementById('deleteUsername').textContent = username;
